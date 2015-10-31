@@ -7,6 +7,7 @@
 #include <dmlc/logging.h>
 #include <dmlc/io.h>
 #include <dmlc/memory_io.h>
+#include <dmlc/recordio.h>
 #include <mxnet/base.h>
 #include <mxnet/ndarray.h>
 #include <mxnet/symbolic.h>
@@ -196,7 +197,10 @@ int MXNDArraySave(const char* fname,
       names[i] = keys[i];
     }
   }
-  mxnet::NDArray::Save(fname, data, names);
+  {
+    std::unique_ptr<dmlc::Stream> fo(dmlc::Stream::Create(fname, "w"));
+    mxnet::NDArray::Save(fo.get(), data, names);
+  }
   API_END();
 }
 
@@ -210,7 +214,10 @@ int MXNDArrayLoad(const char* fname,
   API_BEGIN();
   std::vector<NDArray> data;
   std::vector<std::string> &names = ret->ret_vec_str;
-  mxnet::NDArray::Load(fname, &data, &names);
+  {
+    std::unique_ptr<dmlc::Stream> fi(dmlc::Stream::Create(fname, "r"));
+    mxnet::NDArray::Load(fi.get(), &data, &names);
+  }
   ret->ret_handles.resize(data.size());
   for (size_t i = 0; i < data.size(); ++i) {
     NDArray *ptr = new NDArray();
@@ -985,5 +992,77 @@ int MXKVStoreGetType(KVStoreHandle handle,
                      const char** type) {
   API_BEGIN();
   *CHECK_NOTNULL(type) = static_cast<KVStore*>(handle)->type().c_str();
+  API_END();
+}
+
+struct MXRecordIOContext {
+  dmlc::RecordIOWriter *writer;
+  dmlc::RecordIOReader *reader;
+  dmlc::Stream *stream;
+  std::string *read_buff;
+};
+
+int MXRecordIOWriterCreate(const char *uri,
+                           RecordIOHandle *out) {
+  API_BEGIN();
+  dmlc::Stream *stream = dmlc::Stream::Create(uri, "w");
+  MXRecordIOContext *context = new MXRecordIOContext;
+  context->writer = new dmlc::RecordIOWriter(stream);
+  context->reader = NULL;
+  context->stream = stream;
+  context->read_buff = NULL;
+  *out = reinterpret_cast<RecordIOHandle>(context);
+  API_END();
+}
+
+int MXRecordIOWriterFree(RecordIOHandle handle) {
+  API_BEGIN();
+  MXRecordIOContext *context =
+    reinterpret_cast<MXRecordIOContext*>(handle);
+  delete context->writer;
+  delete context->stream;
+  API_END();
+}
+
+int MXRecordIOWriterWriteRecord(RecordIOHandle *handle,
+                                const char *buf, size_t size) {
+  API_BEGIN();
+  MXRecordIOContext *context =
+    reinterpret_cast<MXRecordIOContext*>(handle);
+  context->writer->WriteRecord(reinterpret_cast<const void*>(buf), size);
+  API_END();
+}
+
+int MXRecordIOReaderCreate(const char *uri,
+                           RecordIOHandle *out) {
+  API_BEGIN();
+  dmlc::Stream *stream = dmlc::Stream::Create(uri, "r");
+  MXRecordIOContext *context = new MXRecordIOContext;
+  context->reader = new dmlc::RecordIOReader(stream);
+  context->writer = NULL;
+  context->stream = stream;
+  context->read_buff = new std::string();
+  *out = reinterpret_cast<RecordIOHandle>(context);
+  API_END();
+}
+
+int MXRecordIOReaderFree(RecordIOHandle *handle) {
+  API_BEGIN();
+  MXRecordIOContext *context =
+    reinterpret_cast<MXRecordIOContext*>(handle);
+  delete context->reader;
+  delete context->stream;
+  delete context->read_buff;
+  API_END();
+}
+
+int MXRecordIOReaderReadRecord(RecordIOHandle *handle,
+                              char const **buf, size_t *size) {
+  API_BEGIN();
+  MXRecordIOContext *context =
+    reinterpret_cast<MXRecordIOContext*>(handle);
+  context->reader->NextRecord(context->read_buff);
+  *buf = context->read_buff->c_str();
+  *size = context->read_buff->size();
   API_END();
 }
