@@ -1,6 +1,6 @@
 # pylint: disable=fixme, invalid-name, unused-argument, too-many-arguments, no-name-in-module
 """Common Optimization algorithms with regularizations."""
-from .ndarray import NDArray, zeros, clip
+from .ndarray import NDArray, zeros, clip, square, sqrt
 
 class Optimizer(object):
     """Base class of all optimizers."""
@@ -166,6 +166,93 @@ class SGD(Optimizer):
             mom[:] *= self.momentum
             mom[:] += -lr * (grad + self.wd * weight)
             weight[:] += mom
+        else:
+            assert self.momentum == 0.0
+            weight[:] += -lr * (grad + self.wd * weight)
+
+@register
+class RMSProp(Optimizer):
+    """The RMSProp Optimizer Introduced by Hinton in his lecture.
+    See [Hinton's Lecture Notes](http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf) for details.
+
+    Parameters
+    ----------
+    learning_rate : float, optional
+        learning_rate of RMSProp
+
+    decay_rate : float, optional
+        The decay rate of the moving average of the squared gradient.
+        MeanSquare_{t+1} = decay_rate * MeasSquare_{t} + (1-decay_rate) * SquareGradient_{t+1}
+
+    wd : float, optional
+        L2 regularization coefficient add to all the weights
+
+    rescale_grad : float, optional
+        rescaling factor of gradient.
+
+    clip_gradient : float, optional
+        clip gradient in range [-clip_gradient, clip_gradient]
+    """
+    def __init__(self, learning_rate=1E-3, decay_rate=0.9,
+                 wd=0.0001, rescale_grad=1, clip_gradient=None,
+                 lr_scheduler=None):
+        super(RMSProp, self).__init__(rescale_grad)
+        self.lr = learning_rate
+        self.decay_rate = decay_rate
+        self.wd = wd
+        self.clip_gradient = clip_gradient
+        self.lr_scheduler = lr_scheduler
+        if lr_scheduler != None:
+            self.lr_scheduler.base_lr = learning_rate
+        self.grad_ms = {}
+
+    def create_state(self, index, weight):
+        """Create additional optimizer state such as momentum.
+
+        Parameters
+        ----------
+        weight : NDArray
+            The weight data
+
+        """
+        if self.decay_rate == 1.0:
+            return None
+        else:
+            return zeros(weight.shape, weight.context)
+
+    def update(self, index, weight, grad, state):
+        """Update the parameters.
+
+        Parameters
+        ----------
+        index : int
+            An unique integer key used to index the parameters
+
+        weight : NDArray
+            weight ndarray
+
+        grad : NDArray
+            grad ndarray
+
+        state : NDArray or other objects returned by init_state
+            The auxiliary state used in optimization.
+        """
+        # TODO(bing) implement wd_bias, wd_gamma, wd_beta
+        assert(isinstance(weight, NDArray))
+        assert(isinstance(grad, NDArray))
+        if self.lr_scheduler != None:
+            lr = self.lr_scheduler(self.epoch)
+        else:
+            lr = self.lr
+
+        grad = grad * self.rescale_grad
+        if self.clip_gradient != None:
+            grad = clip(grad, -self.clip_gradient, self.clip_gradient)
+
+        if state:
+            grad_ms = state
+            grad_ms = self.decay_rate * grad_ms + (1 - self.decay_rate) * square(grad + self.wd * weight)
+            weight[:] += -lr * (grad + self.wd * weight) / sqrt(grad_ms + 1E-6)
         else:
             assert self.momentum == 0.0
             weight[:] += -lr * (grad + self.wd * weight)
