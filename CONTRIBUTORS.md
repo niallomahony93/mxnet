@@ -47,6 +47,8 @@ List of Contributors
   - To contributors: please add your name to the list when you submit a patch to the project:)
 * [Feng Wang](https://github.com/happynear)
   - Feng makes mxnet compatible with Windows Visual Studio.
+* [Jack Deng](https://github.com/jdeng)
+  - Jack created the amalgamation script and Go bind for mxnet.
 * [Li Dong](https://github.com/donglixp)
 * [Piji Li](https://github.com/lipiji)
 * [Hu Shiwen](https://github.com/yajiedesign)
@@ -58,3 +60,9 @@ List of Contributors
 * [Nan Xiao](https://github.com/road2stat)
 * [Junyuan Xie](https://github.com/piiswrong)
 * [Wei Wu](https://github.com/tornadomeet)
+* [Yuan Tang](https://github.com/terrytangyuan)
+  - Yuan set up the R Travis environment to make development safer.
+* [Michaël Benesty](https://github.com/pommedeterresautee)
+  -Michaël contributes the R visualization module of mxnet
+* [Kublai Jing](https://github.com/Kublai-Jing)
+* [chenjx1005](https://github.com/chenjx1005)

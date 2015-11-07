@@ -66,3 +66,7 @@ deps
 # R
 *.Rcheck
 *.rds
+*.Rproj
+.Rproj.user
+R-package/inst/*
+*.tar.gz

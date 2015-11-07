@@ -1,13 +1,16 @@
 // mexnet.cc
 
 #define MSHADOW_FORCE_STREAM
-#define MSHADOW_USE_CUDA 	0
+#ifndef MSHADOW_USE_CBLAS
 #define MSHADOW_USE_CBLAS 	1
+#endif
+#define MSHADOW_USE_CUDA 	0
 #define MSHADOW_USE_MKL 	0
 #define MSHADOW_RABIT_PS 	0
 #define MSHADOW_DIST_PS 	0
 
 #define MXNET_USE_OPENCV 	0
+#define MXNET_PREDICT_ONLY 	1
 #define DISABLE_OPENMP 1
 
 #include "src/ndarray/unary_function.cc"
@@ -15,11 +18,6 @@
 #include "src/ndarray/ndarray.cc"
 #include "src/engine/engine.cc"
 #include "src/engine/naive_engine.cc"
-#include "src/engine/threaded_engine.cc"
-#include "src/engine/threaded_engine_perdevice.cc"
-#include "src/engine/threaded_engine_pooled.cc"
-#include "src/io/io.cc"
-#include "src/kvstore/kvstore.cc"
 #include "src/symbol/graph_executor.cc"
 #include "src/symbol/static_graph.cc"
 #include "src/symbol/symbol.cc"
@@ -41,21 +39,10 @@
 #include "src/operator/slice_channel.cc"
 #include "src/operator/softmax_output.cc"
 #include "src/operator/deconvolution.cc"
-#include "src/operator/native_op.cc"
 #include "src/storage/storage.cc"
 #include "src/common/tblob_op_registry.cc"
 
 #include "src/resource.cc"
 
-#include "src/c_api/c_api.cc"
-#include "src/c_api/c_api_error.cc"
 #include "src/c_api/c_predict_api.cc"
-
-#include "dmlc-core/src/data.cc"
-#include "dmlc-core/src/io/input_split_base.cc"
-#include "dmlc-core/src/io/line_split.cc"
-#include "dmlc-core/src/io/local_filesys.cc"
-#include "dmlc-core/src/io/recordio_split.cc"
-#include "dmlc-core/src/io.cc"
-#include "dmlc-core/src/recordio.cc"
-
+#include "src/c_api/c_api_error.cc"
