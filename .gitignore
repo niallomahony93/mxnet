@@ -71,3 +71,8 @@ deps
 .Rproj.user
 R-package/inst/*
 *.tar.gz
+.idea/misc.xml
+.idea/mxnet.iml
+.idea/modules.xml
+.idea/vcs.xml
+.idea/workspace.xml
