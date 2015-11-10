@@ -251,7 +251,7 @@ class RMSProp(Optimizer):
 
         if state:
             grad_ms = state
-            grad_ms = self.decay_rate * grad_ms + (1 - self.decay_rate) * square(grad + self.wd * weight)
+            grad_ms[:] = self.decay_rate * grad_ms + (1 - self.decay_rate) * square(grad + self.wd * weight)
             weight[:] += -lr * (grad + self.wd * weight) / sqrt(grad_ms + 1E-6)
         else:
             assert self.momentum == 0.0
