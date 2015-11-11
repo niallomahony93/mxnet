@@ -1,9 +1,14 @@
 __author__ = 'sxjscience'
 import mxnet as mx
+import numpy.random
 
 _ctx = mx.cpu()
+_numpy_rng = numpy.random.RandomState(10000)
 def get_ctx():
     return _ctx
+
+def get_numpy_rng():
+    return _numpy_rng
 
 class Defaults:
     # ----------------------
