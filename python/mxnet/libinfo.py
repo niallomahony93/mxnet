@@ -17,10 +17,9 @@ def find_lib_path():
     dll_path = [curr_path, api_path]
     if os.name == 'nt':
         vs_configuration = 'Release'
-        print platform.architecture()[0]
         if platform.architecture()[0] == '64bit':
-            # dll_path.append(os.path.join(curr_path, '../../build', vs_configuration))
-            dll_path.append(os.path.join(curr_path, '../../build/x64', vs_configuration))
+            dll_path.append(os.path.join(curr_path, '../../build', vs_configuration))
+            dll_path.append(os.path.join(curr_path, '../../windows/x64', vs_configuration))
         else:
             dll_path.append(os.path.join(curr_path, '../../build', vs_configuration))
             dll_path.append(os.path.join(curr_path, '../../windows', vs_configuration))
@@ -32,7 +31,6 @@ def find_lib_path():
     if len(lib_path) == 0:
         raise RuntimeError('Cannot find the files.\n' +
                            'List of candidates:\n' + str('\n'.join(dll_path)))
-    print lib_path
     return lib_path
 
 
