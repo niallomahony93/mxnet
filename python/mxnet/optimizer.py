@@ -245,6 +245,7 @@ class RMSProp(Optimizer):
         else:
             lr = self.lr
 
+        lr *= self.lr_scale.get(index, 1.0)
         grad = grad * self.rescale_grad
         if self.clip_gradient != None:
             grad = clip(grad, -self.clip_gradient, self.clip_gradient)
