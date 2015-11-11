@@ -1,4 +1,5 @@
-cmake -DCMAKE_BUILD_TYPE=Release ^
+cmake -G "Visual Studio 12 2013 Win64" ^
+-DCMAKE_BUILD_TYPE=Release ^
 -DMKL_INCLUDE_DIR=C:\\Program Files (x86)\\IntelSWTools\\compilers_and_libraries_2016\\windows\\mkl\\include ^
 -DMKL_RT_LIBRARY=C:\\Program Files (x86)\\IntelSWTools\\compilers_and_libraries_2016\\windows\\mkl\\lib\\intel64 ^
 -DOpenCV_DIR=E:\\ThirdParty\\opencv\\build\\x64\\vc12\\staticlib ^
