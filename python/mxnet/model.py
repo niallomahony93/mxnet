@@ -803,7 +803,7 @@ class FeedForward(BASE_ESTIMATOR):
             ceil(num_train_examples / batch_size)
         optimizer : str or Optimizer, optional
             Training parameter, name or optimizer object for training.
-        initializier : initializer function, optional
+        initializer : initializer function, optional
             Training parameter, the initialization scheme used.
         eval_data : DataIter or numpy.ndarray pair
             If eval_set is numpy.ndarray pair, it should be (valid_data, valid_label)
