@@ -184,6 +184,9 @@ class RMSProp(Optimizer):
         The decay rate of the moving average of the squared gradient.
         MeanSquare_{t+1} = decay_rate * MeasSquare_{t} + (1-decay_rate) * SquareGradient_{t+1}
 
+    eps : float, optional
+        Add eps to avoid dividing by zero
+
     wd : float, optional
         L2 regularization coefficient add to all the weights
 
@@ -193,12 +196,13 @@ class RMSProp(Optimizer):
     clip_gradient : float, optional
         clip gradient in range [-clip_gradient, clip_gradient]
     """
-    def __init__(self, learning_rate=1E-3, decay_rate=0.9,
+    def __init__(self, learning_rate=1E-3, decay_rate=0.9, eps=1E-6,
                  wd=0.0001, rescale_grad=1, clip_gradient=None,
                  lr_scheduler=None):
         super(RMSProp, self).__init__(rescale_grad)
         self.lr = learning_rate
         self.decay_rate = decay_rate
+        self.eps = eps
         self.wd = wd
         self.clip_gradient = clip_gradient
         self.lr_scheduler = lr_scheduler
@@ -253,7 +257,7 @@ class RMSProp(Optimizer):
         if state:
             grad_ms = state
             grad_ms[:] = self.decay_rate * grad_ms + (1 - self.decay_rate) * square(grad + self.wd * weight)
-            weight[:] += -lr * (grad + self.wd * weight) / sqrt(grad_ms + 1E-6)
+            weight[:] += -lr * (grad + self.wd * weight) / sqrt(grad_ms + self.eps)
         else:
             assert self.momentum == 0.0
             weight[:] += -lr * (grad + self.wd * weight)
