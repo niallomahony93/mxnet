@@ -10,38 +10,33 @@ def get_ctx():
 def get_numpy_rng():
     return _numpy_rng
 
-class Defaults:
-    # ----------------------
-    # Experiment Parameters
-    # ----------------------
+class ALEDefaults:
+    ROM_PATH = "./roms/breakout.bin"
+    DISPLAY_SCREEN = False
+    FRAME_SKIP = 4
+    RESIZED_ROWS = 84
+    RESIZED_COLS = 84
+    EXPLORATION_PROB_START = 1.0
+    EXPLORATION_PROB_MIN = .1
+    EXPLORATION_PROB_DECAY = 1E-6
     STEPS_PER_EPOCH = 250000
     EPOCHS = 200
     STEPS_PER_TEST = 125000
-    # ----------------------
-    # ALE Parameters
-    # ----------------------
-    BASE_ROM_PATH = "./roms/breakout.bin"
-    FRAME_SKIP = 4
-    # ----------------------
-    # Optimization Parameters:
-    # ----------------------
-    UPDATE_RULE = 'deepmind_rmsprop'
-    LEARNING_RATE = .00025
-    DISCOUNT = .99
-    RMS_DECAY = .95 # (Rho)
-    RMS_EPSILON = .01
+    MINIBATCH_SIZE = 32
 
-    CLIP_DELTA = 1.0
-    EXPLORATION_EPSILON_START = 1.0
-    EXPLORATION_EPSILON_MIN = .1
-    EXPLORATION_EPSILON_DECAY = 1000000
+class ReplayMemoryDefaults:
+    REPLAY_MEMORY_SIZE = 1000000
+    REPLAY_START_SIZE = 50000
     SLICE_LENGTH = 4
     UPDATE_FREQUENCY = 4
-    REPLAY_MEMORY_SIZE = 1000000
-    MINIBATCH_SIZE = 32
+
+class LossDefaults:
+    CLIP_DELTA = 1.0
+
+class OptimizerDefaults:
+    LEARNING_RATE = .00025
+    RMS_DECAY = .95
+    RMS_EPSILON = .01
     FREEZE_INTERVAL = 10000
-    REPLAY_START_SIZE = 50000
     RESIZE_METHOD = 'scale'
-    RESIZED_WIDTH = 84
-    RESIZED_HEIGHT = 84
     MAX_START_NULLOPS = 30
