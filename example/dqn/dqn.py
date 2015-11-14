@@ -72,7 +72,6 @@ class DQN(object):
         action_reward_shape = (5, 2)
         d = {'data': data_shape, 'dqn_action_reward': action_reward_shape}
         self.dqn_sym = dqn_network()
-        self.shortcut_dqn_sym = dqn_network()
         self.online_net = mx.model.FeedForward(symbol=self.dqn_sym, ctx=get_ctx(), initializer=DQNInitializer(),
                                                num_epoch=100, numpy_batch_size=5,
                                                learning_rate=0.0001, momentum=0.9, wd=0.00001)
@@ -83,8 +82,11 @@ class DQN(object):
         self.update_shortcut()
 
     def update_shortcut(self):
+        for v in self.online_net.arg_params.values():
+            v.wait_to_read()
         self.shortcut_net._pred_exec.copy_params_from(self.online_net.arg_params, self.online_net.aux_params)
-
+        for k in self.online_net.arg_params.keys():
+            self.shortcut_net._pred_exec.arg_dict[k].wait_to_read()
     def fit(self, iter):
         self.online_net.fit(X=iter, eval_metric=mx.metric.CustomMetric(dqn_metric),
                             batch_end_callback=self.dqn_batch_callback)
