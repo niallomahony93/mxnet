@@ -50,28 +50,13 @@ def dqn_metric(action_reward, qvec):
     reward_npy = action_reward_npy[:, 1]
     return abs(qvec_npy[numpy.arange(action_npy.shape[0]), action_npy] - reward_npy).sum()
 
-
-def dqn_network(action_num=4):
-    net = mx.symbol.Variable('data')
-    net = mx.symbol.Convolution(data=net, name='conv1', kernel=(8, 8), stride=(4, 4), num_filter=16)
-    net = mx.symbol.Activation(data=net, name='relu1', act_type="relu")
-    net = mx.symbol.Convolution(data=net, name='conv2', kernel=(4, 4), stride=(2, 2), num_filter=32)
-    net = mx.symbol.Activation(data=net, name='relu2', act_type="relu")
-    net = mx.symbol.Flatten(data=net)
-    net = mx.symbol.FullyConnected(data=net, name='fc3', num_hidden=256)
-    net = mx.symbol.Activation(data=net, name='relu3', act_type="relu")
-    net = mx.symbol.FullyConnected(data=net, name='fc4', num_hidden=action_num)
-    DQNOutput = DQNOutputOp()
-    net = DQNOutput(data=net, name='dqn')
-    return net
-
-
 class DQN(object):
     def __init__(self):
         data_shape = (5, 4, 84, 84)
         action_reward_shape = (5, 2)
         d = {'data': data_shape, 'dqn_action_reward': action_reward_shape}
-        self.dqn_sym = dqn_network()
+        self.DQNOutput = DQNOutputOp()
+        self.dqn_sym = self.dqn_network()
         self.online_net = mx.model.FeedForward(symbol=self.dqn_sym, ctx=get_ctx(), initializer=DQNInitializer(),
                                                num_epoch=100, numpy_batch_size=5,
                                                learning_rate=0.0001, momentum=0.9, wd=0.00001)
@@ -81,12 +66,25 @@ class DQN(object):
         self.shortcut_net._init_predictor({'data': data_shape})
         self.update_shortcut()
 
+    def dqn_network(self, action_num=4):
+        net = mx.symbol.Variable('data')
+        net = mx.symbol.Convolution(data=net, name='conv1', kernel=(8, 8), stride=(4, 4), num_filter=16)
+        net = mx.symbol.Activation(data=net, name='relu1', act_type="relu")
+        net = mx.symbol.Convolution(data=net, name='conv2', kernel=(4, 4), stride=(2, 2), num_filter=32)
+        net = mx.symbol.Activation(data=net, name='relu2', act_type="relu")
+        net = mx.symbol.Flatten(data=net)
+        net = mx.symbol.FullyConnected(data=net, name='fc3', num_hidden=256)
+        net = mx.symbol.Activation(data=net, name='relu3', act_type="relu")
+        net = mx.symbol.FullyConnected(data=net, name='fc4', num_hidden=action_num)
+        net = self.DQNOutput(data=net, name='dqn')
+        return net
+
     def update_shortcut(self):
-        for v in self.online_net.arg_params.values():
-            v.wait_to_read()
+        # for v in self.online_net.arg_params.values():
+        #     v.wait_to_read()
         self.shortcut_net._pred_exec.copy_params_from(self.online_net.arg_params, self.online_net.aux_params)
-        for k in self.online_net.arg_params.keys():
-            self.shortcut_net._pred_exec.arg_dict[k].wait_to_read()
+        # for k in self.online_net.arg_params.keys():
+        #     self.shortcut_net._pred_exec.arg_dict[k].wait_to_read()
     def fit(self, iter):
         self.online_net.fit(X=iter, eval_metric=mx.metric.CustomMetric(dqn_metric),
                             batch_end_callback=self.dqn_batch_callback)
