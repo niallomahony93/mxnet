@@ -99,11 +99,14 @@ class DQN(object):
     def dqn_epoch_end_callback(self, epoch, symbol, arg_params, aux_states):
         # logging.info("Epoch Reward: %f" %self.iter.epoch_reward)
         if (epoch + 1) % DQNDefaults.SAVE_INTERVAL == 0:
-            mx.model.save_checkpoint(DQNDefaults.SAVE_PREFIX, epoch + 1, symbol, arg_params, aux_states)
+            mx.model.save_checkpoint(DQNDefaults.SAVE_DIR + '/' + DQNDefaults.SAVE_PREFIX,
+                                     epoch + 1, symbol, arg_params, aux_states)
         return
 
 
 logging.basicConfig(level=logging.DEBUG)
+if not os.path.exists(DQNDefaults.SAVE_DIR):
+    os.mkdir(DQNDefaults.SAVE_DIR)
 # data_shape = (5, 4, 84, 84)
 # action_shape = (5,)
 # action_reward_shape = (5, 2)

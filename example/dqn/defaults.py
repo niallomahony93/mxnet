@@ -21,7 +21,7 @@ class IteratorDefaults:
     EXPLORATION_PROB_MIN = .1
     EXPLORATION_PROB_DECAY = 1E-6
     EPOCH_MAX_STEP = 250000
-    EPOCHS = 1E7
+    EPOCHS = 10000000
     STEPS_PER_TEST = 125000
     BATCH_SIZE = 32
     DISCOUNT = 0.99
@@ -43,5 +43,6 @@ class OptimizerDefaults:
 
 class DQNDefaults:
     SHORTCUT_INTERVAL = 1000
-    SAVE_INTERVAL = 1000
-    SAVE_PREFIX = os.path.dirname(os.path.realpath(__file__)) + "/model/Inception-Full"
+    SAVE_INTERVAL = 10000
+    SAVE_DIR = os.path.dirname(os.path.realpath(__file__)) + "/model"
+    SAVE_PREFIX = 'dqn'
