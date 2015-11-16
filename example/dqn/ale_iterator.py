@@ -131,9 +131,9 @@ class ALEIterator(mx.io.DataIter):
                 # 3. Calculate the reward target
                 qval = self.critic.predict(new_states)
                 ind = terminate_flags.ravel().nonzero()[0]
-                # if len(ind)>0:
+                if len(ind)>0:
                 #     print self.current_step, rewards[ind].sum(), self.current_exploration_prob
-                #     rewards[ind] += self.discount*numpy.max(qval[ind, ...], axis=1)
+                    rewards[ind] += self.discount*numpy.max(qval[ind, ...], axis=1)
                 self.action_reward[:] = numpy.vstack((actions, rewards)).T
                 self.current_exploration_prob = \
                     max(self.exploration_prob_min, self.current_exploration_prob - self.exploration_prob_decay)
