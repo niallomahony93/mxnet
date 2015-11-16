@@ -66,6 +66,8 @@ class ALEIterator(mx.io.DataIter):
         self.critic = critic
         while self.replay_memory.size < self.replay_memory.replay_start_size:
             self.act()
+            if self.ale.game_over():
+                self.ale.reset_game()
 
     @property
     def provide_data(self):
@@ -98,14 +100,15 @@ class ALEIterator(mx.io.DataIter):
             if rng.choice([True, False], p=[self.current_exploration_prob, 1 - self.current_exploration_prob]):
                 action = rng.randint(0, len(self.action_set))
             else:
-                action = numpy.argmax(self.actor.predict(self.replay_memory.latest_slice()), axis=1)
+                action = numpy.argmax(self.actor.predict(mx.io.NDArrayIter(data=self.replay_memory.latest_slice())),
+                                                         axis=1)
         # 2. Repeat the action for a fixed number of times and receive the image, reward and termination flag
         reward = 0
         for i in range(self.frame_skip):
             reward += self.ale.act(self.action_set[action])
             if i >= self.frame_skip - self.screen_buffer_length:
                 self.ale.getScreenGrayscale(self.screen_buffer[i + self.screen_buffer_length - self.frame_skip, :, :])
-        reward = numpy.clip(reward, -1, 1)
+        # reward = numpy.clip(reward, -1, 1)
         self.epoch_reward += reward
         img = self.get_observation()
         terminate_flag = (self.ale.lives() < self.start_lives) or self.ale.game_over()
@@ -124,14 +127,17 @@ class ALEIterator(mx.io.DataIter):
                 # 2. Sample a random batch from the replay memory
                 self.data[:], actions, rewards, new_states, terminate_flags = self.replay_memory.sample(self.batch_size)
                 # 3. Calculate the reward target
-                rewards[terminate_flags.nonzero()] += \
-                    self.discount*numpy.max(self.critic.predict(new_states[terminate_flags.nonzero(), ...]), axis=1)
-                self.action_reward[:, 0] = actions
-                self.action_reward[:, 1] = rewards
+                qval = self.critic.predict(new_states)
+                ind = terminate_flags.ravel().nonzero()[0]
+                if len(ind)>0:
+                    print self.current_step, len(ind), self.current_exploration_prob
+                    rewards[ind] += self.discount*numpy.max(qval[ind, ...], axis=1)
+                self.action_reward[:] = numpy.vstack((actions, rewards)).T
                 self.current_exploration_prob = \
                     max(self.exploration_prob_min, self.current_exploration_prob - self.exploration_prob_decay)
             else:
                 self.data[:] = self.replay_memory.latest_slice()
+            return True
 
     def validate(self, holdout_size):
         holdout_data = self.replay_memory.sample(holdout_size)[0]
@@ -143,10 +149,10 @@ class ALEIterator(mx.io.DataIter):
         return cv2.resize(image, (self.cols, self.rows), interpolation=cv2.INTER_LINEAR)
 
     def getdata(self, index=None):
-        return self.data
+        return [self.data]
 
     def getlabel(self):
         if self.is_train:
-            return self.action_reward
+            return [self.action_reward]
         else:
             return None

@@ -1,7 +1,7 @@
 __author__ = 'sxjscience'
 import mxnet as mx
 import numpy.random
-
+import os
 _ctx = mx.cpu()
 _numpy_rng = numpy.random.RandomState(10000)
 def get_ctx():
@@ -11,8 +11,8 @@ def get_numpy_rng():
     return _numpy_rng
 
 class IteratorDefaults:
-    ROM_PATH = "./roms/breakout.bin"
-    DISPLAY_SCREEN = True
+    ROM_PATH = os.path.dirname(os.path.realpath(__file__)) + "/roms/breakout.bin"
+    DISPLAY_SCREEN = False
     FRAME_SKIP = 4
     SLICE_LENGTH = 4
     RESIZED_ROWS = 84
@@ -21,14 +21,14 @@ class IteratorDefaults:
     EXPLORATION_PROB_MIN = .1
     EXPLORATION_PROB_DECAY = 1E-6
     EPOCH_MAX_STEP = 250000
-    EPOCHS = 200
+    EPOCHS = 2000
     STEPS_PER_TEST = 125000
-    BATCH_SIZE = 32
+    BATCH_SIZE = 4
     DISCOUNT = 0.99
 
 class ReplayMemoryDefaults:
     REPLAY_MEMORY_SIZE = 1000000
-    REPLAY_START_SIZE = 50000
+    REPLAY_START_SIZE = 5000
 
 class LossDefaults:
     CLIP_DELTA = 1.0
@@ -40,3 +40,6 @@ class OptimizerDefaults:
     FREEZE_INTERVAL = 10000
     RESIZE_METHOD = 'scale'
     MAX_START_NULLOPS = 30
+
+class DQNDefaults:
+    SHORTCUT_INTERVAL = 1000

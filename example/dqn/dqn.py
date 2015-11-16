@@ -5,6 +5,7 @@ from mxnet import metric
 import numpy
 from defaults import *
 import logging
+from ale_iterator import ALEIterator
 
 
 class DQNOutputOp(mx.operator.NumpyOp):
@@ -47,18 +48,20 @@ class DQN(object):
     def __init__(self, iter):
         self.iter = iter
         self.DQNOutput = DQNOutputOp()
-        self.dqn_sym = self.dqn_network()
+        self.dqn_sym = self.dqn_network(action_num=len(self.iter.action_set))
         self.online_net = mx.model.FeedForward(symbol=self.dqn_sym, ctx=get_ctx(), initializer=DQNInitializer(),
-                                               num_epoch=100, numpy_batch_size=5,
+                                               num_epoch=100, numpy_batch_size=self.iter.batch_size,
                                                learning_rate=0.0001, momentum=0.9, wd=0.00001)
         self.online_net._init_params(dict(iter.provide_data + iter.provide_label))
         self.shortcut_net = mx.model.FeedForward(symbol=self.dqn_sym, ctx=get_ctx(), initializer=DQNInitializer(),
-                                                 numpy_batch_size=5, arg_params=self.online_net.arg_params)
+                                                 numpy_batch_size=self.iter.batch_size,
+                                                 arg_params=self.online_net.arg_params)
         self.shortcut_net._init_predictor(dict(iter.provide_data))
         self.update_shortcut()
-        self.iter.init_training()
+        self.iter.init_training(actor=self.online_net, critic=self.shortcut_net)
+        print self.iter.replay_memory.rewards.sum()
 
-    def dqn_network(self, action_num=4):
+    def dqn_network(self, action_num):
         net = mx.symbol.Variable('data')
         net = mx.symbol.Convolution(data=net, name='conv1', kernel=(8, 8), stride=(4, 4), num_filter=16)
         net = mx.symbol.Activation(data=net, name='relu1', act_type="relu")
@@ -71,7 +74,7 @@ class DQN(object):
         net = self.DQNOutput(data=net, name='dqn')
         return net
 
-    def dqn_metric(action_reward, qvec):
+    def dqn_metric(self, action_reward, qvec):
         action_reward_npy = action_reward.asnumpy()
         qvec_npy = qvec.asnumpy()
         action_npy = action_reward_npy[:, 0].astype(numpy.int)
@@ -89,7 +92,8 @@ class DQN(object):
                             batch_end_callback=self.dqn_batch_callback)
 
     def dqn_batch_callback(self, param):
-        print param
+        if self.iter.current_step % DQNDefaults.SHORTCUT_INTERVAL == 0:
+            self.update_shortcut()
         return
 
     def dqn_epoch_end_callback(self, epoch, symbol, arg_params, aux_states):
@@ -97,20 +101,23 @@ class DQN(object):
 
 
 logging.basicConfig(level=logging.DEBUG)
-data_shape = (5, 4, 84, 84)
-action_shape = (5,)
-action_reward_shape = (5, 2)
-X = mx.random.uniform(0, 10, data_shape)
-Y = mx.random.uniform(0, 3, action_shape)
-R = mx.random.uniform(0, 10, action_shape)
-Y_R = mx.ndarray.empty(action_reward_shape)
-Y_R[:] = numpy.vstack((Y.asnumpy(), R.asnumpy())).T
-iter = mx.io.NDArrayIter({'data': X}, {'dqn_action_reward': Y_R}, batch_size=5)
-dqn = DQN()
-W = mx.random.uniform(0, 10, (10, 4, 84, 84))
-print dqn.shortcut_net.predict(W)
+# data_shape = (5, 4, 84, 84)
+# action_shape = (5,)
+# action_reward_shape = (5, 2)
+# X = mx.random.uniform(0, 10, data_shape)
+# Y = mx.random.uniform(0, 3, action_shape)
+# R = mx.random.uniform(0, 10, action_shape)
+# Y_R = mx.ndarray.empty(action_reward_shape)
+# Y_R[:] = numpy.vstack((Y.asnumpy(), R.asnumpy())).T
+# iter = mx.io.NDArrayIter({'data': X}, {'dqn_action_reward': Y_R}, batch_size=5)
+iter = ALEIterator()
+dqn = DQN(iter)
 dqn.fit(iter)
-print dqn.online_net.predict(W)
-dqn.update_shortcut()
-print dqn.shortcut_net.predict(W)
-print R.asnumpy()
+
+# W = mx.random.uniform(0, 10, (10, 4, 84, 84))
+# print dqn.shortcut_net.predict(W)
+# dqn.fit(iter)
+# print dqn.online_net.predict(W)
+# dqn.update_shortcut()
+# print dqn.shortcut_net.predict(W)
+# print R.asnumpy()

@@ -17,12 +17,13 @@ class ReplayMemory(object):
         self.size = 0
 
     def latest_slice(self):
-        return self.states.take(numpy.arange(self.top - self.slice_length, self.top), axis=0, mode="wrap")
+        return self.states.take(numpy.arange(self.top - self.slice_length, self.top), axis=0, mode="wrap")\
+            .reshape((1,) + (self.slice_length, self.states.shape[1], self.states.shape[2]))
 
     def append(self, img, action, reward, terminate_flag):
         self.states[self.top, :, :] = img
         self.actions[self.top] = action
-        self.rewards[self.top] = img
+        self.rewards[self.top] = reward
         self.terminate_flags[self.top] = terminate_flag
         self.top = (self.top + 1) % self.memory_size
         if self.size < self.memory_size:
@@ -57,4 +58,5 @@ class ReplayMemory(object):
             rewards[counter] = self.rewards.take(end_index, mode='wrap')
             terminate_flags[counter] = self.terminate_flags.take(end_index, mode='wrap')
             next_states[counter] = self.states.take(transition_indices, axis=0, mode='wrap')
+            counter += 1
         return states, actions, rewards, next_states, terminate_flags
