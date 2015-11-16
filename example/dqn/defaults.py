@@ -28,7 +28,7 @@ class IteratorDefaults:
 
 class ReplayMemoryDefaults:
     REPLAY_MEMORY_SIZE = 1000000
-    REPLAY_START_SIZE = 5000
+    REPLAY_START_SIZE = 50000
 
 class LossDefaults:
     CLIP_DELTA = 1.0
