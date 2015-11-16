@@ -43,28 +43,20 @@ class DQNInitializer(mx.initializer.Xavier):
         arr[:] = .1
 
 
-def dqn_metric(action_reward, qvec):
-    action_reward_npy = action_reward.asnumpy()
-    qvec_npy = qvec.asnumpy()
-    action_npy = action_reward_npy[:, 0].astype(numpy.int)
-    reward_npy = action_reward_npy[:, 1]
-    return abs(qvec_npy[numpy.arange(action_npy.shape[0]), action_npy] - reward_npy).sum()
-
 class DQN(object):
-    def __init__(self):
-        data_shape = (5, 4, 84, 84)
-        action_reward_shape = (5, 2)
-        d = {'data': data_shape, 'dqn_action_reward': action_reward_shape}
+    def __init__(self, iter):
+        self.iter = iter
         self.DQNOutput = DQNOutputOp()
         self.dqn_sym = self.dqn_network()
         self.online_net = mx.model.FeedForward(symbol=self.dqn_sym, ctx=get_ctx(), initializer=DQNInitializer(),
                                                num_epoch=100, numpy_batch_size=5,
                                                learning_rate=0.0001, momentum=0.9, wd=0.00001)
-        self.online_net._init_params(d)
+        self.online_net._init_params(dict(iter.provide_data + iter.provide_label))
         self.shortcut_net = mx.model.FeedForward(symbol=self.dqn_sym, ctx=get_ctx(), initializer=DQNInitializer(),
                                                  numpy_batch_size=5, arg_params=self.online_net.arg_params)
-        self.shortcut_net._init_predictor({'data': data_shape})
+        self.shortcut_net._init_predictor(dict(iter.provide_data))
         self.update_shortcut()
+        self.iter.init_training()
 
     def dqn_network(self, action_num=4):
         net = mx.symbol.Variable('data')
@@ -79,6 +71,13 @@ class DQN(object):
         net = self.DQNOutput(data=net, name='dqn')
         return net
 
+    def dqn_metric(action_reward, qvec):
+        action_reward_npy = action_reward.asnumpy()
+        qvec_npy = qvec.asnumpy()
+        action_npy = action_reward_npy[:, 0].astype(numpy.int)
+        reward_npy = action_reward_npy[:, 1]
+        return abs(qvec_npy[numpy.arange(action_npy.shape[0]), action_npy] - reward_npy).sum()
+
     def update_shortcut(self):
         # for v in self.online_net.arg_params.values():
         #     v.wait_to_read()
@@ -86,7 +85,7 @@ class DQN(object):
         # for k in self.online_net.arg_params.keys():
         #     self.shortcut_net._pred_exec.arg_dict[k].wait_to_read()
     def fit(self, iter):
-        self.online_net.fit(X=iter, eval_metric=mx.metric.CustomMetric(dqn_metric),
+        self.online_net.fit(X=self.iter, eval_metric=mx.metric.CustomMetric(self.dqn_metric),
                             batch_end_callback=self.dqn_batch_callback)
 
     def dqn_batch_callback(self, param):

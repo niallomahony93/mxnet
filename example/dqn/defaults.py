@@ -10,25 +10,25 @@ def get_ctx():
 def get_numpy_rng():
     return _numpy_rng
 
-class ALEDefaults:
+class IteratorDefaults:
     ROM_PATH = "./roms/breakout.bin"
-    DISPLAY_SCREEN = False
+    DISPLAY_SCREEN = True
     FRAME_SKIP = 4
+    SLICE_LENGTH = 4
     RESIZED_ROWS = 84
     RESIZED_COLS = 84
     EXPLORATION_PROB_START = 1.0
     EXPLORATION_PROB_MIN = .1
     EXPLORATION_PROB_DECAY = 1E-6
-    STEPS_PER_EPOCH = 250000
+    EPOCH_MAX_STEP = 250000
     EPOCHS = 200
     STEPS_PER_TEST = 125000
-    MINIBATCH_SIZE = 32
+    BATCH_SIZE = 32
+    DISCOUNT = 0.99
 
 class ReplayMemoryDefaults:
     REPLAY_MEMORY_SIZE = 1000000
     REPLAY_START_SIZE = 50000
-    SLICE_LENGTH = 4
-    UPDATE_FREQUENCY = 4
 
 class LossDefaults:
     CLIP_DELTA = 1.0
