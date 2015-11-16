@@ -89,7 +89,7 @@ class DQN(object):
         #     self.shortcut_net._pred_exec.arg_dict[k].wait_to_read()
     def fit(self, iter):
         self.online_net.fit(X=self.iter, eval_metric=mx.metric.CustomMetric(self.dqn_metric),
-                            batch_end_callback=self.dqn_batch_callback)
+                            batch_end_callback=self.dqn_batch_callback, epoch_end_callback=self.dqn_epoch_end_callback)
 
     def dqn_batch_callback(self, param):
         if self.iter.current_step % DQNDefaults.SHORTCUT_INTERVAL == 0:
@@ -97,6 +97,7 @@ class DQN(object):
         return
 
     def dqn_epoch_end_callback(self, epoch, symbol, arg_params, aux_states):
+        # logging.info("Epoch Reward: %f" %self.iter.epoch_reward)
         return
 
 

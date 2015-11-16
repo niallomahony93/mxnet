@@ -21,9 +21,9 @@ class IteratorDefaults:
     EXPLORATION_PROB_MIN = .1
     EXPLORATION_PROB_DECAY = 1E-6
     EPOCH_MAX_STEP = 250000
-    EPOCHS = 2000
+    EPOCHS = 1E7
     STEPS_PER_TEST = 125000
-    BATCH_SIZE = 4
+    BATCH_SIZE = 32
     DISCOUNT = 0.99
 
 class ReplayMemoryDefaults:
