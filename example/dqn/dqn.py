@@ -50,7 +50,7 @@ class DQN(object):
         self.DQNOutput = DQNOutputOp()
         self.dqn_sym = self.dqn_network(action_num=len(self.iter.action_set))
         self.online_net = mx.model.FeedForward(symbol=self.dqn_sym, ctx=get_ctx(), initializer=DQNInitializer(),
-                                               num_epoch=100, numpy_batch_size=self.iter.batch_size,
+                                               num_epoch=IteratorDefaults.EPOCHS, numpy_batch_size=self.iter.batch_size,
                                                learning_rate=0.0001, momentum=0.9, wd=0.00001)
         self.online_net._init_params(dict(iter.provide_data + iter.provide_label))
         self.shortcut_net = mx.model.FeedForward(symbol=self.dqn_sym, ctx=get_ctx(), initializer=DQNInitializer(),
@@ -98,6 +98,8 @@ class DQN(object):
 
     def dqn_epoch_end_callback(self, epoch, symbol, arg_params, aux_states):
         # logging.info("Epoch Reward: %f" %self.iter.epoch_reward)
+        if (epoch + 1) % DQNDefaults.SAVE_INTERVAL == 0:
+            mx.model.save_checkpoint(DQNDefaults.SAVE_PREFIX, epoch + 1, symbol, arg_params, aux_states)
         return
 
 

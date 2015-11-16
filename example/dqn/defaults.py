@@ -43,3 +43,5 @@ class OptimizerDefaults:
 
 class DQNDefaults:
     SHORTCUT_INTERVAL = 1000
+    SAVE_INTERVAL = 1000
+    SAVE_PREFIX = os.path.dirname(os.path.realpath(__file__)) + "/model/Inception-Full"
