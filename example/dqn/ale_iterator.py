@@ -34,7 +34,8 @@ class ALEIterator(mx.io.DataIter):
         self.critic = None
         self.epochs = epochs
         self.epoch_max_step = epoch_max_step
-        self.current_step = 0
+        self.current_epoch_step = 0
+        self.update_counter = 0
         self.batch_size = batch_size
         self.discount = discount
         self.exploration_prob_start = exploration_prob_start
@@ -85,6 +86,7 @@ class ALEIterator(mx.io.DataIter):
         self.ale.reset_game()
         self.start_lives = self.ale.lives()
         self.epoch_reward = 0
+        self.current_epoch_step = 0
 
     def next(self):
         if self.iter_next():
@@ -120,8 +122,9 @@ class ALEIterator(mx.io.DataIter):
         if self.ale.game_over():
             return False
         else:
-            self.current_step += 1
-            if self.current_step > self.epoch_max_step:
+            self.current_epoch_step += 1
+            self.update_counter += 1
+            if self.current_epoch_step > self.epoch_max_step:
                 return False
             if self.is_train:
                 # 1. Play the game for a single step and update the replay memory
