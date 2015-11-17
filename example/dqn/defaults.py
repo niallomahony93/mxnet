@@ -28,7 +28,7 @@ class IteratorDefaults:
 
 class ReplayMemoryDefaults:
     REPLAY_MEMORY_SIZE = 1000000
-    REPLAY_START_SIZE = 5000
+    REPLAY_START_SIZE = 500
 
 class LossDefaults:
     CLIP_DELTA = 1.0
@@ -42,7 +42,7 @@ class OptimizerDefaults:
     MAX_START_NULLOPS = 30
 
 class DQNDefaults:
-    SHORTCUT_INTERVAL = 100
+    SHORTCUT_INTERVAL = 10
     SAVE_INTERVAL = 10000
     SAVE_DIR = os.path.dirname(os.path.realpath(__file__)) + "/model"
     SAVE_PREFIX = 'dqn'
