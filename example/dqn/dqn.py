@@ -43,12 +43,20 @@ class DQNInitializer(mx.initializer.Xavier):
     def _init_bias(self, _, arr):
         arr[:] = .1
 
+class DQNMetric(mx.metric.CustomMetric):
+    def get(self):
+        if self.num_inst != 0:
+            return (self.name, self.sum_metric / self.num_inst)
+        else:
+            return (self.name, self.sum_metric / (self.num_inst + 1))
+
 
 class DQN(object):
     def __init__(self, iter):
         self.iter = iter
         self.DQNOutput = DQNOutputOp()
         self.dqn_sym = self.dqn_network(action_num=len(self.iter.action_set))
+        self.metric = DQNMetric(self.dqn_metric)
         self.online_net = mx.model.FeedForward(symbol=self.dqn_sym, ctx=get_ctx(), initializer=DQNInitializer(),
                                                num_epoch=IteratorDefaults.EPOCHS, numpy_batch_size=self.iter.batch_size,
                                                learning_rate=0.0001, momentum=0.9, wd=0.00001)
@@ -88,7 +96,7 @@ class DQN(object):
         # for k in self.online_net.arg_params.keys():
         #     self.shortcut_net._pred_exec.arg_dict[k].wait_to_read()
     def fit(self, iter):
-        self.online_net.fit(X=self.iter, eval_metric=mx.metric.CustomMetric(self.dqn_metric),
+        self.online_net.fit(X=self.iter, eval_metric=self.metric,
                             batch_end_callback=self.dqn_batch_callback, epoch_end_callback=self.dqn_epoch_end_callback)
 
     def dqn_batch_callback(self, param):
