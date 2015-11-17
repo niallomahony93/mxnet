@@ -24,7 +24,7 @@ class IteratorDefaults:
     EPOCHS = 10000000
     STEPS_PER_TEST = 125000
     BATCH_SIZE = 32
-    DISCOUNT = 0.99
+    DISCOUNT = 0.95
 
 class ReplayMemoryDefaults:
     REPLAY_MEMORY_SIZE = 1000000
@@ -35,7 +35,7 @@ class LossDefaults:
 
 class OptimizerDefaults:
     LEARNING_RATE = .00025
-    RMS_DECAY = .95
+    RMS_DECAY = .99
     RMS_EPSILON = .01
     FREEZE_INTERVAL = 10000
     RESIZE_METHOD = 'scale'

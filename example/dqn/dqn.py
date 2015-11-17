@@ -59,7 +59,9 @@ class DQN(object):
         self.metric = DQNMetric(self.dqn_metric)
         self.online_net = mx.model.FeedForward(symbol=self.dqn_sym, ctx=get_ctx(), initializer=DQNInitializer(),
                                                num_epoch=IteratorDefaults.EPOCHS, numpy_batch_size=self.iter.batch_size,
-                                               learning_rate=0.0001, momentum=0.9, wd=0.00001)
+                                               optimizer='rmsprop', learning_rate=OptimizerDefaults.LEARNING_RATE,
+                                               decay_rate=OptimizerDefaults.RMS_DECAY,
+                                               eps=OptimizerDefaults.RMS_EPSILON, wd=0)
         self.online_net._init_params(dict(iter.provide_data + iter.provide_label))
         self.shortcut_net = mx.model.FeedForward(symbol=self.dqn_sym, ctx=get_ctx(), initializer=DQNInitializer(),
                                                  numpy_batch_size=self.iter.batch_size,
