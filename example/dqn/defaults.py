@@ -34,15 +34,15 @@ class LossDefaults:
     CLIP_DELTA = 1.0
 
 class OptimizerDefaults:
-    LEARNING_RATE = .00025
+    LEARNING_RATE = .0002
     RMS_DECAY = .99
-    RMS_EPSILON = .01
+    RMS_EPSILON = 1E-6
     FREEZE_INTERVAL = 10000
     RESIZE_METHOD = 'scale'
     MAX_START_NULLOPS = 30
 
 class DQNDefaults:
-    SHORTCUT_INTERVAL = 1000
+    SHORTCUT_INTERVAL = 100
     SAVE_INTERVAL = 10000
     SAVE_DIR = os.path.dirname(os.path.realpath(__file__)) + "/model"
     SAVE_PREFIX = 'dqn'
