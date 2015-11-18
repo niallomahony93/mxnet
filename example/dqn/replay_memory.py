@@ -46,9 +46,9 @@ class ReplayMemory(object):
                                   dtype=self.states.dtype)
         counter = 0
         while counter < batch_size:
-            index = rng.randint(low=self.top - self.size, high=self.top - self.slice_length + 1)
-            initial_indices = numpy.arange(index, index + self.slice_length)
-            transition_indices = initial_indices + 1
+            index = rng.randint(low=self.top - self.size + 1, high=self.top - self.slice_length + 1)
+            transition_indices = numpy.arange(index, index + self.slice_length)
+            initial_indices = transition_indices - 1
             end_index = index + self.slice_length - 1
             if numpy.any(self.terminate_flags.take(initial_indices[0:-1], mode='wrap')):
                 # Check if terminates in the middle of the sample!

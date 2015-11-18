@@ -37,7 +37,6 @@ class OptimizerDefaults:
     LEARNING_RATE = .0002
     RMS_DECAY = .99
     RMS_EPSILON = 1E-6
-    FREEZE_INTERVAL = 10000
     RESIZE_METHOD = 'scale'
     MAX_START_NULLOPS = 30
 

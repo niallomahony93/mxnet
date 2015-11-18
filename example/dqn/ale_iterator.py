@@ -68,8 +68,8 @@ class ALEIterator(mx.io.DataIter):
         self.critic = critic
         while self.replay_memory.size < self.replay_memory.replay_start_size:
             self.act()
-            if self.ale.game_over():
-                self.ale.reset_game()
+            if self.ale.lives() < self.start_lives:
+                self.reset()
 
     @property
     def provide_data(self):
@@ -133,7 +133,7 @@ class ALEIterator(mx.io.DataIter):
                 self.data[:], actions, rewards, new_states, terminate_flags = self.replay_memory.sample(self.batch_size)
                 # 3. Calculate the reward target
                 qval = self.critic.predict(new_states)
-                ind = terminate_flags.ravel().nonzero()[0]
+                ind = (1 - terminate_flags.ravel()).nonzero()[0]
                 if len(ind)>0:
                 #     print self.current_step, rewards[ind].sum(), self.current_exploration_prob
                     rewards[ind] += self.discount*numpy.max(qval[ind, ...], axis=1)
