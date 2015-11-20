@@ -44,8 +44,9 @@ class ALEIterator(mx.io.DataIter):
         self.frame_skip = frame_skip
         self.current_exploration_prob = self.exploration_prob_start
         self.screen_buffer_length = 2
+        print self.ale.getScreenDims()
         self.screen_buffer = numpy.empty((self.screen_buffer_length,
-                                       self.ale.getScreenDims()[0], self.ale.getScreenDims()[1]),
+                                       self.ale.getScreenDims()[1], self.ale.getScreenDims()[0]),
                                       dtype='uint8')
         self.start_lives = self.ale.lives()
         self.epoch_reward = 0
@@ -68,7 +69,7 @@ class ALEIterator(mx.io.DataIter):
         self.critic = critic
         while self.replay_memory.size < self.replay_memory.replay_start_size:
             self.act()
-            if self.ale.lives() < self.start_lives:
+            if self.ale.game_over():
                 self.reset()
 
     @property
@@ -112,7 +113,7 @@ class ALEIterator(mx.io.DataIter):
             reward += self.ale.act(self.action_set[action])
             if i >= self.frame_skip - self.screen_buffer_length:
                 self.ale.getScreenGrayscale(self.screen_buffer[i + self.screen_buffer_length - self.frame_skip, :, :])
-        # reward = numpy.clip(reward, -1, 1)
+        reward = numpy.clip(reward, -1, 1)
         self.epoch_reward += reward
         img = self.get_observation()
         terminate_flag = (self.ale.lives() < self.start_lives) or self.ale.game_over()
@@ -151,7 +152,17 @@ class ALEIterator(mx.io.DataIter):
 
     def get_observation(self):
         image = self.screen_buffer.max(axis=0)
-        return cv2.resize(image, (self.cols, self.rows), interpolation=cv2.INTER_LINEAR)
+        if 'crop' == IteratorDefaults.RESIZE_MODE:
+            original_rows, original_cols = image.shape
+            resized_rows = int(round(
+                float(original_rows) * self.cols / original_cols))
+            resized = cv2.resize(image, (self.cols, resized_rows), interpolation=cv2.INTER_LINEAR)
+            crop_y_cutoff = resized_rows - IteratorDefaults.CROP_OFFSET - self.rows
+            img = resized[crop_y_cutoff:
+                              crop_y_cutoff + self.rows, :]
+            return img
+        else:
+            return cv2.resize(image, (self.cols, self.rows), interpolation=cv2.INTER_LINEAR)
 
     def getdata(self, index=None):
         return [self.data]
