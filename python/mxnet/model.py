@@ -650,6 +650,7 @@ class FeedForward(BASE_ESTIMATOR):
             real_size = batch_size - padded
 
             for o_list, o_nd in zip(output_list, self._pred_exec.outputs):
+                o_nd.wait_to_read()
                 o_list.append(o_nd[0:real_size].asnumpy())
 
         outputs = [np.concatenate(x) for x in output_list]
