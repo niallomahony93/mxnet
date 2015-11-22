@@ -157,7 +157,7 @@ def _train_multi_device(symbol, ctx, arg_names, param_names, aux_names,
                         kvstore, update_on_kvstore,
                         train_data, eval_data=None, eval_metric=None,
                         epoch_end_callback=None, batch_end_callback=None,
-                        logger=None, work_load_list=None):
+                        logger=None, work_load_list=None, train_execs=None, slices=None):
     """Internal training function on multiple devices.
     This function will also work for single device as well.
     Parameters
@@ -225,14 +225,23 @@ def _train_multi_device(symbol, ctx, arg_names, param_names, aux_names,
         work_load_list = [1] * num_device
     assert isinstance(work_load_list, list) and len(work_load_list) == num_device, \
         "Invalid settings for work load. "
-    slices = _split_input_slice(train_data.batch_size, work_load_list)
-    train_execs = []
+    if slices is None:
+        slices = _split_input_slice(train_data.batch_size, work_load_list)
+    elif isinstance(slices, list):
+        slices[:] = _split_input_slice(train_data.batch_size, work_load_list)
+    else:
+        raise NotImplementedError('slices must be either None or a list!')
+    if train_execs is None:
+        train_execs = []
+    elif isinstance(train_execs, list):
+        train_execs[:] = []
+    else:
+        raise NotImplementedError('train_execs must be either None or a list!')
     for i in range(len(ctx)):
         data_shapes = {k: tuple([slices[i].stop-slices[i].start] + list(v[1:]))
                        for k, v in train_data.provide_data}
         train_exec = symbol.simple_bind(ctx[i], 'write', **data_shapes)
         train_execs.append(train_exec)
-
     # data structure
     data_names = [x[0] for x in train_data.provide_data]
     label_names = [x[0] for x in train_data.provide_label]
@@ -522,6 +531,8 @@ class FeedForward(BASE_ESTIMATOR):
         self.aux_params = aux_params
         # internal helper state
         self._pred_exec = None
+        self._train_execs = []
+        self._slices = []
         self.begin_epoch = begin_epoch
 
     @staticmethod
@@ -737,7 +748,8 @@ class FeedForward(BASE_ESTIMATOR):
                             epoch_end_callback=epoch_end_callback,
                             batch_end_callback=batch_end_callback,
                             kvstore=kvstore, update_on_kvstore=update_on_kvstore,
-                            logger=logger, work_load_list=work_load_list)
+                            logger=logger, work_load_list=work_load_list,
+                            train_execs=self._train_execs, slices=self._slices)
 
 
     def save(self, prefix, epoch=None):
