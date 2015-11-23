@@ -6,6 +6,7 @@ class ReplayMemory(object):
     def __init__(self, rows, cols, slice_length, memory_size=ReplayMemoryDefaults.REPLAY_MEMORY_SIZE,
                  replay_start_size=ReplayMemoryDefaults.REPLAY_START_SIZE,
                  state_dtype='uint8', action_dtype='uint8'):
+        self.rng = get_numpy_rng()
         self.states = numpy.zeros((memory_size, rows, cols), dtype=state_dtype)
         self.actions = numpy.zeros(memory_size, dtype=action_dtype)
         self.rewards = numpy.zeros(memory_size, dtype='float32')
@@ -36,7 +37,6 @@ class ReplayMemory(object):
         if self.size <= self.replay_start_size:
             raise ValueError("Size of the effective samples of the ReplayMemory must be bigger than "
                              "start_size! Currently, size=%d, start_size=%d" %(self.size, self.replay_start_size))
-        rng = get_numpy_rng()
         states = numpy.zeros((batch_size, self.slice_length, self.states.shape[1], self.states.shape[2]),
                              dtype=self.states.dtype)
         actions = numpy.zeros(batch_size, dtype=self.actions.dtype)
@@ -46,7 +46,7 @@ class ReplayMemory(object):
                                   dtype=self.states.dtype)
         counter = 0
         while counter < batch_size:
-            index = rng.randint(low=self.top - self.size + 1, high=self.top - self.slice_length + 1)
+            index = self.rng.randint(low=self.top - self.size + 1, high=self.top - self.slice_length + 1)
             transition_indices = numpy.arange(index, index + self.slice_length)
             initial_indices = transition_indices - 1
             end_index = index + self.slice_length - 1
