@@ -381,18 +381,18 @@ class RMSProp(Optimizer):
             lr = self.lr
 
         lr *= self.lr_scale.get(index, 1.0)
-        grad = grad * self.rescale_grad
+        grad[:] = grad * self.rescale_grad
         if self.clip_gradient != None:
-            grad = clip(grad, -self.clip_gradient, self.clip_gradient)
+            grad[:] = clip(grad, -self.clip_gradient, self.clip_gradient)
 
         if state:
             grad_ms = state
-            grad_ms_t = self.decay_rate * grad_ms + (1 - self.decay_rate) * grad * grad
-            grad_ms[:] = grad_ms_t
+            grad_ms[:] *= self.decay_rate
+            grad_ms[:] += (1 - self.decay_rate) * grad * grad
             if self.wd > 0:
-                step = - lr * grad / sqrt(grad_ms_t + self.eps) - lr * self.wd * weight
+                step = - lr * grad / sqrt(grad_ms + self.eps) - lr * self.wd * weight
             else:
-                step = - lr * grad / sqrt(grad_ms_t + self.eps)
+                step = - lr * grad / sqrt(grad_ms + self.eps)
             weight[:] += step
         else:
             assert self.decay_rate == 0.0
