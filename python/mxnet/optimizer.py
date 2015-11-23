@@ -390,9 +390,9 @@ class RMSProp(Optimizer):
             grad_ms_t = self.decay_rate * grad_ms + (1 - self.decay_rate) * grad * grad
             grad_ms[:] = grad_ms_t
             if self.wd > 0:
-                step = - lr * grad / sqrt(grad_ms + self.eps) - lr * self.wd * weight
+                step = - lr * grad / sqrt(grad_ms_t + self.eps) - lr * self.wd * weight
             else:
-                step = - lr * grad / sqrt(grad_ms + self.eps)
+                step = - lr * grad / sqrt(grad_ms_t + self.eps)
             weight[:] += step
         else:
             assert self.decay_rate == 0.0
