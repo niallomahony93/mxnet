@@ -157,7 +157,7 @@ def _train_multi_device(symbol, ctx, arg_names, param_names, aux_names,
                         kvstore, update_on_kvstore,
                         train_data, eval_data=None, eval_metric=None,
                         epoch_end_callback=None, batch_end_callback=None,
-                        logger=None, work_load_list=None, train_execs=None, slices=None):
+                        logger=None, work_load_list=None, monitor=None):
     """Internal training function on multiple devices.
     This function will also work for single device as well.
     Parameters
@@ -225,23 +225,16 @@ def _train_multi_device(symbol, ctx, arg_names, param_names, aux_names,
         work_load_list = [1] * num_device
     assert isinstance(work_load_list, list) and len(work_load_list) == num_device, \
         "Invalid settings for work load. "
-    if slices is None:
-        slices = _split_input_slice(train_data.batch_size, work_load_list)
-    elif isinstance(slices, list):
-        slices[:] = _split_input_slice(train_data.batch_size, work_load_list)
-    else:
-        raise NotImplementedError('slices must be either None or a list!')
-    if train_execs is None:
-        train_execs = []
-    elif isinstance(train_execs, list):
-        train_execs[:] = []
-    else:
-        raise NotImplementedError('train_execs must be either None or a list!')
+    slices = _split_input_slice(train_data.batch_size, work_load_list)
+    train_execs = []
     for i in range(len(ctx)):
         data_shapes = {k: tuple([slices[i].stop-slices[i].start] + list(v[1:]))
                        for k, v in train_data.provide_data}
         train_exec = symbol.simple_bind(ctx[i], 'write', **data_shapes)
+        if monitor:
+            monitor.install(train_exec)
         train_execs.append(train_exec)
+
     # data structure
     data_names = [x[0] for x in train_data.provide_data]
     label_names = [x[0] for x in train_data.provide_label]
@@ -296,6 +289,8 @@ def _train_multi_device(symbol, ctx, arg_names, param_names, aux_names,
                 _load_data(data_batch, data_arrays)
                 _load_label(data_batch, label_arrays)
 
+                if monitor is not None:
+                    monitor.tic()
                 # forward backward pass
                 for texec, islice in zip(train_execs, slices):
                     texec.forward(is_train=True)
@@ -327,6 +322,9 @@ def _train_multi_device(symbol, ctx, arg_names, param_names, aux_names,
                             # use a better solution latter
                             w, g = p
                             updater(index*num_device+k, g, w)
+
+                if monitor is not None:
+                    monitor.toc_print()
 
                 nbatch += 1
                 # batch callback (for print purpose)
@@ -531,8 +529,6 @@ class FeedForward(BASE_ESTIMATOR):
         self.aux_params = aux_params
         # internal helper state
         self._pred_exec = None
-        self._train_execs = []
-        self._slices = []
         self.begin_epoch = begin_epoch
 
     @staticmethod
@@ -661,7 +657,6 @@ class FeedForward(BASE_ESTIMATOR):
             real_size = batch_size - padded
 
             for o_list, o_nd in zip(output_list, self._pred_exec.outputs):
-                o_nd.wait_to_read()
                 o_list.append(o_nd[0:real_size].asnumpy())
 
         outputs = [np.concatenate(x) for x in output_list]
@@ -673,7 +668,7 @@ class FeedForward(BASE_ESTIMATOR):
 
     def fit(self, X, y=None, eval_data=None, eval_metric='acc',
             epoch_end_callback=None, batch_end_callback=None, kvstore='local', logger=None,
-            work_load_list=None):
+            work_load_list=None, monitor=None):
         """Fit the model.
         Parameters
         ----------
@@ -748,8 +743,7 @@ class FeedForward(BASE_ESTIMATOR):
                             epoch_end_callback=epoch_end_callback,
                             batch_end_callback=batch_end_callback,
                             kvstore=kvstore, update_on_kvstore=update_on_kvstore,
-                            logger=logger, work_load_list=work_load_list,
-                            train_execs=self._train_execs, slices=self._slices)
+                            logger=logger, work_load_list=work_load_list, monitor=monitor)
 
 
     def save(self, prefix, epoch=None):
@@ -830,7 +824,7 @@ class FeedForward(BASE_ESTIMATOR):
             ceil(num_train_examples / batch_size)
         optimizer : str or Optimizer, optional
             Training parameter, name or optimizer object for training.
-        initializer : initializer function, optional
+        initializier : initializer function, optional
             Training parameter, the initialization scheme used.
         eval_data : DataIter or numpy.ndarray pair
             If eval_set is numpy.ndarray pair, it should be (valid_data, valid_label)

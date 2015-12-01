@@ -1,21 +1,12 @@
 # pylint: skip-file
-
 import numpy as np
 import mxnet as mx
 from numpy.testing import assert_allclose
-
-def reldiff(a, b):
-    diff = np.sum(np.abs(a - b))
-    norm = np.sum(np.abs(a))
-    if diff == 0:
-        return 0
-    reldiff = diff  / norm
-    return reldiff
-
+from check_utils import (check_numeric_gradient, check_symbolic_backward,
+                         check_symbolic_forward, reldiff)
 
 def same(a, b):
     return np.sum(a != b) == 0
-
 
 def check_elementwise_sum_with_shape(shape, n):
     # forward
@@ -39,7 +30,6 @@ def check_elementwise_sum_with_shape(shape, n):
     exec1.backward([out_grad])
     for a in arr_grad:
         assert same(a.asnumpy(), out_grad.asnumpy())
-
 
 def test_elementwise_sum():
     np.random.seed(0)
@@ -252,122 +242,85 @@ def test_swapaxes():
 def test_scalarop():
     data = mx.symbol.Variable('data')
     shape = (3, 4)
-    data_tmp = np.ones(shape)
-    data_tmp[:]=5
+    data_tmp = np.ones(shape)*5
     arr_data = mx.nd.array(data_tmp)
     arr_grad = mx.nd.empty(shape)
     arr_grad[:]=3
 
     test = 2 / (4-((1+data+1)*2/5)-0.2)
-    exe_test = test.bind(mx.cpu(), args=[arr_data], args_grad=[arr_grad])
-    exe_test.forward()
-    out = exe_test.outputs[0].asnumpy()
+
     npout_1 = (4-((1+data_tmp+1)*2/5)-0.2)
     npout = 2/npout_1
-    assert reldiff(out, npout) < 1e-6
 
-    out_grad = mx.nd.empty(shape)
-    out_grad[:] = 2;
-    npout_grad = out_grad.asnumpy()
-    npout_grad = npout_grad*2/5
+    check_symbolic_forward(test, [data_tmp], [npout])
+
+    npout_grad = 2.*2/5
     npout_grad = 2*npout_grad /(npout_1 *npout_1 )
-    exe_test.backward(out_grad)
-    assert reldiff(arr_grad.asnumpy(), npout_grad) < 1e-6
+
+    check_symbolic_backward(test, [data_tmp], [np.ones(shape)*2], [npout_grad])
 
 
 def test_scalar_pow():
     data = mx.symbol.Variable('data')
-    shape = (3, 4)
+    shape = (1, 1)
     data_tmp = np.ones(shape)
-    data_tmp[:]=5
-    arr_data = mx.nd.array(data_tmp)
-    arr_grad = mx.nd.empty(shape)
-    arr_grad[:]=3
-
-    test = data**4
-
-    exe_test = test.bind(mx.cpu(), args=[arr_data], args_grad=[arr_grad])
-    exe_test.forward()
-    out = exe_test.outputs[0].asnumpy()
-    npout = data_tmp**4
-
-    assert_allclose(out, npout)
-
-    out_grad = mx.nd.empty(shape)
-    out_grad[:] = 2;
-    npout_grad = out_grad.asnumpy()
-
-    exe_test.backward(out_grad)
-    grad = arr_grad.asnumpy()
-    npgrad = data_tmp**3 * 4 * 2
-
-    assert_allclose(grad, npgrad)
-
+    test = data ** 2
+    check_numeric_gradient(test, [data_tmp])
+    check_symbolic_forward(test, [data_tmp], [data_tmp ** 2])
+    check_symbolic_backward(test, [data_tmp], [np.ones(shape)], [2 * data_tmp])
 
 def test_symbol_pow():
-    shape = (3, 4)
+    shape = (1, 1)
 
     data = mx.symbol.Variable('data')
-    data_tmp = np.ones(shape)
-    data_tmp[:]=5
+    data_tmp = np.ones(shape)*2
 
     exp = mx.symbol.Variable('exp')
-    exp_tmp = np.ones(shape)
-    exp_tmp[:]=4
-
-    arr_data = mx.nd.array(data_tmp)
-    arr_exp = mx.nd.array(exp_tmp)
-    data_grad = mx.nd.empty(shape)
-    data_grad[:]=3
-    exp_grad = mx.nd.empty(shape)
-    exp_grad[:]=5
+    exp_tmp = np.ones(shape)*3
 
     test = data**exp
 
-    exe_test = test.bind(mx.cpu(), args=[arr_data, arr_exp], args_grad=[data_grad, exp_grad])
-    exe_test.forward()
-    out = exe_test.outputs[0].asnumpy()
-    npout = data_tmp**4
+    check_numeric_gradient(test, [data_tmp, exp_tmp])
+    check_symbolic_forward(test, [data_tmp, exp_tmp], [data_tmp**exp_tmp])
 
-    assert_allclose(out, npout)
-
-    out_grad = mx.nd.empty(shape)
-    out_grad[:] = 2;
-    npout_grad = out_grad.asnumpy()
-
-    exe_test.backward(out_grad)
-    # check the base
-    grad = data_grad.asnumpy()
-    npgrad = data_tmp**3 * 4 * 2
-    assert_allclose(grad, npgrad)
-
-    # check the exponent
-    grad = exp_grad.asnumpy()
-    npgrad = np.log(5) * 5**4 * 2
-    assert_allclose(grad, npgrad)
+    data_dir = data_tmp**(exp_tmp - 1) * exp_tmp
+    exp_dir = data_tmp**(exp_tmp) * np.log(data_tmp)
+    check_symbolic_backward(test, [data_tmp, exp_tmp], [np.ones(shape)], [data_dir, exp_dir])
 
 def test_pow_fn():
     shape = (3, 4)
     exp = mx.symbol.Variable("exp")
     y = mx.sym.pow(2, exp)
-    exe_test = y.simple_bind(mx.cpu(), exp=shape)
+    x = np.ones(shape)*3
+    check_numeric_gradient(y, [x])
+    check_symbolic_forward(y, [x], [2**x])
+    check_symbolic_backward(y, [x], [np.ones(shape)], [np.log(2) * 2**x])
 
-    exe_test.arg_arrays[0][:] = 3
+def test_embedding():
+    in_dim = 10
+    out_dim = 4
+    batch = 24
 
+    data = mx.sym.Variable("data")
+    embed = mx.sym.Embedding(data=data, input_dim=in_dim, output_dim=out_dim, name="embed")
+    exe_test = embed.simple_bind(mx.cpu(), data=(batch,))
+    arg_map = dict(zip(embed.list_arguments(), exe_test.arg_arrays))
+    grad_map = dict(zip(embed.list_arguments(), exe_test.grad_arrays))
+    np_data = np.random.randint(low=0, high=in_dim, size=batch)
+    np_weight = np.random.uniform(-0.01, 0.01, arg_map["embed_weight"].shape)
+    np_onehot = np.zeros((batch, in_dim))
+    np_onehot[np.arange(batch), np_data] = 1.0
+    # forward
+    arg_map["data"][:] = np_data
+    arg_map["embed_weight"][:] = np_weight
     exe_test.forward()
-
-    out = exe_test.outputs[0].asnumpy()
-    assert_allclose(out, np.ones(shape)*8)
-
-    out_grad = mx.nd.empty(shape)
-    out_grad[:] = 2;
-
-    exe_test.backward(out_grad)
-    grad = exe_test.grad_arrays[0].asnumpy()
-    npgrad = np.log(2) * (2**3) * np.ones(shape) * 2
-
-    assert_allclose(grad, npgrad)
-
+    assert reldiff(exe_test.outputs[0].asnumpy(), np.dot(np_onehot, np_weight)) < 1e-6
+    # backward
+    np_grad = np.random.uniform(-1, 1, exe_test.outputs[0].shape)
+    grad = mx.nd.zeros(np_grad.shape)
+    grad[:] = np_grad
+    exe_test.backward([grad])
+    assert reldiff(grad_map["embed_weight"].asnumpy(), np.dot(np_onehot.T, np_grad)) < 1e-6
 
 # check ops handle duplicate input correctly.
 def test_binary_op_duplicate_input():
@@ -387,6 +340,67 @@ def test_binary_op_duplicate_input():
     exe_square.backward(out_grad)
     assert reldiff(arr_grad.asnumpy(), 2.0 * data_tmp) < 1e-6
 
+def test_sign():
+    data = mx.symbol.Variable('data')
+    shape = (3, 4)
+    data_tmp = np.ones(shape)
+    data_tmp[:]=5
+    arr_data = mx.nd.array(data_tmp)
+    arr_grad = mx.nd.empty(shape)
+    arr_grad[:]=3
+
+    test = mx.sym.sign(data)
+    exe_test = test.bind(mx.cpu(), args=[arr_data], args_grad=[arr_grad])
+    exe_test.forward()
+    out = exe_test.outputs[0].asnumpy()
+    npout = np.sign(data_tmp)
+    assert reldiff(out, npout) < 1e-6
+
+    out_grad = mx.nd.empty(shape)
+    out_grad[:] = 2;
+    npout_grad = out_grad.asnumpy()
+    npout_grad = 0;
+    exe_test.backward(out_grad)
+    assert reldiff(arr_grad.asnumpy(), npout_grad) < 1e-6
+    
+def test_round_ceil_floor():
+    data = mx.symbol.Variable('data')
+    shape = (3, 4)
+    data_tmp = np.ones(shape)
+    data_tmp[:]=5.543
+    arr_data = mx.nd.array(data_tmp)
+    arr_grad = mx.nd.empty(shape)
+    arr_grad[:]= 2
+
+    test = mx.sym.round(data) + mx.sym.ceil(data) +  mx.sym.floor(data)
+    exe_test = test.bind(mx.cpu(), args=[arr_data])
+    exe_test.forward()
+    out = exe_test.outputs[0].asnumpy()
+    npout = np.round(data_tmp) + np.ceil(data_tmp) + np.floor(data_tmp)
+    assert reldiff(out, npout) < 1e-6
+    
+def test_abs():
+    data = mx.symbol.Variable('data')
+    shape = (3, 4)
+    data_tmp = np.ones(shape)
+    data_tmp[:]=5
+    arr_data = mx.nd.array(data_tmp)
+    arr_grad = mx.nd.empty(shape)
+    arr_grad[:]=3
+
+    test = mx.sym.abs(data)
+    exe_test = test.bind(mx.cpu(), args=[arr_data], args_grad=[arr_grad])
+    exe_test.forward()
+    out = exe_test.outputs[0].asnumpy()
+    npout = abs(data_tmp)
+    assert reldiff(out, npout) < 1e-6
+
+    out_grad = mx.nd.empty(shape)
+    out_grad[:] = 2;
+    npout_grad = out_grad.asnumpy()
+    npout_grad = npout_grad * np.sign(data_tmp)
+    exe_test.backward(out_grad)
+    assert reldiff(arr_grad.asnumpy(), npout_grad) < 1e-6
 
 if __name__ == '__main__':
     test_binary_op_duplicate_input()
@@ -400,5 +414,8 @@ if __name__ == '__main__':
     test_scalar_pow()
     test_symbol_pow()
     test_pow_fn()
+    test_embedding()
+    test_abs()
+    test_round_ceil_floor()
     #check_softmax_with_shape((3,4), mx.cpu())
     #check_multi_softmax_with_shape((3,4,5), mx.cpu())

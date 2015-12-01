@@ -51,6 +51,7 @@ tracker
 .ycm_extra_conf.pyc
 
 # Emacs
+.#*
 .clang_complete
 .dir-locals.el
 __pycache__
@@ -71,8 +72,14 @@ deps
 .Rproj.user
 R-package/inst/*
 *.tar.gz
-.idea/misc.xml
-.idea/mxnet.iml
-.idea/modules.xml
-.idea/vcs.xml
-.idea/workspace.xml
+
+# data
+*.rec
+*.lst
+*.zip
+*ubyte
+*.bin
+
+# ipython notebook
+example/notebooks/.ipynb_checkpoints/*
+*_pb2.py
