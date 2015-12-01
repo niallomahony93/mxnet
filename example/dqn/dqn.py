@@ -36,10 +36,10 @@ class DQNOutputOp(mx.operator.NumpyOp):
         reward = action_reward[:, 1]
         dx = in_grad[0]
         dx[:] = 0
-        dx[numpy.arange(action.shape[0]), action] = numpy.clip(x[numpy.arange(action.shape[0]), action] - reward, -1, 1)
+        #dx[numpy.arange(action.shape[0]), action] = numpy.clip(x[numpy.arange(action.shape[0]), action] - reward, -1, 1)
+        dx[numpy.arange(action.shape[0]), action] = (x[numpy.arange(action.shape[0]), action] - reward)
 
-
-class DQNInitializer(mx.initializer.Xavier):
+class DQNInitializer(mx.initializer.Normal):
     def _init_bias(self, _, arr):
         arr[:] = .1
 
@@ -59,8 +59,6 @@ class DQN(object):
         self.shortcut_net = mx.model.FeedForward(symbol=self.dqn_sym, ctx=get_ctx(), initializer=DQNInitializer(),
                                                  numpy_batch_size=self.iter.batch_size,
                                                  arg_params=self.online_net.arg_params)
-        self.shortcut_net._init_predictor(dict(iter.provide_data))
-        self.update_shortcut()
         self.iter.init_training(actor=self.online_net, critic=self.shortcut_net)
         print self.iter.replay_memory.rewards.sum()
 
@@ -82,26 +80,21 @@ class DQN(object):
         qvec_npy = qvec.asnumpy()
         action_npy = action_reward_npy[:, 0].astype(numpy.int)
         reward_npy = action_reward_npy[:, 1]
-        return abs(qvec_npy[numpy.arange(action_npy.shape[0]), action_npy] - reward_npy).sum()
+        diff = abs(qvec_npy[numpy.arange(action_npy.shape[0]), action_npy] - reward_npy)
+        # diff_clip = diff.clip(-1., 1.)
+        # err = (0.5 * diff_clip**2 + (diff - diff_clip)).mean()
+        err = (0.5 * diff ** 2).mean()
+        return numpy.sqrt(err)
 
-    def update_shortcut(self):
-        # for v in self.online_net.arg_params.values():
-        #     v.wait_to_read()
-        self.shortcut_net._pred_exec.copy_params_from(self.online_net.arg_params, self.online_net.aux_params)
-        # for k in self.online_net.arg_params.keys():
-        #     self.shortcut_net._pred_exec.arg_dict[k].wait_to_read()
-    def fit(self, iter):
+    def fit(self):
         self.online_net.fit(X=self.iter, eval_metric=self.metric,
-                            batch_end_callback=self.dqn_batch_callback, epoch_end_callback=self.dqn_epoch_end_callback)
+                            epoch_end_callback=self.dqn_epoch_end_callback)
 
     def dqn_batch_callback(self, param):
-        if self.iter.update_counter % DQNDefaults.SHORTCUT_INTERVAL == 0:
-            self.iter.update_counter = 0
-            self.update_shortcut()
         return
 
     def dqn_epoch_end_callback(self, epoch, symbol, arg_params, aux_states):
-        # logging.info("Epoch Reward: %f" %self.iter.epoch_reward)
+        logging.info("Total Training Steps Run: %d" % self.iter.cumulative_step)
         if (epoch + 1) % DQNDefaults.SAVE_INTERVAL == 0:
             mx.model.save_checkpoint(DQNDefaults.SAVE_DIR + '/' + DQNDefaults.SAVE_PREFIX,
                                      epoch + 1, symbol, arg_params, aux_states)
@@ -111,18 +104,21 @@ class DQN(object):
 logging.basicConfig(level=logging.DEBUG)
 if not os.path.exists(DQNDefaults.SAVE_DIR):
     os.mkdir(DQNDefaults.SAVE_DIR)
-# data_shape = (5, 4, 84, 84)
-# action_shape = (5,)
-# action_reward_shape = (5, 2)
-# X = mx.random.uniform(0, 10, data_shape)
-# Y = mx.random.uniform(0, 3, action_shape)
-# R = mx.random.uniform(0, 10, action_shape)
-# Y_R = mx.ndarray.empty(action_reward_shape)
-# Y_R[:] = numpy.vstack((Y.asnumpy(), R.asnumpy())).T
-# iter = mx.io.NDArrayIter({'data': X}, {'dqn_action_reward': Y_R}, batch_size=5)
+data_shape = (128, 4, 84, 84)
+action_shape = (128,)
+action_reward_shape = (128, 2)
+X = mx.random.uniform(0, 10, data_shape)
+Y = mx.random.uniform(0, 3, action_shape)
+R = mx.random.uniform(0, 10, action_shape)
+Y_R = mx.ndarray.empty(action_reward_shape)
+Y_R[:] = numpy.vstack((Y.asnumpy(), R.asnumpy())).T
+t_iter = mx.io.NDArrayIter({'data': X}, {'dqn_action_reward': Y_R}, batch_size=32)
+
 iter = ALEIterator()
 dqn = DQN(iter)
-dqn.fit(iter)
+dqn.fit()
+# dqn.online_net.fit(X=t_iter, eval_metric=dqn.metric)
+
 
 # W = mx.random.uniform(0, 10, (10, 4, 84, 84))
 # print dqn.shortcut_net.predict(W)

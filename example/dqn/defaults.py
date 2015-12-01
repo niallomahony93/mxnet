@@ -3,7 +3,7 @@ import mxnet as mx
 import numpy.random
 import os
 _ctx = mx.cpu()
-_numpy_rng = numpy.random.RandomState(10000)
+_numpy_rng = numpy.random.RandomState(123456)
 def get_ctx():
     return _ctx
 
@@ -12,7 +12,7 @@ def get_numpy_rng():
 
 class IteratorDefaults:
     ROM_PATH = os.path.dirname(os.path.realpath(__file__)) + "/roms/breakout.bin"
-    DISPLAY_SCREEN = True
+    DISPLAY_SCREEN = False
     FRAME_SKIP = 4
     SLICE_LENGTH = 4
     RESIZED_ROWS = 84
@@ -43,6 +43,6 @@ class OptimizerDefaults:
 
 class DQNDefaults:
     SHORTCUT_INTERVAL = 1
-    SAVE_INTERVAL = 10000
+    SAVE_INTERVAL = 1000
     SAVE_DIR = os.path.dirname(os.path.realpath(__file__)) + "/model"
     SAVE_PREFIX = 'dqn'
