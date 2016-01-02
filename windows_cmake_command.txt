@@ -7,4 +7,6 @@ cmake -G "Visual Studio 12 2013 Win64" ^
 -DZMQ_INCLUDE_DIR=C:\\Users\\sxjscience\\AppData\\Local\\Enthought\\Canopy\\User\\Lib\\site-packages\\zmq\\utils ^
 -DPROTOBUF_LIBRARY=D:\\HKUST\\protobuf\\cmake\\build\\release ^
 -DPROTOBUF_INCLUDE_DIR=D:\\HKUST\\protobuf\\src ^
+-DCUDNN_INCLUDE=C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v7.5\\include ^
+-DCUDNN_ROOT=C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v7.5\\lib\\x64 ^
 -DBLAS=MKL ..
