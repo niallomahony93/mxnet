@@ -124,7 +124,9 @@ def _create_kvstore(kvstore, num_device, arg_params):
         Model parameter, dict of name to NDArray of net's weights.
     """
 
-    if isinstance(kvstore, kvs.KVStore):
+    if kvstore is None:
+        kv = None
+    elif isinstance(kvstore, kvs.KVStore):
         kv = kvstore
     elif isinstance(kvstore, str):
         # create kvstore using the string type
@@ -142,7 +144,7 @@ def _create_kvstore(kvstore, num_device, arg_params):
                 logging.info('Auto-select kvstore type = %s', kvstore)
             kv = kvs.create(kvstore)
     else:
-        raise TypeError('kvstore must be either KVStore or str')
+        raise TypeError('kvstore must be KVStore, str or None')
 
     # detect whether or not update weight on kvstore
     update_on_kvstore = True
@@ -326,6 +328,9 @@ def _train_multi_device(symbol, ctx, arg_names, param_names, aux_names,
                 if monitor is not None:
                     monitor.toc_print()
 
+                # evaluate at end, so out_cpu_array can lazy copy
+                eval_metric.update(data_batch.label, cpu_output_arrays)
+
                 nbatch += 1
                 # batch callback (for print purpose)
                 if batch_end_callback != None:
@@ -337,9 +342,6 @@ def _train_multi_device(symbol, ctx, arg_names, param_names, aux_names,
                             call(batch_end_params)
                     else:
                         batch_end_callback(batch_end_params)
-
-                # evaluate at end, so out_cpu_array can lazy copy
-                eval_metric.update(data_batch.label, cpu_output_arrays)
 
                 # this epoch is done possibly earlier
                 if epoch_size is not None and nbatch >= epoch_size:
@@ -673,7 +675,9 @@ class FeedForward(BASE_ESTIMATOR):
         Parameters
         ----------
         X : DataIter, or numpy.ndarray/NDArray
-            Training data.
+            Training data. If X is an DataIter, the name or, if not available,
+            position, of its outputs should match the corresponding variable
+            names defined in the symbolic graph.
         y : numpy.ndarray/NDArray, optional
             Training set label.
             If X is numpy.ndarray/NDArray, y is required to be set.

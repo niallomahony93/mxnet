@@ -30,11 +30,14 @@ enum BatchNormBackResource {kTempSpace};
 struct BatchNormParam : public dmlc::Parameter<BatchNormParam> {
   float eps;
   float momentum;
+  bool fix_gamma;
   DMLC_DECLARE_PARAMETER(BatchNormParam) {
-    DMLC_DECLARE_FIELD(eps).set_default(1e-10f)
+    DMLC_DECLARE_FIELD(eps).set_default(1e-3f)
     .describe("Epsilon to prevent div 0");
     DMLC_DECLARE_FIELD(momentum).set_default(0.9f)
     .describe("Momentum for moving average");
+    DMLC_DECLARE_FIELD(fix_gamma).set_default(true)
+    .describe("Fix gamma while training");
   }
 };
 
@@ -98,8 +101,6 @@ class BatchNormOp : public Operator {
              F<mshadow_op::square_root>(broadcast<1>(var + param_.eps, data.shape_)));
       Assign(out, req[batchnorm::kOut], out_no_affine * broadcast<1>(slope, out.shape_) +
              broadcast<1>(bias, out.shape_));
-      moving_mean = moving_mean * param_.momentum + mean * (1 - param_.momentum);
-      moving_var = moving_var * param_.momentum + var * (1 - param_.momentum);
     } else {
       Assign(out, req[batchnorm::kOut], broadcast<1>(slope /
                                           F<mshadow_op::square_root>(moving_var + param_.eps),
@@ -155,6 +156,12 @@ class BatchNormOp : public Operator {
     Tensor<xpu, 1> gmean = workspace[0];
     Tensor<xpu, 1> gvar = workspace[1];
     Tensor<xpu, 1> tmp = workspace[2];
+    // update moving avg
+    Tensor<xpu, 1> moving_mean = aux_states[batchnorm::kMovingMean].get<xpu, 1, real_t>(s);
+    Tensor<xpu, 1> moving_var = aux_states[batchnorm::kMovingVar].get<xpu, 1, real_t>(s);
+
+    moving_mean = moving_mean * param_.momentum + mean * (1 - param_.momentum);
+    moving_var = moving_var * param_.momentum + var * (1 - param_.momentum);
     // cal
     gvar = sumall_except_dim<1>((grad * broadcast<1>(slope, data.shape_)) *
                                 (data - broadcast<1>(mean, data.shape_)) *
@@ -167,7 +174,9 @@ class BatchNormOp : public Operator {
     tmp *= gvar;
     gmean += tmp;
     // assign
-    Assign(gslope, req[batchnorm::kGamma], sumall_except_dim<1>(grad * out_no_affine));
+    if (!param_.fix_gamma) {
+      Assign(gslope, req[batchnorm::kGamma], sumall_except_dim<1>(grad * out_no_affine));
+    }
     Assign(gbias, req[batchnorm::kBeta], sumall_except_dim<1>(grad));
     Assign(grad_in, req[batchnorm::kData], (grad * broadcast<1>(slope, data.shape_)) *
            broadcast<1>(1.0f / F<mshadow_op::square_root>(var + param_.eps), data.shape_) +

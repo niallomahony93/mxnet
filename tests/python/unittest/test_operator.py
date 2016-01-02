@@ -362,7 +362,7 @@ def test_sign():
     npout_grad = 0;
     exe_test.backward(out_grad)
     assert reldiff(arr_grad.asnumpy(), npout_grad) < 1e-6
-    
+
 def test_round_ceil_floor():
     data = mx.symbol.Variable('data')
     shape = (3, 4)
@@ -378,7 +378,98 @@ def test_round_ceil_floor():
     out = exe_test.outputs[0].asnumpy()
     npout = np.round(data_tmp) + np.ceil(data_tmp) + np.floor(data_tmp)
     assert reldiff(out, npout) < 1e-6
+
+def test_rsqrt_cos_sin():
+    data = mx.symbol.Variable('data')
+    shape = (3, 4)
+    data_tmp = np.ones(shape)
+    data_tmp[:]=5
+    arr_data = mx.nd.array(data_tmp)
+    arr_grad = mx.nd.empty(shape)
+    arr_grad[:]=3
+
+    test =  mx.sym.rsqrt(data) + mx.sym.cos(data) + mx.sym.sin(data)
+    exe_test = test.bind(mx.cpu(), args=[arr_data], args_grad=[arr_grad])
+    exe_test.forward()
+    out = exe_test.outputs[0].asnumpy()
+    npout =  1/ np.sqrt(data_tmp) + np.cos(data_tmp) + np.sin(data_tmp)
+    assert reldiff(out, npout) < 1e-6
+
+    out_grad = mx.nd.empty(shape)
+    out_grad[:] = 2;
+    npout_grad = out_grad.asnumpy()
+    npout_grad = npout_grad * -(1.0 / (2.0 * data_tmp * np.sqrt(data_tmp))) + npout_grad * -1 * np.sin(data_tmp) + npout_grad * np.cos(data_tmp)
+    exe_test.backward(out_grad)
+    assert reldiff(arr_grad.asnumpy(), npout_grad) < 1e-6
+
+def test_maximum_minimum():
+    data1 = mx.symbol.Variable('data')
+    data2 = mx.symbol.Variable('data')
+    shape = (3, 4)
+    data_tmp1 = np.random.rand(3,4)
+    data_tmp2 = np.random.rand(3,4)
+    data_tmp1[:] = 2
+    data_tmp2[:] = 3
     
+    arr_data1 = mx.nd.array(data_tmp1)
+    arr_data2 = mx.nd.array(data_tmp2)
+
+    
+    arr_grad1 = mx.nd.empty(shape)
+    arr_grad2 = mx.nd.empty(shape)
+
+
+    test =  mx.sym.maximum(data1,data2) + mx.sym.minimum(data1,data2);
+    exe_test = test.bind(mx.cpu(), args=[arr_data1,arr_data2], args_grad=[arr_grad1,arr_grad2])
+    exe_test.forward()
+    out = exe_test.outputs[0].asnumpy()
+    npout =  np.maximum(data_tmp1,data_tmp2) + np.minimum(data_tmp1,data_tmp2)
+    assert reldiff(out, npout) < 1e-6
+
+    out_grad = mx.nd.empty(shape)
+    out_grad[:] = 2
+    exe_test.backward(out_grad)
+    
+    npout_grad = np.ones(shape)
+    npout_grad[:] = 2
+    mask1 = (data_tmp1 > data_tmp2).astype('float')
+    mask2 = (data_tmp1 < data_tmp2).astype('float')
+    npout_grad1 = npout_grad * mask1 + npout_grad * mask2
+    npout_grad2 = (npout_grad - npout_grad * mask1) + (npout_grad - npout_grad * mask2)
+    
+    assert reldiff(arr_grad1.asnumpy(), npout_grad1) < 1e-6
+    assert reldiff(arr_grad2.asnumpy(), npout_grad2) < 1e-6
+
+def test_maximum_minimum_scalar():
+    data1 = mx.symbol.Variable('data')
+    shape = (3, 4)
+    data_tmp1 = np.random.rand(3,4)
+    data_tmp1[:] = 2
+ 
+    arr_data1 = mx.nd.array(data_tmp1)
+    arr_grad1 = mx.nd.empty(shape)
+
+    test =  mx.sym.maximum(data1,3) + mx.sym.maximum(9,data1) + mx.sym.minimum(5,data1) + mx.sym.minimum(data1,4)
+    exe_test = test.bind(mx.cpu(), args=[arr_data1], args_grad=[arr_grad1])
+    exe_test.forward()
+    out = exe_test.outputs[0].asnumpy()
+    npout =  np.maximum(data_tmp1,3) + np.maximum(9,data_tmp1) + np.minimum(5,data_tmp1) + np.minimum(data_tmp1,4)
+    assert reldiff(out, npout) < 1e-6
+
+    out_grad = mx.nd.empty(shape)
+    out_grad[:] = 2
+    exe_test.backward(out_grad)
+    
+    npout_grad = np.ones(shape)
+    npout_grad[:] = 2
+    mask1 = (data_tmp1 > 3).astype('float')
+    mask2 = (9 > data_tmp1).astype('float')
+    mask3 = (5 < data_tmp1).astype('float')
+    mask4 = (data_tmp1 < 4).astype('float')
+    npout_grad1 = npout_grad * mask1 + (npout_grad - npout_grad * mask2) + (npout_grad - npout_grad * mask3) + npout_grad * mask4
+    
+    assert reldiff(arr_grad1.asnumpy(), npout_grad1) < 1e-6
+
 def test_abs():
     data = mx.symbol.Variable('data')
     shape = (3, 4)
@@ -402,7 +493,136 @@ def test_abs():
     exe_test.backward(out_grad)
     assert reldiff(arr_grad.asnumpy(), npout_grad) < 1e-6
 
+def check_deconvolution_forward_backward(input_shape, num_filter, kernel, stride, pad):
+    """configure A: input --> conv --> deconv --> output.
+       the convolution and deconvoluiton has similar parameter which ensure
+       the input shape is the same as output, and the same weights between conv
+       and deconv;
+       If the input value of forward() and backwrad() is the same, then
+       the output value of them should also the same;
+    """
+    assert input_shape[1] == num_filter
+    data = mx.sym.Variable(name="data")
+    conv = mx.sym.Convolution(
+        data=data, kernel=kernel, stride=stride, pad=pad,
+        num_filter=num_filter, no_bias = "true", name = "conv")
+    deconv = mx.sym.Deconvolution(
+        data=conv, kernel=kernel, stride=stride, pad=pad,
+        num_filter=num_filter, no_bias = "true", name = "deconv")
+
+    arg_names = deconv.list_arguments()
+    arg_shapes, out_shapes, _ = deconv.infer_shape(data=input_shape)
+    input_data = mx.random.uniform(-5, 5, input_shape)
+    out_grad = input_data
+    args = {}
+    args["data"] = input_data
+    args['conv_weight'] = args['deconv_weight'] = mx.random.normal(0, 1,
+        (num_filter, input_shape[1]) + kernel)
+    args_grad = [mx.nd.empty(s) for s in arg_shapes]
+
+    exe = deconv.bind(mx.cpu(), args=args, args_grad=args_grad)
+    exe.forward()
+    out = exe.outputs[0].asnumpy()
+    exe.backward(out_grad)
+    assert reldiff(out, args_grad[0].asnumpy()) < 1e-6
+
+def check_deconvolution_gradient(input_shape, num_filter, pad):
+    """configure A: input --> conv --> output.
+       configure B: input --> deconv --> output
+       the convolution and deconvoluiton has similar parameter which ensure
+       the input shape is the same as output;
+       During backward(), if the input of A equals output of B, and the output
+       of A equals input of B, then the grad of weight should be the same;
+    """
+    stride = (1, 1)
+    kernel = (2*pad[0]+1, 2*pad[1]+1)
+    data_conv = mx.sym.Variable(name="data_conv")
+    conv = mx.sym.Convolution(
+        data=data_conv, kernel=kernel, stride=stride, pad=pad,
+        num_filter=num_filter, no_bias = "true", name = "conv")
+    data_deconv = mx.sym.Variable(name="data_deconv")
+    deconv = mx.sym.Deconvolution(
+        data=data_deconv, kernel=kernel, stride=stride, pad=pad,
+        num_filter=num_filter, no_bias = "true", name = "deconv")
+
+    conv_data = mx.random.uniform(-5, 5, input_shape)
+    conv_args = {}
+    conv_args["data_conv"] = conv_data
+    conv_args['conv_weight'] = \
+        mx.random.normal(0, 1,(num_filter, input_shape[1]) + kernel)
+    conv_args_grad = [mx.nd.zeros(conv_data.shape),
+        mx.nd.zeros((num_filter, input_shape[1]) + kernel)]
+    exe_conv = conv.bind(mx.cpu(), args=conv_args, args_grad=conv_args_grad)
+    conv_out_grad = mx.random.normal(0, 2, exe_conv.outputs[0].shape)
+    exe_conv.backward(conv_out_grad)
+
+    deconv_data = conv_out_grad
+    deconv_args = {}
+    deconv_args['data_deconv'] = deconv_data
+    deconv_args['deconv_weight'] = conv_args['conv_weight']
+    deconv_args_grad = [mx.nd.zeros(deconv_data.shape),
+        mx.nd.zeros((num_filter, input_shape[1]) + kernel)]
+    exe_deconv = deconv.bind(mx.cpu(), args=deconv_args, args_grad=deconv_args_grad)
+    deconv_out_grad = conv_data[:]
+    exe_deconv.backward(deconv_out_grad)
+    assert reldiff(conv_args_grad[1].asnumpy(), deconv_args_grad[1].asnumpy()) < 1e-6
+
+def test_deconvolution():
+    check_deconvolution_forward_backward(
+        input_shape         = (1,1,5,5),
+        num_filter          = 1,
+        kernel              = (3,3),
+        stride              = (1,1),
+        pad                 = (1,1)
+    )
+    check_deconvolution_forward_backward(
+        input_shape         = (32,3,28,28),
+        num_filter          = 3,
+        kernel              = (3,3),
+        stride              = (1,1),
+        pad                 = (1,1)
+    )
+    check_deconvolution_forward_backward(
+        input_shape         = (10, 3, 403, 403),
+        num_filter          = 3,
+        kernel              = (7,7),
+        stride              = (5,5),
+        pad                 = (2,2)
+    )
+    check_deconvolution_gradient(
+        input_shape = (1,3,5,5),
+        num_filter = 3,
+        pad = (1,1)
+    )
+    check_deconvolution_gradient(
+        input_shape = (5,3,100,100),
+        num_filter = 3,
+        pad = (3,3)
+    )
+
+def check_nearest_upsampling_with_shape(shapes, scale, root_scale):
+    arr = {'arg_%d'%i: mx.random.uniform(-10.0, 10.0, shape) for i, shape in zip(range(len(shapes)), shapes)}
+    arr_grad = {'arg_%d'%i: mx.nd.zeros(shape) for i, shape in zip(range(len(shapes)), shapes)}
+
+    up = mx.sym.UpSampling(*[mx.sym.Variable('arg_%d'%i) for i in range(len(shapes))], sample_type='nearest', scale=root_scale)
+    exe = up.bind(mx.cpu(), args=arr, args_grad=arr_grad)
+    exe.forward(is_train=True)
+    exe.backward(exe.outputs)
+    for k in range(len(shapes)):
+        name = 'arg_%d'%k
+        assert_allclose(arr[name].asnumpy()*root_scale**2*scale**(2*k), arr_grad[name].asnumpy(), rtol=1e-4)
+
+
+def test_nearest_upsampling():
+    for root_scale in [1,2,3]:
+        for scale in [1,2,3]:
+            for num_shape in [1,2,3]:
+                for base in [1,2,3]:
+                    shapes = [(1,3,base*root_scale*scale**(num_shape-1-i),base*root_scale*scale**(num_shape-1-i)) for i in range(num_shape)]
+                    check_nearest_upsampling_with_shape(shapes, scale, root_scale)
+
 if __name__ == '__main__':
+    test_nearest_upsampling()
     test_binary_op_duplicate_input()
     test_elementwise_sum()
     test_concat()
@@ -415,7 +635,11 @@ if __name__ == '__main__':
     test_symbol_pow()
     test_pow_fn()
     test_embedding()
+    test_rsqrt_cos_sin()
+    test_maximum_minimum()
+    test_maximum_minimum_scalar()
     test_abs()
     test_round_ceil_floor()
+    test_deconvolution()
     #check_softmax_with_shape((3,4), mx.cpu())
     #check_multi_softmax_with_shape((3,4,5), mx.cpu())
