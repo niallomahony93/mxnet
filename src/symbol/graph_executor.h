@@ -32,7 +32,8 @@ class GraphExecutor : public Executor {
   }
   void Print(std::ostream &os) const override; // NOLINT(*)
   // install callback
-  void SetMonitorCallback(ExcecutorMonitorCallback callback) {
+  void SetMonitorCallback(const MonitorCallback& callback) {
+    CHECK(callback) << "invalid callback";
     monitor_callback_ = callback;
   }
   // implement Executor::Bind, only call it once.
@@ -223,6 +224,8 @@ class GraphExecutor : public Executor {
   size_t num_forward_nodes_;
   // head gradient node in the graph, if there is backward pass
   std::vector<uint32_t> head_grad_nodes_;
+  // mirror map of nodes, experimental feature, normally can be ignored.
+  std::map<uint32_t, uint32_t> mirror_source_map_;
   // argument node in the graph, if there is backward pass
   std::vector<StaticGraph::DataEntry> arg_grads_;
   // operational nodes
