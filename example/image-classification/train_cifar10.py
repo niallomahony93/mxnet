@@ -34,7 +34,7 @@ args = parser.parse_args()
 # download data if necessary
 def _download(data_dir):
     if not os.path.isdir(data_dir):
-        os.system("mkdir " + data_dir)
+        os.makedirs(data_dir)
     os.chdir(data_dir)
     if (not os.path.exists('train.rec')) or \
        (not os.path.exists('test.rec')) :
