@@ -26,15 +26,24 @@ class ExecutorBatchSizePool(object):
         if batch_size in self.exe_pool:
             return self.exe_pool[batch_size]
         else:
-            data_inputs = {k: mx.nd.empty((batch_size,) + s, ctx=self.ctx) for k, s in self.data_dims.items()}
-            exe = self.sym.bind(ctx=self.ctx, args=dict(params, **data_inputs), args_grad=params_grad,
+            data_inputs = {k: mx.nd.empty((batch_size,) + s, ctx=self.ctx)
+                           for k, s in self.data_dims.items()}
+            exe = self.sym.bind(ctx=self.ctx, args=dict(self.params, **data_inputs),
+                                args_grad=params_grad,
                                            aux_states=aux_states)
             self.exe_pool[batch_size] = exe
             return exe
 
 def gradOut(q_output, target_reward, action, ctx=None):
     grad = nd.zeros(q_output.shape, ctx=ctx)
-    slice_q = nd.choose_element_0index(q_output, action)
+    grad = nd.fill_element_0index(grad,
+                                  nd.choose_element_0index(q_output, action) - target_reward,
+                                  action)
+    # print grad.asnumpy()
+    return grad
+
+def loss(q_output, target_reward, action):
+    return nd.norm(nd.choose_element_0index(q_output, action) - target_reward).asnumpy()[0]/q_output.shape[0]
 
 
 dev = mx.gpu()
@@ -63,22 +72,45 @@ params_grad = {n: nd.empty(arg_name_shape[n], ctx=dev) for n in param_names}
 aux_states = {k: nd.empty(s, ctx=dev) for k, s in zip(aux_names, aux_shapes)}
 data_inputs = {'data': nd.empty(data_shape, ctx=dev)}
 
+
+params_real = {n: mx.random.uniform(-0.07, 0.07, arg_name_shape[n], ctx=dev) for n in param_names}
 executor_pool = ExecutorBatchSizePool(ctx=dev, sym=net, data_shapes={'data': data_shape}, params=params, params_grad=params_grad,
                                   aux_states=aux_states)
+executor_pool_real = ExecutorBatchSizePool(ctx=dev, sym=net, data_shapes={'data': data_shape}, params=params_real, params_grad=None,
+                                  aux_states=None)
 
 init = mx.initializer.Uniform(0.07)
 for k,v in params.items():
     init(k,v)
 
-for i in range(10, 20):
-    dat = numpy.random.uniform(0, 1, (i, 4, 84, 84))
-    action = nd.array(numpy.mod(dat.sum((1, 2, 3)), 4).astype(int).astype('float32'), ctx=dev)
-    encoded_action = nd.empty((i, 4), ctx=dev)
-    nd.onehot_encode(action, encoded_action)
 
-    print encode_action.asnumpy()
-    exe = executor_pool.get(i)
-    exe.arg_dict['data'][:] = dat
-    exe.forward(is_train=True)
-    print exe.outputs[0]
+optimizer = mx.optimizer.create('sgd', learning_rate=0.01, momentum=0.9, lr_scheduler=mx.lr_scheduler.FactorScheduler(1000,0.1))
+updater = mx.optimizer.get_updater(optimizer)
+# monitor = mx.monitor.Monitor(interval=1000, stat_func=)
+
+dat_dict = {}
+action_dict = {}
+target_reward_dict = {}
+for i in range(100, 120):
+    dat_dict[i] = nd.empty((i, 4, 84, 84), ctx=dev)
+    action_dict[i] = nd.empty((i, ), ctx=dev)
+    target_reward_dict[i] = nd.empty((i, ), ctx=dev)
+
+for _ in range(1000):
+    for i in range(100, 120):
+        dat_dict[i][:] = mx.random.uniform(0, 1, (i, 4, 84, 84), ctx=dev)
+        action_dict[i][:] = nd.array(numpy.random.randint(0, 4, (i, )).astype('float32'), ctx=dev)
+        exe = executor_pool.get(i)
+        exe_real = executor_pool_real.get(i)
+        exe.arg_dict['data'][:] = dat_dict[i]
+        exe_real.arg_dict['data'][:] = dat_dict[i]
+        exe_real.forward(is_train=False)
+        target_reward_dict[i][:] = nd.choose_element_0index(exe_real.outputs[0], action_dict[i])
+        exe.forward(is_train=True)
+        print loss(exe.outputs[0], target_reward_dict[i], action_dict[i])
+        out_grad = gradOut(exe.outputs[0], target_reward_dict[i], action_dict[i], ctx=dev)
+        exe.backward([out_grad])
+        for k in params:
+            updater(k, params_grad[k]/i, params[k])
+
 nd.waitall()
