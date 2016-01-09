@@ -36,7 +36,7 @@ class ExecutorBatchSizePool(object):
 
 def gradOut(q_output, target_reward, action, ctx=None):
     grad = nd.zeros(q_output.shape, ctx=ctx)
-    grad = nd.fill_element_0index(grad,
+    grad[:] = nd.fill_element_0index(grad,
                                   nd.choose_element_0index(q_output, action) - target_reward,
                                   action)
     # print grad.asnumpy()
