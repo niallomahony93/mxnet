@@ -118,7 +118,7 @@ student_exe, student_params, student_params_grad, _ = get_executor(student, dev,
 #Y = X * X * X + numpy.random.normal(0, 3, (20, 1))
 
 training_data = numpy.loadtxt('toy_data_train.txt')
-testing_data = numpy.loadtxt('toy_data_test.txt')
+testing_data = numpy.loadtxt('toy_data_test_whole.txt')
 
 X = training_data[:, 0].reshape((20, 1))
 Y = training_data[:, 1].reshape((20, 1))
