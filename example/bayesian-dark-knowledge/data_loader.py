@@ -14,11 +14,11 @@ def load_mnist():
 
 def load_toy():
     training_data = numpy.loadtxt('toy_data_train.txt')
-    testing_data = numpy.loadtxt('toy_data_test.txt')
+    testing_data = numpy.loadtxt('toy_data_test_whole.txt')
     X = training_data[:, 0].reshape((training_data.shape[0], 1))
-    Y = training_data[:, 1].reshape((training_data.shape[0],))
+    Y = training_data[:, 1].reshape((training_data.shape[0], 1))
     X_test = testing_data[:, 0].reshape((testing_data.shape[0], 1))
-    Y_test = testing_data[:, 1].reshape((testing_data.shape[0],))
+    Y_test = testing_data[:, 1].reshape((testing_data.shape[0], 1))
     return X, Y, X_test, Y_test
 
 

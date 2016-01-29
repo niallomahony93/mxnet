@@ -55,6 +55,8 @@ class LogSoftmax(mx.operator.NumpyOp):
     def forward(self, in_data, out_data):
         x = in_data[0]
         y = out_data[0]
+        print x - x.max(axis=1).reshape((x.shape[0], 1))
+        ch = raw_input()
         y[:] = x - x.max(axis=1).reshape((x.shape[0], 1))
         y -= numpy.log(numpy.exp(y).sum(axis=1).reshape((x.shape[0], 1)))
         # y[:] = numpy.exp(x - x.max(axis=1).reshape((x.shape[0], 1)))
@@ -64,12 +66,14 @@ class LogSoftmax(mx.operator.NumpyOp):
         l = in_data[1]
         y = out_data[0]
         dx = in_grad[0]
-        dx[:] = (numpy.exp(y)*l.sum(axis=1).reshape((l.shape[0], 1)) - l)
+        dx[:] = numpy.exp(y) - l
 
 def classification_student_grad(student_outputs, teacher_pred):
     return [student_outputs[0] - teacher_pred]
 
-def regression_student_grad(student_mean, student_var, teacher_pred, teacher_noise_precision):
+def regression_student_grad(student_outputs, teacher_pred, teacher_noise_precision):
+    student_mean = student_outputs[0]
+    student_var = student_outputs[1]
     grad_mean = nd.exp(-student_var) * (student_mean - teacher_pred)
 
     grad_var = (1 - nd.exp(-student_var) * (nd.square(student_mean - teacher_pred)
@@ -77,25 +81,26 @@ def regression_student_grad(student_mean, student_var, teacher_pred, teacher_noi
     return [grad_mean, grad_var]
 
 def get_mnist_sym(output_op=None):
-    data = mx.symbol.Variable('data')
-    fc1 = mx.symbol.FullyConnected(data=data, name='mnist_fc1', num_hidden=400)
-    relu1 = mx.symbol.Activation(data=fc1, name='mnist_relu1', act_type="relu")
-    fc2 = mx.symbol.FullyConnected(data=relu1, name='mnist_fc2', num_hidden=400)
-    relu2 = mx.symbol.Activation(data=fc2, name='mnist_relu2', act_type="relu")
-    fc3 = mx.symbol.FullyConnected(data=relu2, name='mnist_fc3', num_hidden=10)
+    net = mx.symbol.Variable('data')
+    net = mx.symbol.FullyConnected(data=net, name='mnist_fc1', num_hidden=400)
+    net = mx.symbol.Activation(data=net, name='mnist_relu1', act_type="relu")
+    net = mx.symbol.FullyConnected(data=net, name='mnist_fc2', num_hidden=400)
+    net = mx.symbol.Activation(data=net, name='mnist_relu2', act_type="relu")
+    net = mx.symbol.FullyConnected(data=net, name='mnist_fc3', num_hidden=10)
     if output_op is None:
-        net = mx.symbol.SoftmaxOutput(data=fc3, name='softmax')
+        net = mx.symbol.SoftmaxOutput(data=net, name='softmax')
     else:
-        net = output_op(data=fc3, name='softmax')
+        net = output_op(data=net, name='softmax')
     return net
 
-def get_toy_sym(teacher=True):
+def get_toy_sym(teacher=True, teacher_noise_precision=None):
     if teacher:
         net = mx.symbol.Variable('data')
         net = mx.symbol.FullyConnected(data=net, name='teacher_fc1', num_hidden=100)
         net = mx.symbol.Activation(data=net, name='teacher_relu1', act_type="relu")
         net = mx.symbol.FullyConnected(data=net, name='teacher_fc2', num_hidden=1)
-        net = mx.symbol.LinearRegressionOutput(data=net, name='teacher_output')
+        net = mx.symbol.LinearRegressionOutput(data=net, name='teacher_output',
+                                               grad_scale=teacher_noise_precision)
     else:
         net = mx.symbol.Variable('data')
         net = mx.symbol.FullyConnected(data=net, name='student_fc1', num_hidden=100)
@@ -106,7 +111,7 @@ def get_toy_sym(teacher=True):
     return net
 
 def dev():
-    return mx.gpu()
+    return mx.cpu()
 
 def run_mnist_SGD():
     X, Y, X_test, Y_test = load_mnist()
@@ -143,10 +148,10 @@ def run_mnist_DistilledSGLD():
     X, Y, X_test, Y_test = load_mnist()
     minibatch_size = 100
     teacher_net = get_mnist_sym()
-#    crossentropy_softmax = CrossEntropySoftmax()
-#    student_net = get_mnist_sym(crossentropy_softmax)
-    logsoftmax = LogSoftmax()
-    student_net = get_mnist_sym(logsoftmax)
+    crossentropy_softmax = CrossEntropySoftmax()
+    student_net = get_mnist_sym(crossentropy_softmax)
+#    logsoftmax = LogSoftmax()
+#    student_net = get_mnist_sym(logsoftmax)
 #    student_net = get_mnist_sym(mx.symbol.SoftmaxActivation)
     data_shape = (minibatch_size, ) + X.shape[1::]
     teacher_data_inputs = {'data': nd.zeros(data_shape, ctx=dev()),
@@ -160,16 +165,63 @@ def run_mnist_DistilledSGLD():
                   teacher_data_inputs=teacher_data_inputs, student_data_inputs=student_data_inputs,
                   X=X, Y=Y, X_test=X_test, Y_test=Y_test, total_iter_num=1000000,
                   initializer=initializer,
-                  teacher_learning_rate=4E-6, student_learning_rate=0.005,
-#                  student_lr_scheduler=mx.lr_scheduler.FactorScheduler(100000, 0.7),
+                  teacher_learning_rate=4E-6, student_learning_rate=0.1,
+                  student_lr_scheduler=mx.lr_scheduler.FactorScheduler(100000, 0.5),
 #                  student_grad_f=classification_student_grad,
-                  teacher_prior_precision=1.0, student_prior_precision=0.001,
+                  teacher_prior_precision=2.5, student_prior_precision=0.001,
                   perturb_deviation=0.001, minibatch_size=100, dev=dev())
+
+def run_toy_SGLD():
+    X, Y, X_test, Y_test = load_toy()
+    minibatch_size = 1
+    teacher_noise_precision = 1.0
+    net = get_toy_sym(True, teacher_noise_precision)
+    data_shape = (minibatch_size, ) + X.shape[1::]
+    data_inputs = {'data': nd.zeros(data_shape, ctx=dev()),
+                   'teacher_output_label': nd.zeros((minibatch_size, 1), ctx=dev())}
+    initializer = mx.init.Uniform(0.07)
+    exe, params, _ = \
+    SGLD(sym=net, data_inputs=data_inputs,
+         X=X, Y=Y, X_test=X_test, Y_test=Y_test, total_iter_num=50000,
+         initializer=initializer,
+         learning_rate=1E-4,
+#         lr_scheduler=mx.lr_scheduler.FactorScheduler(100000, 0.5),
+         prior_precision=0.1,
+         burn_in_iter_num=1000,
+         thin_interval=10,
+         task='regression',
+         minibatch_size=minibatch_size, dev=dev())
+
+def run_toy_DistilledSGLD():
+    X, Y, X_test, Y_test = load_toy()
+    minibatch_size = 1
+    teacher_noise_precision = 1.0
+    teacher_net = get_toy_sym(True, teacher_noise_precision)
+    student_net = get_toy_sym(False)
+    data_shape = (minibatch_size, ) + X.shape[1::]
+    teacher_data_inputs = {'data': nd.zeros(data_shape, ctx=dev()),
+                   'teacher_output_label': nd.zeros((minibatch_size, 1), ctx=dev())}
+    student_data_inputs = {'data': nd.zeros(data_shape, ctx=dev())}
+#                   'softmax_label': nd.zeros((minibatch_size, 10), ctx=dev())}
+    initializer = mx.init.Uniform(0.07)
+    student_grad_f = lambda student_outputs, teacher_pred : \
+        regression_student_grad(student_outputs, teacher_pred, teacher_noise_precision)
+    student_exe, student_params, _ = \
+    DistilledSGLD(teacher_sym=teacher_net, student_sym=student_net,
+                  teacher_data_inputs=teacher_data_inputs, student_data_inputs=student_data_inputs,
+                  X=X, Y=Y, X_test=X_test, Y_test=Y_test, total_iter_num=80000,
+                  initializer=initializer,
+                  teacher_learning_rate=1E-4, student_learning_rate=0.01,
+#                  teacher_lr_scheduler=mx.lr_scheduler.FactorScheduler(100000, 0.5),
+                  student_lr_scheduler=mx.lr_scheduler.FactorScheduler(8000, 0.8),
+                  student_grad_f=student_grad_f,
+                  teacher_prior_precision=0.1, student_prior_precision=0.001,
+                  perturb_deviation=0.1, minibatch_size=minibatch_size, task='regression', dev=dev())
 
 def run_toy_HMC():
     X, Y, X_test, Y_test = load_toy()
-    minibatch_size = 1
-
+    minibatch_size = Y.shape[0]
+    teacher_noise_precision = 1.0
 
 
 
@@ -177,11 +229,10 @@ if __name__ == '__main__':
     numpy.random.seed(100)
     parser = argparse.ArgumentParser(description="MNIST classification example in the paper [NIPS2015]Bayesian Dark Knowledge")
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("-m", "--mnist", action="store_true", default=1)
-    group.add_argument("-y", "--toy", action="store_true")
+    group.add_argument("-d", "--dataset", type=int, help="Type of algorithm to use. 0 --> TOY, 1 --> MNIST")
     parser.add_argument("-l", "--algorithm", type=int, help="Type of algorithm to use. 0 --> SGD, 1 --> SGLD, other-->DistilledSGLD")
     args = parser.parse_args()
-    if args.mnist:
+    if args.dataset == 1:
         if 0 == args.algorithm:
             run_mnist_SGD()
         elif 1 == args.algorithm:
@@ -189,4 +240,8 @@ if __name__ == '__main__':
         else:
             run_mnist_DistilledSGLD()
     else:
-        run_toy_HMC()
+        print 123
+        if 1 == args.algorithm:
+            run_toy_SGLD()
+        elif 2==args.algorithm:
+            run_toy_DistilledSGLD()
