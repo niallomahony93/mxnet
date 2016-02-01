@@ -129,6 +129,7 @@ def SGD(sym, data_inputs, X, Y, X_test, Y_test, total_iter_num,
                                     wd=prior_precision,
                                     arg_names=params.keys())
     updater = mx.optimizer.get_updater(optimizer)
+    start = time.time()
     for i in xrange(total_iter_num):
         indices = numpy.random.randint(X.shape[0], size=minibatch_size)
         X_batch = X[indices]
@@ -143,10 +144,11 @@ def SGD(sym, data_inputs, X, Y, X_test, Y_test, total_iter_num,
             exe.backward(out_grad_f(exe.outputs, nd.array(Y_batch, ctx=dev)))
         for k in params:
             updater(k, params_grad[k], params[k])
-        if (i + 1) % 1000 == 0:
-            print "Current Iter Num: %d" % (i + 1)
-            print -numpy.log(exe.outputs[0].asnumpy()[numpy.arange(minibatch_size), Y_batch]).sum()
+        if (i + 1) % 500 == 0:
+            end = time.time()
+            print "Current Iter Num: %d" % (i + 1), "Time Spent: %f" % (end - start)
             sample_test_acc(exe, X=X_test, Y=Y_test, label_num=10, minibatch_size=100)
+            start = time.time()
     return exe, params, params_grad
 
 
@@ -194,7 +196,7 @@ def SGLD(sym, X, Y, X_test, Y_test, total_iter_num,
             end = time.time()
             if task == 'classification':
                 print "Current Iter Num: %d" % (i + 1), "Time Spent: %f" % (end - start)
-                sample_test_acc(exe, X=X_test, Y=Y_test, label_num=10, minibatch_size=minibatch_size)
+                sample_test_acc(exe, sample_pool=sample_pool, X=X_test, Y=Y_test, label_num=10, minibatch_size=minibatch_size)
             else:
                 print "Current Iter Num: %d" % (i + 1), "Time Spent: %f" % (end - start), "MSE:",
                 print sample_test_regression(exe=exe, sample_pool=sample_pool,
@@ -213,14 +215,15 @@ def DistilledSGLD(teacher_sym, student_sym,
                   teacher_grad_f=None, student_grad_f=None,
                   teacher_prior_precision=1, student_prior_precision=0.001,
                   perturb_deviation=0.001,
-                  initializer=None,
+                  student_initializer=None,
+                  teacher_initializer=None,
                   minibatch_size=100,
                   task='classification',
                   dev=mx.gpu()):
     teacher_exe, teacher_params, teacher_params_grad, _ = \
-        get_executor(teacher_sym, dev, teacher_data_inputs, initializer)
+        get_executor(teacher_sym, dev, teacher_data_inputs, teacher_initializer)
     student_exe, student_params, student_params_grad, _ = \
-        get_executor(student_sym, dev, student_data_inputs, initializer)
+        get_executor(student_sym, dev, student_data_inputs, student_initializer)
     if teacher_grad_f is None:
         teacher_label_key = list(set(teacher_data_inputs.keys()) - set(['data']))[0]
     if student_grad_f is None:
@@ -238,60 +241,61 @@ def DistilledSGLD(teacher_sym, student_sym,
     teacher_updater = mx.optimizer.get_updater(teacher_optimizer)
     student_updater = mx.optimizer.get_updater(student_optimizer)
     start = time.time()
-    for epoch in xrange(total_iter_num / (X.shape[0] / minibatch_size)):
-        iterator = mx.io.NDArrayIter(data=X, label=Y, batch_size=minibatch_size, shuffle=True)
-        #        print "Epoch %d" %epoch ,
+    for i in xrange(total_iter_num):
+        # 1.1 Draw random minibatch
+        indices = numpy.random.randint(X.shape[0], size=minibatch_size)
+        X_batch = X[indices]
+        Y_batch = Y[indices]
+        # 1.2 Update teacher
+        teacher_exe.arg_dict['data'][:] = X_batch
+        if teacher_grad_f is None:
+            teacher_exe.arg_dict[teacher_label_key][:] = Y_batch
+            teacher_exe.forward(is_train=True)
+            teacher_exe.backward()
+        else:
+            teacher_exe.forward(is_train=True)
+            teacher_exe.backward(
+                teacher_grad_f(teacher_exe.outputs, nd.array(Y_batch, ctx=dev)))
 
-        for batch in iterator:
-            # 1.1 Draw random minibatch
-            X_batch = batch.data[0]
-            Y_batch = batch.label[0]
-            # 1.2 Update teacher
-            teacher_exe.arg_dict['data'][:] = X_batch
-            if teacher_grad_f is None:
-                teacher_exe.arg_dict[teacher_label_key][:] = Y_batch
-                teacher_exe.forward(is_train=True)
-                teacher_exe.backward()
-            else:
-                teacher_exe.forward(is_train=True)
-                teacher_exe.backward(
-                    teacher_grad_f(teacher_exe.outputs, nd.array(Y_batch, ctx=dev)))
+        for k in teacher_params:
+            teacher_updater(k, teacher_params_grad[k], teacher_params[k])
+        # 2.1 Draw random minibatch and do random perturbation
+        if task =='classification':
+            indices = numpy.random.randint(X.shape[0], size=minibatch_size)
+            X_student_batch = X[indices] + numpy.random.normal(0, perturb_deviation, X_batch.shape)
+        else:
+            X_student_batch = mx.random.uniform(-6, 6, X_batch.shape, mx.cpu())
+        # 2.2 Get teacher predictions
 
-            for k in teacher_params:
-                teacher_updater(k, teacher_params_grad[k], teacher_params[k])
-            # 2.1 Draw random minibatch and do random perturbation
-            if task =='classification':
-                X_student_batch = X_batch + mx.random.normal(0, perturb_deviation, X_batch.shape,
-                                                         mx.cpu())
-            else:
-                X_student_batch = mx.random.uniform(-6, 6, X_batch.shape, mx.cpu())
-            # 2.2 Get teacher predictions
-            #nd.waitall()
-            teacher_exe.arg_dict['data'][:] = X_student_batch
-            teacher_exe.forward(is_train=False)
-            teacher_pred = teacher_exe.outputs[0]
-            teacher_pred.wait_to_read()
+        teacher_exe.arg_dict['data'][:] = X_student_batch
+        # print teacher_exe.outputs[0].asnumpy()
+        # ch = raw_input()
+        # print teacher_exe.arg_dict['data'].asnumpy()
+        # ch = raw_input()
+        teacher_exe.forward(is_train=False)
+        teacher_pred = teacher_exe.outputs[0]
+        teacher_pred.wait_to_read()
 
-            # 2.3 Update student
-            student_exe.arg_dict['data'][:] = X_student_batch
-            if student_grad_f is None:
-                student_exe.arg_dict[student_label_key][:] = teacher_pred
-                student_exe.forward(is_train=True)
-                student_exe.backward()
-            else:
-                student_exe.forward(is_train=True)
-                student_exe.backward(student_grad_f(student_exe.outputs, teacher_pred))
-            for k in student_params:
-                student_updater(k, student_params_grad[k], student_params[k])
-            #print student_exe.arg_dict['data'].asnumpy(), student_exe.arg_dict['data'].asnumpy()**3, \
-            #    student_exe.outputs[0].asnumpy(), student_exe.outputs[1].asnumpy()
-        if (epoch + 1) % 20 == 0:
+        # 2.3 Update student
+        student_exe.arg_dict['data'][:] = X_student_batch
+        if student_grad_f is None:
+            student_exe.arg_dict[student_label_key][:] = teacher_pred
+            student_exe.forward(is_train=True)
+            student_exe.backward()
+        else:
+            student_exe.forward(is_train=True)
+            student_exe.backward(student_grad_f(student_exe.outputs, teacher_pred))
+        for k in student_params:
+            student_updater(k, student_params_grad[k], student_params[k])
+        #print student_exe.arg_dict['data'].asnumpy(), student_exe.arg_dict['data'].asnumpy()**3, \
+        #    student_exe.outputs[0].asnumpy(), student_exe.outputs[1].asnumpy()
+        if (i + 1) % 500 == 0:
             end = time.time()
             if task == 'classification':
-                print "Current Epoch Num: %d" % (epoch + 1), "Time Spent: %f" % (end - start)
+                print "Current Iter Num: %d" % (i + 1), "Time Spent: %f" % (end - start)
                 sample_test_acc(student_exe, X=X_test, Y=Y_test, label_num=10, minibatch_size=minibatch_size)
             else:
-                print "Current Epoch Num: %d" % (epoch + 1), "Time Spent: %f" % (end - start), "MSE:",
+                print "Current Iter Num: %d" % (i + 1), "Time Spent: %f" % (end - start), "MSE:",
                 print sample_test_regression(exe=student_exe, X=X_test, Y=Y_test,
                                              minibatch_size=minibatch_size,
                                              save_path='regression_DSGLD.txt')

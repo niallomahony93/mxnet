@@ -88,9 +88,9 @@ def regression_student_grad(student_outputs, teacher_pred, teacher_noise_precisi
 
 def get_mnist_sym(output_op=None):
     net = mx.symbol.Variable('data')
-    net = mx.symbol.FullyConnected(data=net, name='mnist_fc1', num_hidden=400)
+    net = mx.symbol.FullyConnected(data=net, name='mnist_fc1', num_hidden=800)
     net = mx.symbol.Activation(data=net, name='mnist_relu1', act_type="relu")
-    net = mx.symbol.FullyConnected(data=net, name='mnist_fc2', num_hidden=400)
+    net = mx.symbol.FullyConnected(data=net, name='mnist_fc2', num_hidden=800)
     net = mx.symbol.Activation(data=net, name='mnist_relu2', act_type="relu")
     net = mx.symbol.FullyConnected(data=net, name='mnist_fc3', num_hidden=10)
     if output_op is None:
@@ -137,7 +137,7 @@ def get_toy_sym(teacher=True, teacher_noise_precision=None):
 
 
 def dev():
-    return mx.cpu()
+    return mx.gpu()
 
 
 def run_mnist_SGD():
@@ -190,18 +190,20 @@ def run_mnist_DistilledSGLD():
     student_data_inputs = {'data': nd.zeros(data_shape, ctx=dev()),
                            'softmax_label': nd.zeros((minibatch_size, 10), ctx=dev())}
     #    student_data_inputs = {'data': nd.zeros(data_shape, ctx=dev())}
-    initializer = mx.init.Xavier(factor_type="in", magnitude=2.34)
+    teacher_initializer = mx.init.Xavier(factor_type="in", magnitude=10)
+    student_initializer = mx.init.Xavier(factor_type="in", magnitude=10)
     student_exe, student_params, _ = \
         DistilledSGLD(teacher_sym=teacher_net, student_sym=student_net,
                       teacher_data_inputs=teacher_data_inputs,
                       student_data_inputs=student_data_inputs,
                       X=X, Y=Y, X_test=X_test, Y_test=Y_test, total_iter_num=1000000,
-                      initializer=initializer,
-                      teacher_learning_rate=4E-6, student_learning_rate=0.05,
-                      #                  student_lr_scheduler=mx.lr_scheduler.FactorScheduler(100000, 0.5),
+                      student_initializer=student_initializer,
+                      teacher_initializer=teacher_initializer,
+                      teacher_learning_rate=4E-6, student_learning_rate=0.005,
+                                       student_lr_scheduler=mx.lr_scheduler.FactorScheduler(100000, 0.5),
                       #                  student_grad_f=classification_student_grad,
                       teacher_prior_precision=1, student_prior_precision=0.001,
-                      perturb_deviation=0.1, minibatch_size=100, dev=dev())
+                      perturb_deviation=0.001, minibatch_size=100, dev=dev())
 
 
 def run_toy_SGLD():
@@ -237,7 +239,8 @@ def run_toy_DistilledSGLD():
                            'teacher_output_label': nd.zeros((minibatch_size, 1), ctx=dev())}
     student_data_inputs = {'data': nd.zeros(data_shape, ctx=dev())}
     #                   'softmax_label': nd.zeros((minibatch_size, 10), ctx=dev())}
-    initializer = mx.init.Uniform(0.07)
+    teacher_initializer = mx.init.Uniform(0.07)
+    student_initializer = mx.init.Uniform(0.07)
     student_grad_f = lambda student_outputs, teacher_pred: \
         regression_student_grad(student_outputs, teacher_pred, teacher_noise_precision)
     student_exe, student_params, _ = \
@@ -245,7 +248,8 @@ def run_toy_DistilledSGLD():
                       teacher_data_inputs=teacher_data_inputs,
                       student_data_inputs=student_data_inputs,
                       X=X, Y=Y, X_test=X_test, Y_test=Y_test, total_iter_num=80000,
-                      initializer=initializer,
+                      teacher_initializer=teacher_initializer,
+                      student_initializer=student_initializer,
                       teacher_learning_rate=1E-4, student_learning_rate=0.01,
                       #                  teacher_lr_scheduler=mx.lr_scheduler.FactorScheduler(100000, 0.5),
                       student_lr_scheduler=mx.lr_scheduler.FactorScheduler(8000, 0.8),
