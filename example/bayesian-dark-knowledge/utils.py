@@ -1,6 +1,28 @@
 import mxnet as mx
 import mxnet.ndarray as nd
 import numpy
+import logging
+
+
+class SGLDScheduler(mx.lr_scheduler.LRScheduler):
+    def __init__(self, begin_rate, end_rate, total_iter_num, factor):
+        super(SGLDScheduler, self).__init__()
+        if factor >= 1.0:
+            raise ValueError("Factor must be less than 1 to make lr reduce")
+        self.begin_rate = begin_rate
+        self.end_rate = end_rate
+        self.total_iter_num = total_iter_num
+        self.factor = factor
+        self.b = (total_iter_num - 1.0) / ((begin_rate / end_rate) ** (1.0 / factor) - 1.0)
+        self.a = begin_rate / (self.b ** (-factor))
+        self.count = 0
+
+    def __call__(self, num_update):
+        self.base_lr = self.a * ((self.b + num_update) ** (-self.factor))
+        self.count += 1
+        logging.info("Update[%d]: Change learning rate to %0.5e",
+                     num_update, self.base_lr)
+        return self.base_lr
 
 def get_executor(sym, ctx, data_inputs, initializer=None):
     data_shapes = {k: v.shape for k, v in data_inputs.items()}
@@ -28,6 +50,7 @@ def copy_param(exe, new_param=None):
     return new_param
 
 def sample_test_acc(exe, X, Y, sample_pool=None, label_num=None, minibatch_size=100):
+    old_param = copy_param(exe)
     if label_num is None:
         pred = numpy.zeros((X.shape[0],)).astype('float32')
     else:
@@ -40,9 +63,10 @@ def sample_test_acc(exe, X, Y, sample_pool=None, label_num=None, minibatch_size=
         for batch in iter:
             exe.arg_dict['data'][:] = batch.data[0]
             exe.forward(is_train=False)
+            batch_size = minibatch_size - batch.pad
             pred[curr_instance:curr_instance + minibatch_size - batch.pad, :] \
-                += exe.outputs[0].asnumpy()
-            curr_instance += minibatch_size - batch.pad
+                += exe.outputs[0].asnumpy()[:batch_size]
+            curr_instance += batch_size
     else:
         for sample in sample_pool:
             if type(sample) is list:
@@ -62,17 +86,20 @@ def sample_test_acc(exe, X, Y, sample_pool=None, label_num=None, minibatch_size=
             for batch in iter:
                 exe.arg_dict['data'][:] = batch.data[0]
                 exe.forward(is_train=False)
+                batch_size = minibatch_size - batch.pad
                 pred[curr_instance:curr_instance + minibatch_size - batch.pad, :] \
-                    += ratio * exe.outputs[0].asnumpy()
-                curr_instance += minibatch_size - batch.pad
+                    += ratio * exe.outputs[0].asnumpy()[:batch_size]
+                curr_instance += batch_size
     correct = (pred.argmax(axis=1) == Y).sum()
     total = Y.shape[0]
     acc = correct/float(total)
     print 'corect=%d, total=%d, acc=%f' %(correct, total, acc)
+    exe.copy_params_from(old_param)
     return acc
 
 
 def sample_test_regression(exe, X, Y, sample_pool=None, minibatch_size=100, save_path="regression.txt"):
+    old_param = copy_param(exe)
     if sample_pool is not None:
         pred = numpy.zeros(Y.shape + (len(sample_pool),))
         ratio = numpy.zeros((len(sample_pool),))
@@ -94,10 +121,13 @@ def sample_test_regression(exe, X, Y, sample_pool=None, minibatch_size=100, save
             for batch in iterator:
                 exe.arg_dict['data'][:] = batch.data[0]
                 exe.forward(is_train=False)
-                pred[curr_instance:curr_instance + minibatch_size - batch.pad, :, i] = exe.outputs[0].asnumpy()
-                curr_instance += minibatch_size - batch.pad
+                batch_len = minibatch_size - batch.pad
+                pred[curr_instance:curr_instance + minibatch_size - batch.pad, :, i] = \
+                    exe.outputs[0].asnumpy()[:batch_len]
+                curr_instance += batch_len
         mean = pred.mean(axis=2)
         var = pred.std(axis=2)**2
+        #print numpy.concatenate((Y, mean), axis=1)
         mse = numpy.square(Y.reshape((Y.shape[0], )) - mean.reshape((mean.shape[0], ))).mean()
         numpy.savetxt(save_path, numpy.concatenate((mean, var), axis=1))
     else:
@@ -113,6 +143,7 @@ def sample_test_regression(exe, X, Y, sample_pool=None, minibatch_size=100, save
             curr_instance += minibatch_size - batch.pad
         mse = numpy.square(Y.reshape((Y.shape[0],)) - mean_var[:, 0]).mean()
         numpy.savetxt(save_path, mean_var)
+    exe.copy_params_from(old_param)
     return mse
 
 def pred_test(testing_data, exe, param_list=None, save_path=""):

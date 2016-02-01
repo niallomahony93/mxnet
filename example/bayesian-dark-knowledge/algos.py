@@ -5,11 +5,11 @@ import logging
 from utils import *
 
 
-def calc_potential(exe, params, label_name, prior_precision):
+def calc_potential(exe, params, label_name, noise_precision, prior_precision):
     exe.copy_params_from(params)
     exe.forward(is_train=False)
     ret = 0.0
-    ret += (nd.norm(exe.outputs[0] - exe.arg_dict[label_name]).asscalar() ** 2) / 2.0
+    ret += (nd.norm(exe.outputs[0] - exe.arg_dict[label_name]).asscalar() ** 2) / 2.0 * noise_precision
     for v in params.values():
         ret += (nd.norm(v).asscalar() ** 2) / 2.0 * prior_precision
     return ret
@@ -29,25 +29,35 @@ def calc_grad(exe, exe_grads, params, X, Y, label_name=None, outgrad_f=None):
         v.wait_to_read()
 
 
-def step_HMC(exe, exe_grads, label_key, prior_precision, L=10, eps=1E-6):
-    init_params = {k: v.copyto(v.context) for k,v in exe.arg_dict.items()}
-    end_params = {k: v.copyto(v.context) for k, v in exe.arg_dict.items()}
+def step_HMC(exe, exe_params, exe_grads, label_key, noise_precision, prior_precision, L=10, eps=1E-6):
+    init_params = {k: v.copyto(v.context) for k,v in exe_params.items()}
+    end_params = {k: v.copyto(v.context) for k, v in exe_params.items()}
     init_momentums = {k: mx.random.normal(0, 1, v.shape) for k, v in init_params.items()}
-    end_momentums = {k: v.copyto(v.context) for k, v in init_momentums}
+    end_momentums = {k: v.copyto(v.context) for k, v in init_momentums.items()}
+    init_potential = calc_potential(exe, init_params, label_key, noise_precision, prior_precision)
 
+    # 0. Calculate Initial Energy and Kinetic
+    init_kinetic = sum([nd.sum(nd.square(momentum)) / 2.0
+                        for momentum in init_momentums.values()]).asscalar()
     # 1. Make a half step for momentum at the beginning
     exe.copy_params_from(end_params)
     exe.forward(is_train=True)
+    #for k, v in exe_grads.items():
+        #print k, v.asnumpy()
+        #ch = raw_input()
     exe.backward()
-    for v in exe_grads.values():
+    for k, v in exe_grads.items():
         v.wait_to_read()
+        #print k, v.asnumpy()
+        #ch = raw_input()
     for k, momentum in end_momentums.items():
+        #print k, exe_grads[k].asnumpy()
+        #ch = raw_input()
         momentum[:] = momentum - (eps / 2) * exe_grads[k]
-
     # 2. Alternate full steps for position and momentum
     for i in range(L):
         # 2.1 Full step for position
-        for k, param in exe.arg_dict.items():
+        for k, param in exe_params.items():
             param[:] = param + eps * end_momentums[k]
         # 2.2 Full step for the momentum, except at the end of trajectory we perform a half step
         exe.forward(is_train=True)
@@ -62,14 +72,11 @@ def step_HMC(exe, exe_grads, label_key, prior_precision, L=10, eps=1E-6):
                 # We should reverse the sign of the momentum at the end
                 momentum[:] = -(momentum - eps / 2.0 * exe_grads[k])
     copy_param(exe, end_params)
-
     # 3. Calculate acceptance ratio and accept/reject the move
-    init_potential = calc_potential(exe, init_params, label_key, prior_precision)
-    init_kinetic = sum([nd.sum(nd.square(momentum)) / 2.0
-                        for momentum in init_momentums.values()]).asscalar()
-    end_potential = calc_potential(exe, end_params, label_key, prior_precision)
+    end_potential = calc_potential(exe, end_params, label_key, noise_precision, prior_precision)
     end_kinetic = sum([nd.sum(nd.square(momentum)) / 2.0
                        for momentum in end_momentums.values()]).asscalar()
+    #print init_potential, init_kinetic, end_potential, end_kinetic
     r = numpy.random.rand(1)
     if r < numpy.exp(-(end_potential + end_kinetic) + (init_potential + init_kinetic)):
         exe.copy_params_from(end_params)
@@ -80,19 +87,28 @@ def step_HMC(exe, exe_grads, label_key, prior_precision, L=10, eps=1E-6):
 
 
 def HMC(sym, data_inputs, X, Y, X_test, Y_test, sample_num,
-        initializer=None, prior_precision=0.1,
+        initializer=None, noise_precision=1/9.0, prior_precision=0.1,
         learning_rate=1E-6, L=10, dev=mx.gpu()):
     label_key = list(set(data_inputs.keys()) - set(['data']))[0]
-    exe, params, exe_grads, _ = get_executor(sym, dev, data_inputs, initializer)
+    exe, exe_params, exe_grads, _ = get_executor(sym, dev, data_inputs, initializer)
     exe.arg_dict['data'][:] = X
     exe.arg_dict[label_key][:] = Y
     sample_pool = []
     accept_num = 0
+    start = time.time()
     for i in xrange(sample_num):
-        sample_params, is_accept = step_HMC(exe, exe_grads, label_key, prior_precision, L, learning_rate)
+        sample_params, is_accept = step_HMC(exe, exe_params, exe_grads, label_key, noise_precision, prior_precision, L, learning_rate)
         accept_num += is_accept
-        sample_pool.append(sample_params)
-        sample_test_regression(exe, X=X_test, Y=Y_test, sample_pool=sample_pool, minibatch_size=Y.shape[0])
+        #print is_accept
+        if (i+1)%10 == 0:
+            sample_pool.append(sample_params)
+            if (i + 1)%100000 == 0:
+                end = time.time()
+                print "Current Iter Num: %d" % (i + 1), "Time Spent: %f" % (end - start), "MSE:",
+                print sample_test_regression(exe, X=X_test, Y=Y_test, sample_pool=sample_pool,
+                                   minibatch_size=Y.shape[0], save_path='regression_HMC.txt')
+                start = time.time()
+        exe.copy_params_from(sample_params)
     print 'accept ratio', accept_num/float(sample_num)
     return sample_pool
 
@@ -174,7 +190,7 @@ def SGLD(sym, X, Y, X_test, Y_test, total_iter_num,
                 else:
                     lr = learning_rate
                 sample_pool.append([lr, copy_param(exe)])
-        if (i + 1) % 10000 == 0:
+        if (i + 1) % 100000 == 0:
             end = time.time()
             if task == 'classification':
                 print "Current Iter Num: %d" % (i + 1), "Time Spent: %f" % (end - start)
@@ -250,6 +266,7 @@ def DistilledSGLD(teacher_sym, student_sym,
             else:
                 X_student_batch = mx.random.uniform(-6, 6, X_batch.shape, mx.cpu())
             # 2.2 Get teacher predictions
+            #nd.waitall()
             teacher_exe.arg_dict['data'][:] = X_student_batch
             teacher_exe.forward(is_train=False)
             teacher_pred = teacher_exe.outputs[0]

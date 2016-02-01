@@ -21,4 +21,8 @@ def load_toy():
     Y_test = testing_data[:, 1].reshape((testing_data.shape[0], 1))
     return X, Y, X_test, Y_test
 
-
+def load_synthetic(theta1, theta2, sigmax, num=20):
+    flag = numpy.random.randint(0, 2, (num,))
+    X = flag * numpy.random.normal(theta1, sigmax, (num, )) \
+                    + (1.0 - flag) * numpy.random.normal(theta1 + theta2, sigmax, (num, ))
+    return X
