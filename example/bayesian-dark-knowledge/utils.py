@@ -4,6 +4,11 @@ import numpy
 import logging
 
 
+class BiasXavier(mx.initializer.Xavier):
+    def _init_bias(self, _, arr):
+        scale = numpy.sqrt(self.magnitude / arr.shape[0])
+        mx.random.uniform(-scale, scale, out=arr)
+
 class SGLDScheduler(mx.lr_scheduler.LRScheduler):
     def __init__(self, begin_rate, end_rate, total_iter_num, factor):
         super(SGLDScheduler, self).__init__()

@@ -233,7 +233,7 @@ def DistilledSGLD(teacher_sym, student_sym,
                                             rescale_grad=X.shape[0] / float(minibatch_size),
                                             lr_scheduler=teacher_lr_scheduler,
                                             wd=teacher_prior_precision)
-    student_optimizer = mx.optimizer.create('sgd',
+    student_optimizer = mx.optimizer.create('adam',
                                             learning_rate=student_learning_rate,
                                             rescale_grad=1.0 / float(minibatch_size),
                                             lr_scheduler=student_lr_scheduler,
@@ -241,6 +241,7 @@ def DistilledSGLD(teacher_sym, student_sym,
     teacher_updater = mx.optimizer.get_updater(teacher_optimizer)
     student_updater = mx.optimizer.get_updater(student_optimizer)
     start = time.time()
+    sample_pool = []
     for i in xrange(total_iter_num):
         # 1.1 Draw random minibatch
         indices = numpy.random.randint(X.shape[0], size=minibatch_size)

@@ -58,10 +58,8 @@ class LogSoftmax(mx.operator.NumpyOp):
     def forward(self, in_data, out_data):
         x = in_data[0]
         y = out_data[0]
-        print x - x.max(axis=1).reshape((x.shape[0], 1))
-        ch = raw_input()
-        y[:] = x - x.max(axis=1).reshape((x.shape[0], 1))
-        y -= numpy.log(numpy.exp(y).sum(axis=1).reshape((x.shape[0], 1)))
+        y[:] = (x - x.max(axis=1, keepdims=True)).astype('float32')
+        y -= numpy.log(numpy.exp(y).sum(axis=1, keepdims=True)).astype('float32')
         # y[:] = numpy.exp(x - x.max(axis=1).reshape((x.shape[0], 1)))
         # y /= y.sum(axis=1).reshape((x.shape[0], 1))
 
@@ -69,7 +67,7 @@ class LogSoftmax(mx.operator.NumpyOp):
         l = in_data[1]
         y = out_data[0]
         dx = in_grad[0]
-        dx[:] = numpy.exp(y) - l
+        dx[:] = (numpy.exp(y) - l).astype('float32')
 
 
 def classification_student_grad(student_outputs, teacher_pred):
@@ -179,10 +177,10 @@ def run_mnist_DistilledSGLD():
     X, Y, X_test, Y_test = load_mnist()
     minibatch_size = 100
     teacher_net = get_mnist_sym()
-    crossentropy_softmax = CrossEntropySoftmax()
-    student_net = get_mnist_sym(crossentropy_softmax)
-    #    logsoftmax = LogSoftmax()
-    #    student_net = get_mnist_sym(logsoftmax)
+    #crossentropy_softmax = CrossEntropySoftmax()
+    #student_net = get_mnist_sym(crossentropy_softmax)
+    logsoftmax = LogSoftmax()
+    student_net = get_mnist_sym(logsoftmax)
     #    student_net = get_mnist_sym(mx.symbol.SoftmaxActivation)
     data_shape = (minibatch_size,) + X.shape[1::]
     teacher_data_inputs = {'data': nd.zeros(data_shape, ctx=dev()),
@@ -190,8 +188,8 @@ def run_mnist_DistilledSGLD():
     student_data_inputs = {'data': nd.zeros(data_shape, ctx=dev()),
                            'softmax_label': nd.zeros((minibatch_size, 10), ctx=dev())}
     #    student_data_inputs = {'data': nd.zeros(data_shape, ctx=dev())}
-    teacher_initializer = mx.init.Xavier(factor_type="in", magnitude=10)
-    student_initializer = mx.init.Xavier(factor_type="in", magnitude=10)
+    teacher_initializer = mx.init.Xavier(factor_type="in", magnitude=2.34)
+    student_initializer = BiasXavier(factor_type="in", magnitude=2.34)
     student_exe, student_params, _ = \
         DistilledSGLD(teacher_sym=teacher_net, student_sym=student_net,
                       teacher_data_inputs=teacher_data_inputs,
@@ -199,8 +197,8 @@ def run_mnist_DistilledSGLD():
                       X=X, Y=Y, X_test=X_test, Y_test=Y_test, total_iter_num=1000000,
                       student_initializer=student_initializer,
                       teacher_initializer=teacher_initializer,
-                      teacher_learning_rate=4E-6, student_learning_rate=0.005,
-                                       student_lr_scheduler=mx.lr_scheduler.FactorScheduler(100000, 0.5),
+                      teacher_learning_rate=4E-6, student_learning_rate=0.0001,
+                      #                 student_lr_scheduler=mx.lr_scheduler.FactorScheduler(100000, 0.5),
                       #                  student_grad_f=classification_student_grad,
                       teacher_prior_precision=1, student_prior_precision=0.001,
                       perturb_deviation=0.001, minibatch_size=100, dev=dev())
