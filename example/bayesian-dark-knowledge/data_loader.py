@@ -1,10 +1,10 @@
 import numpy
 
 
-def load_mnist():
+def load_mnist(training_num=50000):
     dat = numpy.load('mnist.npz')
-    X = dat['X'][:50000] / 126.0
-    Y = dat['Y'][:50000]
+    X = dat['X'][:training_num] / 126.0
+    Y = dat['Y'][:training_num]
     X_test = dat['Xtest'] / 126.0
     Y_test = dat['Ytest']
     Y = Y.reshape((Y.shape[0], ))

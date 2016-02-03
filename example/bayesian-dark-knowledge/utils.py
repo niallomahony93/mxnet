@@ -98,9 +98,8 @@ def sample_test_acc(exe, X, Y, sample_pool=None, label_num=None, minibatch_size=
     correct = (pred.argmax(axis=1) == Y).sum()
     total = Y.shape[0]
     acc = correct/float(total)
-    print 'corect=%d, total=%d, acc=%f' %(correct, total, acc)
     exe.copy_params_from(old_param)
-    return acc
+    return correct, total, acc
 
 
 def sample_test_regression(exe, X, Y, sample_pool=None, minibatch_size=100, save_path="regression.txt"):

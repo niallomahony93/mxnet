@@ -9,7 +9,8 @@ def calc_potential(exe, params, label_name, noise_precision, prior_precision):
     exe.copy_params_from(params)
     exe.forward(is_train=False)
     ret = 0.0
-    ret += (nd.norm(exe.outputs[0] - exe.arg_dict[label_name]).asscalar() ** 2) / 2.0 * noise_precision
+    ret += (nd.norm(
+        exe.outputs[0] - exe.arg_dict[label_name]).asscalar() ** 2) / 2.0 * noise_precision
     for v in params.values():
         ret += (nd.norm(v).asscalar() ** 2) / 2.0 * prior_precision
     return ret
@@ -29,8 +30,9 @@ def calc_grad(exe, exe_grads, params, X, Y, label_name=None, outgrad_f=None):
         v.wait_to_read()
 
 
-def step_HMC(exe, exe_params, exe_grads, label_key, noise_precision, prior_precision, L=10, eps=1E-6):
-    init_params = {k: v.copyto(v.context) for k,v in exe_params.items()}
+def step_HMC(exe, exe_params, exe_grads, label_key, noise_precision, prior_precision, L=10,
+             eps=1E-6):
+    init_params = {k: v.copyto(v.context) for k, v in exe_params.items()}
     end_params = {k: v.copyto(v.context) for k, v in exe_params.items()}
     init_momentums = {k: mx.random.normal(0, 1, v.shape) for k, v in init_params.items()}
     end_momentums = {k: v.copyto(v.context) for k, v in init_momentums.items()}
@@ -42,17 +44,17 @@ def step_HMC(exe, exe_params, exe_grads, label_key, noise_precision, prior_preci
     # 1. Make a half step for momentum at the beginning
     exe.copy_params_from(end_params)
     exe.forward(is_train=True)
-    #for k, v in exe_grads.items():
-        #print k, v.asnumpy()
-        #ch = raw_input()
+    # for k, v in exe_grads.items():
+    # print k, v.asnumpy()
+    # ch = raw_input()
     exe.backward()
     for k, v in exe_grads.items():
         v.wait_to_read()
-        #print k, v.asnumpy()
-        #ch = raw_input()
+        # print k, v.asnumpy()
+        # ch = raw_input()
     for k, momentum in end_momentums.items():
-        #print k, exe_grads[k].asnumpy()
-        #ch = raw_input()
+        # print k, exe_grads[k].asnumpy()
+        # ch = raw_input()
         momentum[:] = momentum - (eps / 2) * exe_grads[k]
     # 2. Alternate full steps for position and momentum
     for i in range(L):
@@ -76,7 +78,7 @@ def step_HMC(exe, exe_params, exe_grads, label_key, noise_precision, prior_preci
     end_potential = calc_potential(exe, end_params, label_key, noise_precision, prior_precision)
     end_kinetic = sum([nd.sum(nd.square(momentum)) / 2.0
                        for momentum in end_momentums.values()]).asscalar()
-    #print init_potential, init_kinetic, end_potential, end_kinetic
+    # print init_potential, init_kinetic, end_potential, end_kinetic
     r = numpy.random.rand(1)
     if r < numpy.exp(-(end_potential + end_kinetic) + (init_potential + init_kinetic)):
         exe.copy_params_from(end_params)
@@ -87,7 +89,7 @@ def step_HMC(exe, exe_params, exe_grads, label_key, noise_precision, prior_preci
 
 
 def HMC(sym, data_inputs, X, Y, X_test, Y_test, sample_num,
-        initializer=None, noise_precision=1/9.0, prior_precision=0.1,
+        initializer=None, noise_precision=1 / 9.0, prior_precision=0.1,
         learning_rate=1E-6, L=10, dev=mx.gpu()):
     label_key = list(set(data_inputs.keys()) - set(['data']))[0]
     exe, exe_params, exe_grads, _ = get_executor(sym, dev, data_inputs, initializer)
@@ -97,19 +99,21 @@ def HMC(sym, data_inputs, X, Y, X_test, Y_test, sample_num,
     accept_num = 0
     start = time.time()
     for i in xrange(sample_num):
-        sample_params, is_accept = step_HMC(exe, exe_params, exe_grads, label_key, noise_precision, prior_precision, L, learning_rate)
+        sample_params, is_accept = step_HMC(exe, exe_params, exe_grads, label_key, noise_precision,
+                                            prior_precision, L, learning_rate)
         accept_num += is_accept
-        #print is_accept
-        if (i+1)%10 == 0:
+        # print is_accept
+        if (i + 1) % 10 == 0:
             sample_pool.append(sample_params)
-            if (i + 1)%100000 == 0:
+            if (i + 1) % 100000 == 0:
                 end = time.time()
                 print "Current Iter Num: %d" % (i + 1), "Time Spent: %f" % (end - start), "MSE:",
                 print sample_test_regression(exe, X=X_test, Y=Y_test, sample_pool=sample_pool,
-                                   minibatch_size=Y.shape[0], save_path='regression_HMC.txt')
+                                             minibatch_size=Y.shape[0],
+                                             save_path='regression_HMC.txt')
                 start = time.time()
         exe.copy_params_from(sample_params)
-    print 'accept ratio', accept_num/float(sample_num)
+    print 'accept ratio', accept_num / float(sample_num)
     return sample_pool
 
 
@@ -158,7 +162,8 @@ def SGLD(sym, X, Y, X_test, Y_test, total_iter_num,
          lr_scheduler=None, prior_precision=1,
          out_grad_f=None,
          initializer=None,
-         minibatch_size=100, thin_interval=100, burn_in_iter_num=1000, task='classification', dev=mx.gpu()):
+         minibatch_size=100, thin_interval=100, burn_in_iter_num=1000, task='classification',
+         dev=mx.gpu()):
     if out_grad_f is None:
         label_key = list(set(data_inputs.keys()) - set(['data']))[0]
     exe, params, params_grad, _ = get_executor(sym, dev, data_inputs, initializer)
@@ -196,7 +201,10 @@ def SGLD(sym, X, Y, X_test, Y_test, total_iter_num,
             end = time.time()
             if task == 'classification':
                 print "Current Iter Num: %d" % (i + 1), "Time Spent: %f" % (end - start)
-                sample_test_acc(exe, sample_pool=sample_pool, X=X_test, Y=Y_test, label_num=10, minibatch_size=minibatch_size)
+                test_correct, test_total, test_acc = \
+                    sample_test_acc(exe, sample_pool=sample_pool, X=X_test, Y=Y_test, label_num=10,
+                                    minibatch_size=minibatch_size)
+                print "Test %d/%d=%f" % (test_correct, test_total, test_acc)
             else:
                 print "Current Iter Num: %d" % (i + 1), "Time Spent: %f" % (end - start), "MSE:",
                 print sample_test_regression(exe=exe, sample_pool=sample_pool,
@@ -222,6 +230,8 @@ def DistilledSGLD(teacher_sym, student_sym,
                   dev=mx.gpu()):
     teacher_exe, teacher_params, teacher_params_grad, _ = \
         get_executor(teacher_sym, dev, teacher_data_inputs, teacher_initializer)
+    teacher_generation_exe, teacher_generation_params, _, _ = \
+        get_executor(teacher_sym, dev, teacher_data_inputs, teacher_initializer)
     student_exe, student_params, student_params_grad, _ = \
         get_executor(student_sym, dev, student_data_inputs, student_initializer)
     if teacher_grad_f is None:
@@ -233,7 +243,7 @@ def DistilledSGLD(teacher_sym, student_sym,
                                             rescale_grad=X.shape[0] / float(minibatch_size),
                                             lr_scheduler=teacher_lr_scheduler,
                                             wd=teacher_prior_precision)
-    student_optimizer = mx.optimizer.create('adam',
+    student_optimizer = mx.optimizer.create('sgd',
                                             learning_rate=student_learning_rate,
                                             rescale_grad=1.0 / float(minibatch_size),
                                             lr_scheduler=student_lr_scheduler,
@@ -261,20 +271,16 @@ def DistilledSGLD(teacher_sym, student_sym,
         for k in teacher_params:
             teacher_updater(k, teacher_params_grad[k], teacher_params[k])
         # 2.1 Draw random minibatch and do random perturbation
-        if task =='classification':
+        if task == 'classification':
             indices = numpy.random.randint(X.shape[0], size=minibatch_size)
             X_student_batch = X[indices] + numpy.random.normal(0, perturb_deviation, X_batch.shape)
         else:
             X_student_batch = mx.random.uniform(-6, 6, X_batch.shape, mx.cpu())
         # 2.2 Get teacher predictions
-
-        teacher_exe.arg_dict['data'][:] = X_student_batch
-        # print teacher_exe.outputs[0].asnumpy()
-        # ch = raw_input()
-        # print teacher_exe.arg_dict['data'].asnumpy()
-        # ch = raw_input()
-        teacher_exe.forward(is_train=False)
-        teacher_pred = teacher_exe.outputs[0]
+        copy_param(teacher_exe, teacher_generation_params)
+        teacher_generation_exe.arg_dict['data'][:] = X_student_batch
+        teacher_generation_exe.forward(is_train=False)
+        teacher_pred = teacher_generation_exe.outputs[0]
         teacher_pred.wait_to_read()
 
         # 2.3 Update student
@@ -288,13 +294,29 @@ def DistilledSGLD(teacher_sym, student_sym,
             student_exe.backward(student_grad_f(student_exe.outputs, teacher_pred))
         for k in student_params:
             student_updater(k, student_params_grad[k], student_params[k])
-        #print student_exe.arg_dict['data'].asnumpy(), student_exe.arg_dict['data'].asnumpy()**3, \
+        # print student_exe.arg_dict['data'].asnumpy(), student_exe.arg_dict['data'].asnumpy()**3, \
         #    student_exe.outputs[0].asnumpy(), student_exe.outputs[1].asnumpy()
         if (i + 1) % 500 == 0:
             end = time.time()
             if task == 'classification':
                 print "Current Iter Num: %d" % (i + 1), "Time Spent: %f" % (end - start)
-                sample_test_acc(student_exe, X=X_test, Y=Y_test, label_num=10, minibatch_size=minibatch_size)
+                test_correct, test_total, test_acc = \
+                    sample_test_acc(student_exe, X=X_test, Y=Y_test, label_num=10,
+                                    minibatch_size=minibatch_size)
+                train_correct, train_total, train_acc = \
+                    sample_test_acc(student_exe, X=X, Y=Y, label_num=10,
+                                    minibatch_size=minibatch_size)
+                teacher_test_correct, teacher_test_total, teacher_test_acc = \
+                    sample_test_acc(teacher_generation_exe, X=X_test, Y=Y_test, label_num=10,
+                                    minibatch_size=minibatch_size)
+                teacher_train_correct, teacher_train_total, teacher_train_acc = \
+                    sample_test_acc(teacher_generation_exe, X=X, Y=Y, label_num=10,
+                                    minibatch_size=minibatch_size)
+                print "Student: Test %d/%d=%f, Train %d/%d=%f" % (test_correct, test_total, test_acc,
+                                                           train_correct, train_total, train_acc)
+                print "Teacher: Test %d/%d=%f, Train %d/%d=%f" \
+                      % (teacher_test_correct, teacher_test_total, teacher_test_acc,
+                         teacher_train_correct, teacher_train_total, teacher_train_acc)
             else:
                 print "Current Iter Num: %d" % (i + 1), "Time Spent: %f" % (end - start), "MSE:",
                 print sample_test_regression(exe=student_exe, X=X_test, Y=Y_test,
