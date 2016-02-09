@@ -84,11 +84,11 @@ def regression_student_grad(student_outputs, teacher_pred, teacher_noise_precisi
     return [grad_mean, grad_var]
 
 
-def get_mnist_sym(output_op=None):
+def get_mnist_sym(output_op=None, num_hidden=400):
     net = mx.symbol.Variable('data')
-    net = mx.symbol.FullyConnected(data=net, name='mnist_fc1', num_hidden=400)
+    net = mx.symbol.FullyConnected(data=net, name='mnist_fc1', num_hidden=num_hidden)
     net = mx.symbol.Activation(data=net, name='mnist_relu1', act_type="relu")
-    net = mx.symbol.FullyConnected(data=net, name='mnist_fc2', num_hidden=400)
+    net = mx.symbol.FullyConnected(data=net, name='mnist_fc2', num_hidden=num_hidden)
     net = mx.symbol.Activation(data=net, name='mnist_relu2', act_type="relu")
     net = mx.symbol.FullyConnected(data=net, name='mnist_fc3', num_hidden=10)
     if output_op is None:
@@ -172,36 +172,46 @@ def run_mnist_SGLD(training_num=50000):
 def run_mnist_DistilledSGLD(training_num=50000):
     X, Y, X_test, Y_test = load_mnist(training_num)
     minibatch_size = 100
-    total_iter_num = 1000000
-    teacher_net = get_mnist_sym()
-    #crossentropy_softmax = CrossEntropySoftmax()
-    #student_net = get_mnist_sym(crossentropy_softmax)
+    if training_num >= 10000:
+        num_hidden = 800
+        optimization_algo = 'adam'
+        total_iter_num = 1000000
+        teacher_learning_rate = 1E-6
+        student_learning_rate = 0.0001
+        teacher_prior = 1
+        student_prior = 0.1
+        perturb_deviation = 0.1
+    else:
+        num_hidden = 400
+        optimization_algo = 'adam'
+        total_iter_num = 20000
+        teacher_learning_rate = 4E-5
+        student_learning_rate = 0.0001
+        teacher_prior = 1
+        student_prior = 0.1
+        perturb_deviation = 0.001
+    teacher_net = get_mnist_sym(num_hidden=num_hidden)
     logsoftmax = LogSoftmax()
-    student_net = get_mnist_sym(logsoftmax)
-    #    student_net = get_mnist_sym(mx.symbol.SoftmaxActivation)
+    student_net = get_mnist_sym(output_op=logsoftmax, num_hidden=num_hidden)
     data_shape = (minibatch_size,) + X.shape[1::]
     teacher_data_inputs = {'data': nd.zeros(data_shape, ctx=dev()),
                            'softmax_label': nd.zeros((minibatch_size,), ctx=dev())}
     student_data_inputs = {'data': nd.zeros(data_shape, ctx=dev()),
                            'softmax_label': nd.zeros((minibatch_size, 10), ctx=dev())}
-    #    student_data_inputs = {'data': nd.zeros(data_shape, ctx=dev())}
     teacher_initializer = BiasXavier(factor_type="in", magnitude=1)
     student_initializer = BiasXavier(factor_type="in", magnitude=1)
-    teacher_lr_scheduler = SGLDScheduler(begin_rate=5E-6, end_rate=5E-7, total_iter_num=total_iter_num,
-                                 factor=0.55)
     student_exe, student_params, _ = \
         DistilledSGLD(teacher_sym=teacher_net, student_sym=student_net,
                       teacher_data_inputs=teacher_data_inputs,
                       student_data_inputs=student_data_inputs,
-                      X=X, Y=Y, X_test=X_test, Y_test=Y_test, total_iter_num=1000000,
+                      X=X, Y=Y, X_test=X_test, Y_test=Y_test, total_iter_num=total_iter_num,
                       student_initializer=student_initializer,
                       teacher_initializer=teacher_initializer,
-                      teacher_learning_rate=4E-6, student_learning_rate=0.001,
-                      teacher_lr_scheduler=teacher_lr_scheduler,
-                      student_lr_scheduler=mx.lr_scheduler.FactorScheduler(100000, 0.5),
-                      #                  student_grad_f=classification_student_grad,
-                      teacher_prior_precision=1, student_prior_precision=0.001,
-                      perturb_deviation=0.001, minibatch_size=100, dev=dev())
+                      studenet_optimizing_algorithm=optimization_algo,
+                      teacher_learning_rate=teacher_learning_rate,
+                      student_learning_rate=student_learning_rate,
+                      teacher_prior_precision=teacher_prior, student_prior_precision=student_prior,
+                      perturb_deviation=perturb_deviation, minibatch_size=100, dev=dev())
 
 
 def run_toy_SGLD():
@@ -249,7 +259,7 @@ def run_toy_DistilledSGLD():
                       teacher_initializer=teacher_initializer,
                       student_initializer=student_initializer,
                       teacher_learning_rate=1E-4, student_learning_rate=0.01,
-                      #                  teacher_lr_scheduler=mx.lr_scheduler.FactorScheduler(100000, 0.5),
+                      # teacher_lr_scheduler=mx.lr_scheduler.FactorScheduler(100000, 0.5),
                       student_lr_scheduler=mx.lr_scheduler.FactorScheduler(8000, 0.8),
                       student_grad_f=student_grad_f,
                       teacher_prior_precision=0.1, student_prior_precision=0.001,
@@ -287,29 +297,20 @@ def run_synthetic_SGLD():
                             lr_scheduler=lr_scheduler,
                             wd=0)
     updater = mx.optimizer.get_updater(optimizer)
-    theta = mx.random.normal(0, 1, (2,), dev())
-    print theta.asnumpy()
-    #ch = raw_input()
-    grad = nd.empty((2,), dev())
+    theta = mx.random.normal(0, 1, (2,), mx.cpu())
+    grad = nd.empty((2,), mx.cpu())
     samples = numpy.zeros((2, total_iter_num))
     start = time.time()
     for i in xrange(total_iter_num):
-        if (i+1)%10000 == 0:
+        if (i+1)%100000 == 0:
             end = time.time()
-            print "Iter:%d, spent: %f" %(i + 1, end-start)
+            print "Iter:%d, Time spent: %f" %(i + 1, end-start)
             start = time.time()
         ind = numpy.random.randint(0, X.shape[0])
         synthetic_grad(X[ind], theta, sigma1, sigma2, sigmax, rescale_grad=
                                 X.shape[0] / float(minibatch_size), grad=grad)
         updater('theta', grad, theta)
-        #print theta.asnumpy()
         samples[:, i] = theta.asnumpy()
-    #z = gaussian_kde(samples)(samples)
-    #fig, ax = plt.subplots()
-    #ax.scatter(samples[0, :], samples[1, :], c=z, s=20, edgecolor='')
-    #ax.set_xlabel('theta1')
-    #ax.set_ylabel('theta2')
-    #plt.show()
     plt.hist2d(samples[0, :], samples[1, :], (200, 200), cmap=plt.cm.jet)
     plt.colorbar()
     plt.show()

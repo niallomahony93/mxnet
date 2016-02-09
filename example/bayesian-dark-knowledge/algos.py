@@ -44,17 +44,10 @@ def step_HMC(exe, exe_params, exe_grads, label_key, noise_precision, prior_preci
     # 1. Make a half step for momentum at the beginning
     exe.copy_params_from(end_params)
     exe.forward(is_train=True)
-    # for k, v in exe_grads.items():
-    # print k, v.asnumpy()
-    # ch = raw_input()
     exe.backward()
     for k, v in exe_grads.items():
         v.wait_to_read()
-        # print k, v.asnumpy()
-        # ch = raw_input()
     for k, momentum in end_momentums.items():
-        # print k, exe_grads[k].asnumpy()
-        # ch = raw_input()
         momentum[:] = momentum - (eps / 2) * exe_grads[k]
     # 2. Alternate full steps for position and momentum
     for i in range(L):
@@ -102,7 +95,7 @@ def HMC(sym, data_inputs, X, Y, X_test, Y_test, sample_num,
         sample_params, is_accept = step_HMC(exe, exe_params, exe_grads, label_key, noise_precision,
                                             prior_precision, L, learning_rate)
         accept_num += is_accept
-        # print is_accept
+
         if (i + 1) % 10 == 0:
             sample_pool.append(sample_params)
             if (i + 1) % 100000 == 0:
@@ -126,7 +119,6 @@ def SGD(sym, data_inputs, X, Y, X_test, Y_test, total_iter_num,
     if out_grad_f is None:
         label_key = list(set(data_inputs.keys()) - set(['data']))[0]
     exe, params, params_grad, _ = get_executor(sym, dev, data_inputs, initializer)
-    #    print params
     optimizer = mx.optimizer.create('sgd', learning_rate=lr,
                                     rescale_grad=X.shape[0] / minibatch_size,
                                     lr_scheduler=lr_scheduler,
@@ -220,6 +212,7 @@ def DistilledSGLD(teacher_sym, student_sym,
                   X, Y, X_test, Y_test, total_iter_num,
                   teacher_learning_rate, student_learning_rate,
                   teacher_lr_scheduler=None, student_lr_scheduler=None,
+                  studenet_optimizing_algorithm='sgd',
                   teacher_grad_f=None, student_grad_f=None,
                   teacher_prior_precision=1, student_prior_precision=0.001,
                   perturb_deviation=0.001,
@@ -243,7 +236,7 @@ def DistilledSGLD(teacher_sym, student_sym,
                                             rescale_grad=X.shape[0] / float(minibatch_size),
                                             lr_scheduler=teacher_lr_scheduler,
                                             wd=teacher_prior_precision)
-    student_optimizer = mx.optimizer.create('sgd',
+    student_optimizer = mx.optimizer.create(studenet_optimizing_algorithm,
                                             learning_rate=student_learning_rate,
                                             rescale_grad=1.0 / float(minibatch_size),
                                             lr_scheduler=student_lr_scheduler,
@@ -251,7 +244,6 @@ def DistilledSGLD(teacher_sym, student_sym,
     teacher_updater = mx.optimizer.get_updater(teacher_optimizer)
     student_updater = mx.optimizer.get_updater(student_optimizer)
     start = time.time()
-    sample_pool = []
     for i in xrange(total_iter_num):
         # 1.1 Draw random minibatch
         indices = numpy.random.randint(X.shape[0], size=minibatch_size)
@@ -294,9 +286,8 @@ def DistilledSGLD(teacher_sym, student_sym,
             student_exe.backward(student_grad_f(student_exe.outputs, teacher_pred))
         for k in student_params:
             student_updater(k, student_params_grad[k], student_params[k])
-        # print student_exe.arg_dict['data'].asnumpy(), student_exe.arg_dict['data'].asnumpy()**3, \
-        #    student_exe.outputs[0].asnumpy(), student_exe.outputs[1].asnumpy()
-        if (i + 1) % 500 == 0:
+
+        if (i + 1) % 2000 == 0:
             end = time.time()
             if task == 'classification':
                 print "Current Iter Num: %d" % (i + 1), "Time Spent: %f" % (end - start)
