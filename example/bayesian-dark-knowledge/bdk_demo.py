@@ -103,18 +103,22 @@ def synthetic_grad(X, theta, sigma1, sigma2, sigmax, rescale_grad=1.0, grad=None
         grad = nd.empty(theta.shape, theta.context)
     theta1 = theta.asnumpy()[0]
     theta2 = theta.asnumpy()[1]
-    v1 = sigma1 **2
-    v2 = sigma2 **2
-    vx = sigmax **2
-    denominator = numpy.exp(-(X - theta1)**2/(2*vx)) + numpy.exp(-(X - theta1 - theta2)**2/(2*vx))
+    v1 = sigma1 ** 2
+    v2 = sigma2 ** 2
+    vx = sigmax ** 2
+    denominator = numpy.exp(-(X - theta1) ** 2 / (2 * vx)) + numpy.exp(
+        -(X - theta1 - theta2) ** 2 / (2 * vx))
     grad_npy = numpy.zeros(theta.shape)
-    grad_npy[0] = -rescale_grad*((numpy.exp(-(X - theta1)**2/(2*vx))*(X - theta1)/vx
-                + numpy.exp(-(X - theta1 - theta2)**2/(2*vx))*(X - theta1-theta2)/vx)/denominator).sum()\
-                + theta1/v1
-    grad_npy[1] = -rescale_grad*((numpy.exp(-(X - theta1 - theta2)**2/(2*vx))*(X - theta1-theta2)/vx)/denominator).sum()\
-                + theta2/v2
+    grad_npy[0] = -rescale_grad * ((numpy.exp(-(X - theta1) ** 2 / (2 * vx)) * (X - theta1) / vx
+                                    + numpy.exp(-(X - theta1 - theta2) ** 2 / (2 * vx)) * (
+                                    X - theta1 - theta2) / vx) / denominator).sum() \
+                  + theta1 / v1
+    grad_npy[1] = -rescale_grad * ((numpy.exp(-(X - theta1 - theta2) ** 2 / (2 * vx)) * (
+    X - theta1 - theta2) / vx) / denominator).sum() \
+                  + theta2 / v2
     grad[:] = grad_npy
     return grad
+
 
 def get_toy_sym(teacher=True, teacher_noise_precision=None):
     if teacher:
@@ -174,7 +178,6 @@ def run_mnist_DistilledSGLD(training_num=50000):
     minibatch_size = 100
     if training_num >= 10000:
         num_hidden = 800
-        optimization_algo = 'adam'
         total_iter_num = 1000000
         teacher_learning_rate = 1E-6
         student_learning_rate = 0.0001
@@ -183,7 +186,6 @@ def run_mnist_DistilledSGLD(training_num=50000):
         perturb_deviation = 0.1
     else:
         num_hidden = 400
-        optimization_algo = 'adam'
         total_iter_num = 20000
         teacher_learning_rate = 4E-5
         student_learning_rate = 0.0001
@@ -207,7 +209,7 @@ def run_mnist_DistilledSGLD(training_num=50000):
                       X=X, Y=Y, X_test=X_test, Y_test=Y_test, total_iter_num=total_iter_num,
                       student_initializer=student_initializer,
                       teacher_initializer=teacher_initializer,
-                      studenet_optimizing_algorithm=optimization_algo,
+                      student_optimizing_algorithm="adam",
                       teacher_learning_rate=teacher_learning_rate,
                       student_learning_rate=student_learning_rate,
                       teacher_prior_precision=teacher_prior, student_prior_precision=student_prior,
@@ -280,6 +282,7 @@ def run_toy_HMC():
                       sample_num=300000, initializer=initializer, prior_precision=1.0,
                       learning_rate=1E-3, L=10, dev=dev())
 
+
 def run_synthetic_SGLD():
     theta1 = 0
     theta2 = 1
@@ -292,28 +295,29 @@ def run_synthetic_SGLD():
     lr_scheduler = SGLDScheduler(begin_rate=0.01, end_rate=0.0001, total_iter_num=total_iter_num,
                                  factor=0.55)
     optimizer = mx.optimizer.create('sgld',
-                            learning_rate=None,
-                            rescale_grad=1.0,
-                            lr_scheduler=lr_scheduler,
-                            wd=0)
+                                    learning_rate=None,
+                                    rescale_grad=1.0,
+                                    lr_scheduler=lr_scheduler,
+                                    wd=0)
     updater = mx.optimizer.get_updater(optimizer)
     theta = mx.random.normal(0, 1, (2,), mx.cpu())
     grad = nd.empty((2,), mx.cpu())
     samples = numpy.zeros((2, total_iter_num))
     start = time.time()
     for i in xrange(total_iter_num):
-        if (i+1)%100000 == 0:
+        if (i + 1) % 100000 == 0:
             end = time.time()
-            print "Iter:%d, Time spent: %f" %(i + 1, end-start)
+            print "Iter:%d, Time spent: %f" % (i + 1, end - start)
             start = time.time()
         ind = numpy.random.randint(0, X.shape[0])
         synthetic_grad(X[ind], theta, sigma1, sigma2, sigmax, rescale_grad=
-                                X.shape[0] / float(minibatch_size), grad=grad)
+        X.shape[0] / float(minibatch_size), grad=grad)
         updater('theta', grad, theta)
         samples[:, i] = theta.asnumpy()
     plt.hist2d(samples[0, :], samples[1, :], (200, 200), cmap=plt.cm.jet)
     plt.colorbar()
     plt.show()
+
 
 if __name__ == '__main__':
     numpy.random.seed(100)
@@ -322,8 +326,8 @@ if __name__ == '__main__':
         description="Examples in the paper [NIPS2015]Bayesian Dark Knowledge and "
                     "[ICML2011]Bayesian Learning via Stochastic Gradient Langevin Dynamics")
     parser.add_argument("-d", "--dataset", type=int, default=1,
-                       help="Dataset to use. 0 --> TOY, 1 --> MNIST, 2 --> Synthetic Data in "
-                            "the SGLD paper")
+                        help="Dataset to use. 0 --> TOY, 1 --> MNIST, 2 --> Synthetic Data in "
+                             "the SGLD paper")
     parser.add_argument("-l", "--algorithm", type=int, default=2,
                         help="Type of algorithm to use. 0 --> SGD, 1 --> SGLD, other-->DistilledSGLD")
     parser.add_argument("-t", "--training", type=int, default=50000,

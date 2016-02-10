@@ -25,8 +25,6 @@ class SGLDScheduler(mx.lr_scheduler.LRScheduler):
     def __call__(self, num_update):
         self.base_lr = self.a * ((self.b + num_update) ** (-self.factor))
         self.count += 1
-        logging.info("Update[%d]: Change learning rate to %0.5e",
-                     num_update, self.base_lr)
         return self.base_lr
 
 def get_executor(sym, ctx, data_inputs, initializer=None):

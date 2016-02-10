@@ -212,7 +212,7 @@ def DistilledSGLD(teacher_sym, student_sym,
                   X, Y, X_test, Y_test, total_iter_num,
                   teacher_learning_rate, student_learning_rate,
                   teacher_lr_scheduler=None, student_lr_scheduler=None,
-                  studenet_optimizing_algorithm='sgd',
+                  student_optimizing_algorithm='sgd',
                   teacher_grad_f=None, student_grad_f=None,
                   teacher_prior_precision=1, student_prior_precision=0.001,
                   perturb_deviation=0.001,
@@ -236,7 +236,7 @@ def DistilledSGLD(teacher_sym, student_sym,
                                             rescale_grad=X.shape[0] / float(minibatch_size),
                                             lr_scheduler=teacher_lr_scheduler,
                                             wd=teacher_prior_precision)
-    student_optimizer = mx.optimizer.create(studenet_optimizing_algorithm,
+    student_optimizer = mx.optimizer.create(student_optimizing_algorithm,
                                             learning_rate=student_learning_rate,
                                             rescale_grad=1.0 / float(minibatch_size),
                                             lr_scheduler=student_lr_scheduler,
@@ -265,7 +265,9 @@ def DistilledSGLD(teacher_sym, student_sym,
         # 2.1 Draw random minibatch and do random perturbation
         if task == 'classification':
             indices = numpy.random.randint(X.shape[0], size=minibatch_size)
-            X_student_batch = X[indices] + numpy.random.normal(0, perturb_deviation, X_batch.shape)
+            X_student_batch = X[indices] + numpy.random.normal(0,
+                                                               perturb_deviation,
+                                                               X_batch.shape).astype('float32')
         else:
             X_student_batch = mx.random.uniform(-6, 6, X_batch.shape, mx.cpu())
         # 2.2 Get teacher predictions
