@@ -18,6 +18,13 @@ class CuDNNBatchNormOp : public Operator {
     dtype_ = CUDNN_DATA_FLOAT;
   }
 
+  ~CuDNNBatchNormOp() {
+    if (init_cudnn_) {
+      CHECK_EQ(cudnnDestroyTensorDescriptor(io_desc_), CUDNN_STATUS_SUCCESS);
+      CHECK_EQ(cudnnDestroyTensorDescriptor(mean_desc_), CUDNN_STATUS_SUCCESS);
+    }
+  }
+
   virtual void Forward(const OpContext &ctx,
                        const std::vector<TBlob> &in_data,
                        const std::vector<OpReqType> &req,
@@ -129,7 +136,7 @@ class CuDNNBatchNormOp : public Operator {
     Tensor<gpu, 4> x = in_data[cudnnbatchnorm::kData].get_with_shape<gpu, 4, real_t>(shape_, s);
     Tensor<gpu, 4> dx = in_grad[cudnnbatchnorm::kData].get_with_shape<gpu, 4, real_t>(shape_, s);
     Tensor<gpu, 4> dy = out_grad[cudnnbatchnorm::kOut].get_with_shape<gpu, 4, real_t>(shape_, s);
-    Tensor<gpu, 1> gamma = in_data[cudnnbatchnorm::kBeta].get_with_shape<gpu, 1, real_t>(Shape1(shape_[1]), s);
+    Tensor<gpu, 1> gamma = in_data[cudnnbatchnorm::kGamma].get_with_shape<gpu, 1, real_t>(Shape1(shape_[1]), s);
     Tensor<gpu, 1> dbeta = in_grad[cudnnbatchnorm::kBeta].get_with_shape<gpu, 1, real_t>(Shape1(shape_[1]), s);
     Tensor<gpu, 1> dgamma = in_grad[cudnnbatchnorm::kGamma].get_with_shape<gpu, 1, real_t>(Shape1(shape_[1]), s);
     Tensor<gpu, 1> save_mean = out_data[cudnnbatchnorm::kMean].get_with_shape<gpu, 1, real_t>(Shape1(shape_[1]), s);
@@ -140,6 +147,10 @@ class CuDNNBatchNormOp : public Operator {
                                              CUDNN_BATCHNORM_SPATIAL,
                                              &a,
                                              &b,
+#if CUDNN_VERSION >= 4007
+                                             &a,
+                                             &b,
+#endif  // CUDNN_VERSION >= 4007
                                              io_desc_,
                                              x.dptr_,
                                              io_desc_,
@@ -153,6 +164,7 @@ class CuDNNBatchNormOp : public Operator {
                                              param_.eps,
                                              save_mean.dptr_,
                                              save_inv_var.dptr_), CUDNN_STATUS_SUCCESS);
+    if (param_.fix_gamma) dgamma = 0;
   }
 
  private:
