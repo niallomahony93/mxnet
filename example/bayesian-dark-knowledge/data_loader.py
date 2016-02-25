@@ -1,15 +1,18 @@
 import numpy
 import os
+import ssl
+
 
 def load_mnist(training_num=50000):
-    data_path = os.path.join(os.path.abspath(__file__), '..', 'mnist.npz')
+    data_path = os.path.join(os.path.dirname(__file__), '..', 'mnist.npz')
     if not os.path.isfile(data_path):
         from six.moves import urllib
         origin = (
             'https://github.com/sxjscience/mxnet/raw/master/example/bayesian-dark-knowledge/mnist.npz'
         )
         print 'Downloading data from %s to %s' % (origin, data_path)
-        urllib.request.urlretrieve(origin, data_path)
+        context = ssl._create_unverified_context()
+        urllib.request.urlretrieve(origin, data_path, context=context)
         print 'Done!'
     dat = numpy.load(data_path)
     X = (dat['X'][:training_num] / 126.0).astype('float32')
