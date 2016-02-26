@@ -6,7 +6,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-#TODO Support RNN for sym
+#TODO Support RNN for sym, refer to the LSTM example
 class Critic(object):
     """Critic, Differentiable Approximator for Q(s, a) or V(s)
 
@@ -26,15 +26,15 @@ class Critic(object):
     """
     def __init__(self, data_shapes, sym, params=None, params_grad=None, aux_states=None,
                  initializer=mx.init.Uniform(0.07), ctx=mx.gpu(),
-                 optimizer_param_dict=None, name='CriticNet'):
+                 optimizer_params=None, name='CriticNet'):
         self.sym = sym
         self.ctx = ctx
         self.data_shapes = data_shapes.copy()
         self.name = name
-        self.optimizer_param_dict = optimizer_param_dict.copy()
-        if optimizer_param_dict is not None:
+        self.optimizer_params = optimizer_params.copy()
+        if optimizer_params is not None:
             #TODO We may need to change here for distributed setting
-            self.optimizer = mx.optimizer.create(**optimizer_param_dict)
+            self.optimizer = mx.optimizer.create(**optimizer_params)
             self.updater = mx.optimizer.get_updater(self.optimizer)
         else:
             self.optimizer = None
@@ -45,8 +45,9 @@ class Critic(object):
                                             'initial params!'
             arg_names = sym.list_arguments()
             aux_names = sym.list_auxiliary_states()
-            param_names = list(set(arg_names) - set(data_shapes.keys()))
-            arg_shapes, output_shapes, aux_shapes = sym.infer_shape(data=data_shapes)
+            param_names = list(set(arg_names) - set(self.data_shapes.keys()))
+            arg_shapes, output_shapes, aux_shapes = sym.infer_shape(**self.data_shapes)
+            print arg_shapes, self.data_shapes
             self.arg_name_shape = {k: s for k, s in zip(arg_names, arg_shapes)}
             self.params = {n: nd.empty(self.arg_name_shape[n], ctx=ctx) for n in param_names}
             self.params_grad = {n: nd.empty(self.arg_name_shape[n], ctx=ctx) for n in param_names}
@@ -65,15 +66,17 @@ class Critic(object):
     """
     Compute the Q(s,a) or V(s) score
     """
-    def score(self, batch_size, **input_dict):
+    def calc_score(self, batch_size, **input_dict):
         exe = self.executor_pool.get(batch_size)
-        for k,v in input_dict:
+        for k,v in input_dict.items():
             exe.arg_dict[k][:] = v
         exe.forward(is_train=False)
         return exe.outputs
 
     def fit_target(self, batch_size, **input_dict):
-        assert self.updater is not None, "Updater not set!"
+        assert self.updater is not None, "Updater not set! You may set critic_net.updater = ... " \
+                                         "manually, or set the optimizer_params when you create" \
+                                         "the object"
         exe = self.executor_pool.get(batch_size)
         for k,v in input_dict:
             exe.arg_dict[k][:] = v
@@ -91,16 +94,20 @@ class Critic(object):
         params_grad = {k: v.copyto(ctx) for k, v in self.params_grad.items()}
         aux_states = None if self.aux_states is None else \
             {k: v.copyto(ctx) for k, v in self.aux_states.items()}
-        optimizer_param_dict = self.optimizer_param_dict.copy()
+        optimizer_params = self.optimizer_params.copy()
         if name is None:
             name = self.name + '-copy-' + str(ctx)
-        critic = Critic(data_shapes=data_shapes, sym=sym, params=params, params_grad=params_grad,
-                        aux_states=aux_states, ctx=ctx, optimizer_param_dict=optimizer_param_dict,
+        new_critic = Critic(data_shapes=data_shapes, sym=sym, params=params, params_grad=params_grad,
+                        aux_states=aux_states, ctx=ctx, optimizer_params=optimizer_params,
                                                                             name=name)
-        return critic
+        return new_critic
 
     def print_stat(self):
         logging.info("Name: %s" %self.name)
-        assert self.params is not None, "You must set the "
+        assert self.params is not None, "Fatal Error!"
         logging.info("Params: " + ' '.join(["%s:%s" %(str(k), str(v.shape)) for k, v in self.params.items()]))
-        logging.info("Aux States: ")
+        logging.info("Params Grad: " + ' '.join(["%s:%s" %(str(k), str(v.shape)) for k, v in self.params_grad.items()]))
+        if self.aux_states is None:
+            logging.info("Aux States: None")
+        else:
+            logging.info("Aux States: " + ' '.join(["%s:%s" %(str(k), str(v.shape)) for k, v in self.aux_states.items()]))
