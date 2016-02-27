@@ -1,6 +1,10 @@
 import mxnet as mx
 import numpy
 from critics import Critic
+import logging
+
+head = '%(asctime)-15s %(message)s'
+logging.basicConfig(level=logging.DEBUG, format=head)
 
 class DQNOutputOp(mx.operator.NumpyOp):
     def __init__(self):

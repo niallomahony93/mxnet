@@ -102,12 +102,18 @@ class Critic(object):
                                                                             name=name)
         return new_critic
 
+    @property
+    def total_param_num(self):
+        return sum(v.size for v in self.params.values())
+
     def print_stat(self):
         logging.info("Name: %s" %self.name)
         assert self.params is not None, "Fatal Error!"
-        logging.info("Params: " + ' '.join(["%s:%s" %(str(k), str(v.shape)) for k, v in self.params.items()]))
-        logging.info("Params Grad: " + ' '.join(["%s:%s" %(str(k), str(v.shape)) for k, v in self.params_grad.items()]))
-        if self.aux_states is None:
+        logging.info("Params: ")
+        for k, v in self.params.items():
+            logging.info("   %s: %s" %(k, v.shape))
+        if self.aux_states is None or 0 == len(self.aux_states):
             logging.info("Aux States: None")
         else:
             logging.info("Aux States: " + ' '.join(["%s:%s" %(str(k), str(v.shape)) for k, v in self.aux_states.items()]))
+        print "Total Parameter Num: " + str(self.total_param_num)
