@@ -8,7 +8,7 @@ def load_mnist(training_num=50000):
     if not os.path.isfile(data_path):
         from six.moves import urllib
         origin = (
-            'https://github.com/sxjscience/mxnet/raw/master/example/bayesian-dark-knowledge/mnist.npz'
+            'https://github.com/sxjscience/mxnet/raw/master/example/bayesian-methods/mnist.npz'
         )
         print 'Downloading data from %s to %s' % (origin, data_path)
         context = ssl._create_unverified_context()
