@@ -1,4 +1,5 @@
 import mxnet as mx
+import mxnet.ndarray as nd
 import numpy
 from critics import Critic
 import logging
@@ -53,12 +54,25 @@ net = DQNOutput(data=net, name='dqn')
 
 data_shapes = {'data': (minibatch_size, action_num) + (84, 84),
                'dqn_action': (minibatch_size,), 'dqn_reward':(minibatch_size,)}
-optimizer_params = {'name':'sgd', 'learning_rate':0.01, 'rescale_grad':1.0 / float(minibatch_size),
-                    'wd':0.00001}
-q_net = Critic(data_shapes=data_shapes, sym=net, optimizer_params=optimizer_params, name='QNet')
-target_q_net = Critic(data_shapes=data_shapes, sym=net, optimizer_params=optimizer_params, name='Target_QNet')
+optimizer_params = {'name':'adam', 'learning_rate':0.0001,
+                    'rescale_grad':1.0 / float(minibatch_size),
+                    'wd':0}
+q_net = Critic(data_shapes=data_shapes, sym=net, optimizer_params=optimizer_params, name='QNet', ctx=mx.gpu())
+target_q_net = Critic(data_shapes=data_shapes, sym=net, optimizer_params=optimizer_params, name='Target_QNet', ctx=mx.gpu())
 print q_net.calc_score(batch_size=minibatch_size,
                         data=numpy.random.normal(0, 1, data_shapes['data']).astype('float32'))[0].asnumpy()
 
 q_net.print_stat()
 target_q_net.print_stat()
+
+for i in xrange(1000):
+    sample = numpy.random.normal(0, 1, data_shapes['data']).astype('float32')
+    action = numpy.random.randint(low=0, high=4, size=(minibatch_size, ))
+    target_action = nd.array(action, ctx=mx.gpu())
+    target_scores = target_q_net.calc_score(batch_size=minibatch_size, data=sample)[0]
+    target_reward = nd.choose_element_0index(target_scores, target_action)
+    q_net.fit_target(batch_size=minibatch_size, data=sample, dqn_action=target_action, dqn_reward=target_reward)
+    predict_reward = nd.choose_element_0index(q_net.calc_score(batch_size=minibatch_size, data=sample)[0], target_action)
+    print nd.sum(nd.square(target_reward - predict_reward)).asscalar()
+
+
