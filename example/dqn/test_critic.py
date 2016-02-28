@@ -3,11 +3,12 @@ import mxnet.ndarray as nd
 import numpy
 from critics import Critic
 import logging
+import time
 
 head = '%(asctime)-15s %(message)s'
 logging.basicConfig(level=logging.DEBUG, format=head)
 
-class DQNOutputOp(mx.operator.NumpyOp):
+class DQNOutputOp(mx.operator.NDArrayOp):
     def __init__(self):
         super(DQNOutputOp, self).__init__(need_top_grad=False)
 
@@ -31,12 +32,13 @@ class DQNOutputOp(mx.operator.NumpyOp):
 
     def backward(self, out_grad, in_data, out_data, in_grad):
         x = out_data[0]
-        action = in_data[1].astype(numpy.int)
+        action = in_data[1]#.astype('int')
         reward = in_data[2]
         dx = in_grad[0]
         dx[:] = 0
+        dx[:] = nd.fill_element_0index(dx, nd.choose_element_0index(x, action) - reward, action)
         #dx[numpy.arange(action.shape[0]), action] = numpy.clip(x[numpy.arange(action.shape[0]), action] - reward, -1, 1)
-        dx[numpy.arange(action.shape[0]), action] = (x[numpy.arange(action.shape[0]), action] - reward)
+        #dx[numpy.arange(action.shape[0]), action] = (x[numpy.arange(action.shape[0]), action] - reward)
 
 action_num = 4
 minibatch_size = 128
@@ -64,9 +66,10 @@ print q_net.calc_score(batch_size=minibatch_size,
 
 q_net.print_stat()
 target_q_net.print_stat()
+sample = numpy.random.normal(0, 1, data_shapes['data']).astype('float32')
 
-for i in xrange(1000):
-    sample = numpy.random.normal(0, 1, data_shapes['data']).astype('float32')
+start = time.time()
+for i in xrange(100):
     action = numpy.random.randint(low=0, high=4, size=(minibatch_size, ))
     target_action = nd.array(action, ctx=mx.gpu())
     target_scores = target_q_net.calc_score(batch_size=minibatch_size, data=sample)[0]
@@ -74,5 +77,6 @@ for i in xrange(1000):
     q_net.fit_target(batch_size=minibatch_size, data=sample, dqn_action=target_action, dqn_reward=target_reward)
     predict_reward = nd.choose_element_0index(q_net.calc_score(batch_size=minibatch_size, data=sample)[0], target_action)
     print nd.sum(nd.square(target_reward - predict_reward)).asscalar()
+end = time.time()
 
-
+print end-start
