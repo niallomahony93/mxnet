@@ -71,6 +71,8 @@ class Critic(object):
         for k,v in input_dict.items():
             exe.arg_dict[k][:] = v
         exe.forward(is_train=False)
+        for output in exe.outputs:
+            output.wait_to_read()
         return exe.outputs
 
     def fit_target(self, batch_size, **input_dict):
@@ -78,12 +80,12 @@ class Critic(object):
                                          "manually, or set the optimizer_params when you create" \
                                          "the object"
         exe = self.executor_pool.get(batch_size)
-        for k,v in input_dict:
+        for k, v in input_dict.items():
             exe.arg_dict[k][:] = v
         exe.forward(is_train=True)
         exe.backward()
         for k in self.params:
-            self.updater(k, self.params[k], self.params_grad[k])
+            self.updater(index=k, grad=self.params_grad[k], weight=self.params[k])
 
     def copyto(self, name=None, ctx=None):
         if ctx is None:
