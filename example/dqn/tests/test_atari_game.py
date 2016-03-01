@@ -10,7 +10,7 @@ replay_start_size = 1000
 game = AtariGame(resize_mode='scale', replay_start_size=replay_start_size)
 game.start()
 start = time.time()
-totoal_time_step = 10000
+totoal_time_step = 1000000
 minibatch_size = 32
 sample_total_time = 0
 sample_total_num = 0
