@@ -12,17 +12,17 @@ class Critic(object):
 
     Parameters
     ----------
-    state_dim : tuple
-        Indicates the size of the `s` input
-        E.g, (4, 84, 84) means the state has 4 channels, 84 rows/cols
-    action_dim: tuple/int
-        1. typ='discrete':
-            `action_dim` means the number of possible actions.
-        2. typ='continuous':
-            `action_dim` indicates the size of the `a` input.
-    typ: str, optional
-        Indicates whether the action we can perform is 'discrete' or 'continuous'
-        Default is 'discrete'
+    data_shapes : dict
+        The shapes of tensor variables
+    sym: symbol of the critic network
+    params:
+    params_grad:
+    aux_states:
+    initializer:
+    ctx:
+    optimizer_params:
+    name:
+
     """
     def __init__(self, data_shapes, sym, params=None, params_grad=None, aux_states=None,
                  initializer=mx.init.Uniform(0.07), ctx=mx.gpu(),
@@ -63,10 +63,16 @@ class Critic(object):
                                                    data_shapes=self.data_shapes,
                                                    params=self.params, params_grad=self.params_grad,
                                                    aux_states=self.aux_states)
+
+
+    @property
+    def default_batchsize(self):
+        return self.data_shapes.values()[0].shape[0]
+
     """
     Compute the Q(s,a) or V(s) score
     """
-    def calc_score(self, batch_size, **input_dict):
+    def calc_score(self, batch_size=default_batchsize, **input_dict):
         exe = self.executor_pool.get(batch_size)
         for k,v in input_dict.items():
             exe.arg_dict[k][:] = v
@@ -75,7 +81,7 @@ class Critic(object):
             output.wait_to_read()
         return exe.outputs
 
-    def fit_target(self, batch_size, **input_dict):
+    def fit_target(self, batch_size=default_batchsize, **input_dict):
         assert self.updater is not None, "Updater not set! You may set critic_net.updater = ... " \
                                          "manually, or set the optimizer_params when you create" \
                                          "the object"
@@ -86,6 +92,23 @@ class Critic(object):
         exe.backward()
         for k in self.params:
             self.updater(index=k, grad=self.params_grad[k], weight=self.params[k])
+
+    """
+    Can be used to calculate the gradient of Q(s,a) over a
+    """
+    def get_grads(self, keys, ctx=None, batch_size=default_batchsize, **input_dict):
+        if len(input_dict) != 0 :
+            exe = self.executor_pool.get(batch_size)
+            for k, v in input_dict.items():
+                exe.forward(is_train=True)
+                exe.backward()
+        all_grads = dict(self.params_grad.items() + self.executor_pool.inputs_grad_dict[batch_size].items())
+        #TODO I'm not sure whether copy is needed here, need to test in the future
+        if ctx is None:
+            grads = {k : all_grads[k].copyto(all_grads[k].contenxt) for k in keys}
+        else:
+            grads = {k : all_grads[k].copyto(all_grads[k].ctx) for k in keys}
+        return grads
 
     def copyto(self, name=None, ctx=None):
         if ctx is None:
@@ -103,6 +126,10 @@ class Critic(object):
                         aux_states=aux_states, ctx=ctx, optimizer_params=optimizer_params,
                                                                             name=name)
         return new_critic
+
+    def copy_params_to(self, dst):
+        for k, v in self.params.items():
+            dst.params[k][:] = v
 
     @property
     def total_param_num(self):
