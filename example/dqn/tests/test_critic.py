@@ -61,6 +61,7 @@ optimizer_params = {'name':'adam', 'learning_rate':0.0001,
                     'wd':0}
 q_net = Critic(data_shapes=data_shapes, sym=net, optimizer_params=optimizer_params, name='QNet', ctx=mx.gpu())
 target_q_net = Critic(data_shapes=data_shapes, sym=net, optimizer_params=optimizer_params, name='Target_QNet', ctx=mx.gpu())
+another_target_q_net = q_net.copyto("AnotherTarget", ctx=mx.gpu())
 print q_net.calc_score(batch_size=minibatch_size,
                         data=numpy.random.normal(0, 1, data_shapes['data']).astype('float32'))[0].asnumpy()
 
@@ -76,7 +77,8 @@ for i in xrange(100):
     target_reward = nd.choose_element_0index(target_scores, target_action)
     q_net.fit_target(batch_size=minibatch_size, data=sample, dqn_action=target_action, dqn_reward=target_reward)
     predict_reward = nd.choose_element_0index(q_net.calc_score(batch_size=minibatch_size, data=sample)[0], target_action)
-    print nd.sum(nd.square(target_reward - predict_reward)).asscalar()
+    another_predict_reward = nd.choose_element_0index(another_target_q_net.calc_score(batch_size=minibatch_size, data=sample)[0], target_action)
+    print nd.sum(nd.square(target_reward - predict_reward)).asscalar(), nd.sum(nd.square(another_predict_reward - predict_reward)).asscalar()
 end = time.time()
 
 print end-start
