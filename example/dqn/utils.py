@@ -9,6 +9,7 @@ class ExecutorBatchSizePool(object):
         self.params_grad = params_grad
         self.aux_states = aux_states
         self.data_dims = {}
+        self.inputs_grad_dict = {}
         self.init_batch_size = data_shapes.values()[0][0]
         for k, v in data_shapes.items():
             self.data_dims[k] = v[1::]
@@ -26,8 +27,11 @@ class ExecutorBatchSizePool(object):
         else:
             data_inputs = {k: mx.nd.empty((batch_size,) + s, ctx=self.ctx)
                            for k, s in self.data_dims.items()}
+            inputs_grad = {k: mx.nd.empty((batch_size,) + s, ctx=self.ctx)
+                           for k, s in self.data_dims.items()}
+            self.inputs_grad_dict[batch_size] = inputs_grad
             exe = self.sym.bind(ctx=self.ctx, args=dict(self.params, **data_inputs),
-                                args_grad=self.params_grad,
-                                           aux_states=self.aux_states)
+                                args_grad=dict(self.params_grad.items() + inputs_grad.items()),
+                                aux_states=self.aux_states)
             self.exe_pool[batch_size] = exe
             return exe
