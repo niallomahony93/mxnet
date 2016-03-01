@@ -5,6 +5,8 @@ import mxnet.ndarray as nd
 import numpy
 from defaults import *
 
+
+#TODO Add Buffer between GPU and CPU to reduce the overhead of copying data
 class ReplayMemory(object):
     def __init__(self, rows, cols, history_length, memory_size=1000000,
                  replay_start_size=100, state_dtype='uint8', action_dtype='uint8',
