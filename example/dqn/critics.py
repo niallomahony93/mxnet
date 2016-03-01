@@ -89,9 +89,12 @@ class Critic(object):
         for k, v in input_dict.items():
             exe.arg_dict[k][:] = v
         exe.forward(is_train=True)
+        for output in exe.outputs:
+            output.wait_to_read()
         exe.backward()
         for k in self.params:
             self.updater(index=k, grad=self.params_grad[k], weight=self.params[k])
+        return exe.outputs
 
     """
     Can be used to calculate the gradient of Q(s,a) over a
