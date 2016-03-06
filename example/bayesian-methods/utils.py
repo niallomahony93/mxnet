@@ -53,7 +53,6 @@ def copy_param(exe, new_param=None):
     return new_param
 
 def sample_test_acc(exe, X, Y, sample_pool=None, label_num=None, minibatch_size=100):
-    old_param = copy_param(exe)
     if label_num is None:
         pred = numpy.zeros((X.shape[0],)).astype('float32')
     else:
@@ -71,6 +70,7 @@ def sample_test_acc(exe, X, Y, sample_pool=None, label_num=None, minibatch_size=
                 += exe.outputs[0].asnumpy()[:batch_size]
             curr_instance += batch_size
     else:
+        old_param = copy_param(exe)
         for sample in sample_pool:
             if type(sample) is list:
                 denominator += sample[0]
@@ -93,10 +93,10 @@ def sample_test_acc(exe, X, Y, sample_pool=None, label_num=None, minibatch_size=
                 pred[curr_instance:curr_instance + minibatch_size - batch.pad, :] \
                     += ratio * exe.outputs[0].asnumpy()[:batch_size]
                 curr_instance += batch_size
+        exe.copy_params_from(old_param)
     correct = (pred.argmax(axis=1) == Y).sum()
     total = Y.shape[0]
     acc = correct/float(total)
-    exe.copy_params_from(old_param)
     return correct, total, acc
 
 

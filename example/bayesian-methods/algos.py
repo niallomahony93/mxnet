@@ -223,8 +223,6 @@ def DistilledSGLD(teacher_sym, student_sym,
                   dev=mx.gpu()):
     teacher_exe, teacher_params, teacher_params_grad, _ = \
         get_executor(teacher_sym, dev, teacher_data_inputs, teacher_initializer)
-    teacher_generation_exe, teacher_generation_params, _, _ = \
-        get_executor(teacher_sym, dev, teacher_data_inputs, teacher_initializer)
     student_exe, student_params, student_params_grad, _ = \
         get_executor(student_sym, dev, student_data_inputs, student_initializer)
     if teacher_grad_f is None:
@@ -249,6 +247,7 @@ def DistilledSGLD(teacher_sym, student_sym,
         indices = numpy.random.randint(X.shape[0], size=minibatch_size)
         X_batch = X[indices]
         Y_batch = Y[indices]
+
         # 1.2 Update teacher
         teacher_exe.arg_dict['data'][:] = X_batch
         if teacher_grad_f is None:
@@ -262,6 +261,7 @@ def DistilledSGLD(teacher_sym, student_sym,
 
         for k in teacher_params:
             teacher_updater(k, teacher_params_grad[k], teacher_params[k])
+
         # 2.1 Draw random minibatch and do random perturbation
         if task == 'classification':
             indices = numpy.random.randint(X.shape[0], size=minibatch_size)
@@ -270,11 +270,11 @@ def DistilledSGLD(teacher_sym, student_sym,
                                                                X_batch.shape).astype('float32')
         else:
             X_student_batch = mx.random.uniform(-6, 6, X_batch.shape, mx.cpu())
+
         # 2.2 Get teacher predictions
-        copy_param(teacher_exe, teacher_generation_params)
-        teacher_generation_exe.arg_dict['data'][:] = X_student_batch
-        teacher_generation_exe.forward(is_train=False)
-        teacher_pred = teacher_generation_exe.outputs[0]
+        teacher_exe.arg_dict['data'][:] = X_student_batch
+        teacher_exe.forward(is_train=False)
+        teacher_pred = teacher_exe.outputs[0]
         teacher_pred.wait_to_read()
 
         # 2.3 Update student
@@ -300,14 +300,14 @@ def DistilledSGLD(teacher_sym, student_sym,
                     sample_test_acc(student_exe, X=X, Y=Y, label_num=10,
                                     minibatch_size=minibatch_size)
                 teacher_test_correct, teacher_test_total, teacher_test_acc = \
-                    sample_test_acc(teacher_generation_exe, X=X_test, Y=Y_test, label_num=10,
+                    sample_test_acc(teacher_exe, X=X_test, Y=Y_test, label_num=10,
                                     minibatch_size=minibatch_size)
                 teacher_train_correct, teacher_train_total, teacher_train_acc = \
-                    sample_test_acc(teacher_generation_exe, X=X, Y=Y, label_num=10,
+                    sample_test_acc(teacher_exe, X=X, Y=Y, label_num=10,
                                     minibatch_size=minibatch_size)
-                print "Student: Test %d/%d=%f, Train %d/%d=%f" % (test_correct, test_total, test_acc,
-                                                           train_correct, train_total, train_acc)
-                print "Teacher: Test %d/%d=%f, Train %d/%d=%f" \
+                print "Student: Test ACC %d/%d=%f, Train ACC %d/%d=%f" % (test_correct, test_total,
+                                                    test_acc, train_correct, train_total, train_acc)
+                print "Teacher: Test ACC %d/%d=%f, Train ACC %d/%d=%f" \
                       % (teacher_test_correct, teacher_test_total, teacher_test_acc,
                          teacher_train_correct, teacher_train_total, teacher_train_acc)
             else:
