@@ -69,7 +69,7 @@ X_train_batch = drop_tail(X_train_batch, seq_len)
 X_val_batch = drop_tail(X_val_batch, seq_len)
 
 
-model = lstm.setup_rnn_model(mx.cpu(),
+model = lstm.setup_rnn_model(mx.gpu(),
                              num_lstm_layer=num_lstm_layer,
                              seq_len=seq_len,
                              num_hidden=num_hidden,
