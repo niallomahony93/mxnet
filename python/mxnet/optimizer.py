@@ -737,6 +737,27 @@ class AdaDelta(Optimizer):
         weight[:] -= current_delta + self.wd * weight
 
 @register
+class ServerEASGD(Optimizer):
+    def __init__(self, learning_rate=0.01, momentum=0.0,
+                 wd=0.0001, rescale_grad=1, clip_gradient=None,
+                 lr_scheduler=None, arg_names=None):
+        super(ServerEASGD, self).__init__(rescale_grad=rescale_grad, arg_names=arg_names, wd=wd,
+                                  clip_gradient=clip_gradient)
+        self.lr = learning_rate
+
+    def create_state(self, index, weight):
+        return None
+
+    def update(self, index, weight, grad, state):
+        assert(isinstance(weight, NDArray))
+        assert(isinstance(grad, NDArray))
+        def easgd_server_update(index,local_weight,central_weight,easgd_alpha=0.9):
+            #easgd_alpha = 0.9 #TODO: I don't know how to pass easgd_eta elegently to kv server
+            central_weight[:] += easgd_alpha*(local_weight-central_weight)
+        easgd_server_update(index,local_weight= grad,central_weight= weight,easgd_alpha=self.lr)
+
+
+@register
 class Test(Optimizer):
     """For test use"""
     def __init__(self, rescale_grad=1):
