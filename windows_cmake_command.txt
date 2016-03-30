@@ -3,8 +3,8 @@ cmake -G "Visual Studio 12 2013 Win64" ^
 -DMKL_INCLUDE_DIR=C:\\Program Files (x86)\\IntelSWTools\\compilers_and_libraries_2016\\windows\\mkl\\include ^
 -DMKL_RT_LIBRARY=C:\\Program Files (x86)\\IntelSWTools\\compilers_and_libraries_2016\\windows\\mkl\\lib\\intel64 ^
 -DOpenCV_DIR=E:\\ThirdParty\\opencv\\build\\x64\\vc12\\staticlib ^
--DZMQ_LIBRARY=C:\\Users\\sxjscience\\AppData\\Local\\Enthought\\Canopy\\User\\Lib\\site-packages\\zmq  ^
--DZMQ_INCLUDE_DIR=C:\\Users\\sxjscience\\AppData\\Local\\Enthought\\Canopy\\User\\Lib\\site-packages\\zmq\\utils ^
+-DZMQ_LIBRARY=D:\HKUST\libzmq\bin\x64\Release\v120\dynamic ^
+-DZMQ_INCLUDE_DIR=D:\HKUST\libzmq\include ^
 -DPROTOBUF_LIBRARY=D:\\HKUST\\protobuf\\cmake\\build\\release ^
 -DPROTOBUF_INCLUDE_DIR=D:\\HKUST\\protobuf\\src ^
 -DCUDNN_INCLUDE=C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v7.5\\include ^
