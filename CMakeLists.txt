@@ -9,7 +9,10 @@ mxnet_option(USE_OPENCV  "Build with OpenCV support" ON)
 mxnet_option(USE_OPENMP  "Build with Openmp support" ON)
 mxnet_option(USE_CUDNN   "Build with cudnn support"  ON) # one could set CUDNN_ROOT for search path
 mxnet_option(USE_CUDA    "Build with CUDA support"   ON)
-mxnet_option(USE_DIST_KVSTORE    "Build with CUDA support"   OFF)
+mxnet_option(USE_DIST_KVSTORE    "Build with DIST_KVSTORE support"   OFF)
+
+SET(EXTRA_OPERATORS "" CACHE PATH "EXTRA OPERATORS PATH")
+
 
 include(mshadow/cmake/mshadow.cmake)
 include(mshadow/cmake/Utils.cmake)
@@ -81,6 +84,14 @@ mxnet_source_group("Source\\Cuda" GLOB_RECURSE "src/*.cu")
 FILE(GLOB_RECURSE SOURCE "src/*.cc")
 FILE(GLOB_RECURSE cuda "src/*.cu")
 
+if (NOT (EXTRA_OPERATORS STREQUAL ""))
+	mxnet_source_group("Extra"   GLOB_RECURSE "${EXTRA_OPERATORS}/*.cc")
+	mxnet_source_group("Extra\\Cuda"   GLOB_RECURSE "${EXTRA_OPERATORS}/*.cu")
+	FILE(GLOB_RECURSE EXTRA_SRC "${EXTRA_OPERATORS}/*.cc")
+	FILE(GLOB_RECURSE EXTRA_CUSRC "${EXTRA_OPERATORS}/*.cu")
+	list(APPEND SOURCE ${EXTRA_SRC} ${EXTRA_CUSRC})
+endif()
+
 if(MSVC)
   foreach(flag_var
         CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
@@ -112,6 +123,8 @@ if(NOT MSVC)
   add_definitions(-DMSHADOW_IN_CXX11)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c++0x")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++0x")
+else()
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")
 endif()
 
 add_library(mxnet SHARED ${SOURCE})

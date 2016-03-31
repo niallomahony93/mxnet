@@ -116,7 +116,7 @@ class CuDNNActivationOp : public Operator {
                                     &beta,
                                     shape_desc_,
                                     out.dptr_), CUDNN_STATUS_SUCCESS);
-	#endif
+    #endif
   }
 
   virtual void Backward(const OpContext &ctx,
@@ -191,7 +191,7 @@ class CuDNNActivationOp : public Operator {
                                      &beta,
                                      shape_desc_,
                                      input_grad.dptr_), CUDNN_STATUS_SUCCESS);
-	#endif
+    #endif
   }
 
  private:

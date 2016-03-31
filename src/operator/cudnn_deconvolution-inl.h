@@ -73,7 +73,7 @@ class CuDNNDeconvolutionOp : public Operator {
                &beta,
                out_desc_,
                out.dptr_ + out_offset_ * g), CUDNN_STATUS_SUCCESS);
-	  #elif CUDNN_MAJOR == 5
+      #elif CUDNN_MAJOR == 5
       CHECK_EQ(cudnnConvolutionBackwardData(s->dnn_handle_,
                &alpha,
                filter_desc_,
@@ -87,7 +87,7 @@ class CuDNNDeconvolutionOp : public Operator {
                &beta,
                out_desc_,
                out.dptr_ + out_offset_ * g), CUDNN_STATUS_SUCCESS);
-	  #endif
+      #endif
       if (!param_.no_bias) {
         beta = 1.0f;
         Tensor<gpu, 1> bias = in_data[deconv::kBias].get<gpu, 1, real_t>(s);
@@ -224,7 +224,7 @@ class CuDNNDeconvolutionOp : public Operator {
       CHECK_EQ(cudnnCreateConvolutionDescriptor(&conv_desc_), CUDNN_STATUS_SUCCESS);
       #if CUDNN_MAJOR <=4
       CHECK_EQ(cudnnSetFilter4dDescriptor(filter_desc_,
-                                          dtype_, 
+                                          dtype_,
                                           data.shape_[1] / param_.num_group,
                                           param_.num_filter / param_.num_group,
                                           param_.kernel[0],
