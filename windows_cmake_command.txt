@@ -10,3 +10,6 @@ cmake -G "Visual Studio 12 2013 Win64" ^
 -DCUDNN_INCLUDE=C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v7.5\\include ^
 -DCUDNN_ROOT=C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v7.5\\lib\\x64 ^
 -DBLAS=MKL ..
+
+
+-DEXTRA_OPERATORS=D:\\HKUST\\2-2\\dist_train\\mxnet-extension ^
