@@ -422,13 +422,13 @@ void StaticGraph::MakeBackwardPass(std::vector<uint32_t> *head_grad_nodes,
 
   auto need_mirror = [this, do_mirror, pcounter, mirror_step](uint32_t nid) {
     if (nodes[nid].is_variable()) return false;
+    if (type == "Dropout") return false;    
     if (nodes[nid].get_attr("force_mirroring", false)) return true;
     if (do_mirror == 0) return false;
     if (!nodes[nid].is_forward()) return false;
     std::string type = nodes[nid].op->TypeString();
     if (type == "Convolution") return false;
     if (type == "FullyConnected") return false;
-    if (type == "Dropout") return false;
     if (type == "Concat") return false;
     if (type == "SoftmaxOutput") return false;
     if (type == "CuDNNBatchNorm") return false;
@@ -499,7 +499,8 @@ void StaticGraph::MakeBackwardPass(std::vector<uint32_t> *head_grad_nodes,
       if (i >= nvisible) continue;
       // get out_grad
       auto it = grad_map.find(okey);
-      CHECK(it != grad_map.end()) << "bad graph";
+      CHECK(it != grad_map.end()) << "bad graph: Cannot find node "
+                                  << nodes[nid].name << "'s " << i << "-th output";
       std::vector<DataEntry> &gnodes = it->second;
       if (gnodes.size() == 1) {
         out_grad.push_back(gnodes[0]);
