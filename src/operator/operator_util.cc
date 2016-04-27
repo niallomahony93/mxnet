@@ -21,8 +21,11 @@ class SimpleBinaryOpProp;
 class SimpleOpRegEntryImpl : public SimpleOpRegEntry {
  public:
   TSelf& set_symbol_op_name(const std::string& symbol_name) override {
+    std::lock_guard<std::mutex> lock(mutex_);
     CHECK(op_reg_ == nullptr || symbol_name == symbol_name_)
-        << "need to call set_symbol_op_name before all other calls";
+        << " operator " << this->name
+        << " need to call set_symbol_op_name "
+        << symbol_name << "before all other calls";
     symbol_name_ = symbol_name;
     return *this;
   }
@@ -645,9 +648,13 @@ void SimpleOpRegEntryImpl::RegisterBinaryImperative() {
       CHECK_EQ(lhs.shape(), rhs.shape()) << "operands shape mismatch";
       dshape = lhs.shape();
     }
-    CHECK_EQ(lhs.ctx(), rhs.ctx())
-      << "operands context mismatch " << lhs.ctx().dev_type << " " << lhs.ctx().dev_id << \
-      " vs. " << rhs.ctx().dev_type << " " << rhs.ctx().dev_id;
+
+    // no check if all of them are on cpu
+    if (lhs.ctx().dev_mask() != cpu::kDevMask || rhs.ctx().dev_mask() != cpu::kDevMask) {
+      CHECK_EQ(lhs.ctx(), rhs.ctx())
+        << "operands context mismatch " << lhs.ctx().dev_type << " " << lhs.ctx().dev_id << \
+        " vs. " << rhs.ctx().dev_type << " " << rhs.ctx().dev_id;
+    }
     CHECK_EQ(lhs.dtype(), rhs.dtype()) << "operands type mismatch";
 
     // check output shape.
