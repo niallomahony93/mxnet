@@ -138,6 +138,11 @@ MXNET_REGISTER_SIMPLE_OP(sin, XPU)
 .set_function(XPU::kDevMask, UnaryForward_<XPU, mshadow_op::sin>, kInplaceInOut)
 .set_gradient(XPU::kDevMask, UnaryBackwardUseIn_<XPU, mshadow_op::sin_grad>, kInplaceOutIn)
 .describe("Take sin of the src");
+// clip_zero_one
+MXNET_REGISTER_SIMPLE_OP(clip_zero_one, XPU)
+.set_function(XPU::kDevMask, UnaryForward_<XPU, mshadow_op::clip_zero_one>, kInplaceInOut)
+.set_gradient(XPU::kDevMask, UnaryBackwardUseIn_<XPU, mshadow_op::clip_zero_one>, kInplaceOutIn)
+.describe("Clip the src to 0 and 1");
 
 }  // namespace op
 }  // namespace mxnet
