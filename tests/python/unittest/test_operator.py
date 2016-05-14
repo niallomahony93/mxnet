@@ -828,6 +828,24 @@ def test_reshape():
     assert(output_shape[0] == (2, 75))
 
 
+    a = mx.symbol.Variable('a')
+    b = mx.symbol.sum_mid_internal(a)
+
+    for i in range(1, 10):
+        for j in range(1, 10):
+            for k in range(1, 10):
+                a_npy = np.random.rand(i, j, k)
+                a_grad = mx.nd.empty((i, j, k))
+                b_grad_npy = np.random.rand(i, k)
+                net = b.bind(mx.cpu(), args={'a': mx.nd.array(a_npy)},
+                             args_grad={'a': a_grad})
+                net.forward(is_train=True)
+                assert np.square(net.outputs[0].asnumpy() - a_npy.sum(axis=1)).mean() < 1E-6,\
+                    np.square(net.outputs[0].asnumpy() - a_npy.sum(axis=1)).mean()
+                net.backward(out_grads=mx.nd.array(b_grad_npy))
+                assert np.square(a_grad.asnumpy() - b_grad_npy.reshape((i, 1, k))).mean() < 1E-6
+
+
 if __name__ == '__main__':
     test_convolution_grouping()
     test_nearest_upsampling()
