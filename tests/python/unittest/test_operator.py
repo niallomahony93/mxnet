@@ -828,6 +828,7 @@ def test_reshape():
     assert(output_shape[0] == (2, 75))
 
 
+def test_sum_mid_internal():
     a = mx.symbol.Variable('a')
     b = mx.symbol.sum_mid_internal(a)
 
@@ -871,5 +872,6 @@ if __name__ == '__main__':
     check_softmax_with_ignore_label(mx.cpu())
     test_convolution_dilated_impulse_response()
     test_reshape()
+    test_sum_mid_internal()
     #check_softmax_with_shape((3,4), mx.cpu())
     #check_multi_softmax_with_shape((3,4,5), mx.cpu())
