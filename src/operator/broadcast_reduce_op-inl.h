@@ -104,7 +104,6 @@ void SumMidBackward_(const OutputGrad& out_grad,
   });
 }
 
-
 inline TShape ReduceMidShape(const TShape& ishape,
                              const EnvArguments& env)  {
   CHECK_EQ(ishape.ndim(), 3) << "Input shape must be 3 dimensional.";
