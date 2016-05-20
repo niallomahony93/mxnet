@@ -501,7 +501,6 @@ void BroadcastDivBackward_(const OutputGrad& out_grad,
     &lhs_broadcast_axis, &rhs_broadcast_axis);
   index_t lhs_size = lhs_grad->shape_.Size();
   index_t rhs_size = rhs_grad->shape_.Size();
-  
 
   MSHADOW_REAL_TYPE_SWITCH(lhs_grad->type_flag_, DType, {
     if (lhs_broadcast_axis >= 0) {
@@ -527,8 +526,7 @@ void BroadcastDivBackward_(const OutputGrad& out_grad,
             mrhs_grad, req_rhs_grad, sumall_except_dim<1>(
             F<mshadow_op::negation>(mout_grad * broadcast<0>(mlhs_data, rshape)) /
             F<mshadow_op::square>(broadcast<1>(mrhs_data, rshape))));
-        }
-        else {
+        } else {
           ASSIGN_DISPATCH(
             mlhs_grad, req_lhs_grad, sumall_except_dim<1>(
             mout_grad / broadcast<0>(mrhs_data, rshape)));
@@ -537,8 +535,7 @@ void BroadcastDivBackward_(const OutputGrad& out_grad,
             F<mshadow_op::negation>(mout_grad * broadcast<1>(mlhs_data, rshape)) /
             F<mshadow_op::square>(broadcast<0>(mrhs_data, rshape))));
         }
-      }
-      else {
+      } else {
         // only broadcast lhs
         Shape<3> rshape = ret_reshaped.get<3>();
         Tensor<xpu, 3, DType> mout_grad =
@@ -554,25 +551,23 @@ void BroadcastDivBackward_(const OutputGrad& out_grad,
           ASSIGN_DISPATCH(mrhs_grad, req_rhs_grad,
             F<mshadow_op::negation>(mout_grad * broadcast_scalar(mlhs_data, rshape)) /
             F<mshadow_op::square>(mrhs_data));
-        }
-        else {
+        } else {
           ASSIGN_DISPATCH(mrhs_grad, req_rhs_grad,
             F<mshadow_op::negation>(mout_grad * broadcast<1>(mlhs_data, rshape)) /
             F<mshadow_op::square>(mrhs_data));
         }
       }
-    }
-    else {
+    } else {
       if (rhs_broadcast_axis >= 0) {
         // only broadcast rhs
         Shape<3> rshape = ret_reshaped.get<3>();
         Tensor<xpu, 3, DType> mlhs_grad = lhs_grad->get_with_shape<xpu, 3, DType>(rshape, s);
         Tensor<xpu, 3, DType> mlhs_data = lhs.data.get_with_shape<xpu, 3, DType>(rshape, s);
-        Tensor<xpu, 1, DType> mrhs_grad = 
+        Tensor<xpu, 1, DType> mrhs_grad =
           rhs_grad->get_with_shape<xpu, 1, DType>(Shape1(rhs_size), s);
         Tensor<xpu, 1, DType> mrhs_data =
           rhs.data.get_with_shape<xpu, 1, DType>(Shape1(rhs_size), s);
-        Tensor<xpu, 3, DType> mout_grad = 
+        Tensor<xpu, 3, DType> mout_grad =
           out_grad.data.get_with_shape<xpu, 3, DType>(rshape, s);
 
         if (rhs_size == 1) {
@@ -582,8 +577,7 @@ void BroadcastDivBackward_(const OutputGrad& out_grad,
             mrhs_grad, req_rhs_grad, sumall_except_dim<1>(
             F<mshadow_op::negation>(mout_grad * mlhs_data) /
             F<mshadow_op::square>(broadcast_scalar(mrhs_data, rshape))));
-        }
-        else {
+        } else {
           ASSIGN_DISPATCH(mlhs_grad, req_lhs_grad,
             mout_grad / broadcast<1>(mrhs_data, rshape));
           ASSIGN_DISPATCH(
@@ -591,8 +585,7 @@ void BroadcastDivBackward_(const OutputGrad& out_grad,
             F<mshadow_op::negation>(mout_grad * mlhs_data) /
             F<mshadow_op::square>(broadcast<1>(mrhs_data, rshape))));
         }
-      }
-      else {
+      } else {
         LOG(FATAL) << "no broadcast is needed";
       }
     }
