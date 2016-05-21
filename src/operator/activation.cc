@@ -26,6 +26,9 @@ Operator *CreateOp<cpu>(ActivationParam param, int dtype) {
       case activation::kSoftReLU:
         op = new ActivationOp<cpu, mshadow_op::softrelu, mshadow_op::softrelu_grad, DType>();
         break;
+      case activation::kHardTanh:
+        op = new ActivationOp<cpu, mshadow_op::hard_tanh, mshadow_op::hard_tanh_grad, DType>();
+        break;
       default:
         LOG(FATAL) << "unknown activation type";
     }

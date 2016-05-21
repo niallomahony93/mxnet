@@ -106,6 +106,22 @@ struct tanh_grad {
   }
 };
 
+struct hard_tanh {
+  template<typename DType>
+  MSHADOW_XINLINE static DType Map(DType a) {
+    if (a < -1.0f) return DType(DType(-1.0f));
+    if (a > 1.0f) return DType(DType(1.0f));
+    return DType(a);
+  }
+};
+
+struct hard_tanh_grad {
+  template<typename DType>
+  MSHADOW_XINLINE static DType Map(DType a) {
+    return DType((a > DType(-1.0f)) && (a < DType(1.0f)) ? DType(1.0f) : DType(0.0f));
+  }
+};
+
 struct clip_zero_one {
   template<typename DType>
   MSHADOW_XINLINE static DType Map(DType a) {

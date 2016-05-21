@@ -22,6 +22,12 @@ Operator *CreateOp<gpu>(ActivationParam param, int dtype) {
     })
     return op;
   }
+  else if (param.act_type == activation::kHardTanh) {
+    MSHADOW_REAL_TYPE_SWITCH(dtype, DType, {
+      op = new ActivationOp<gpu, mshadow_op::hard_tanh, mshadow_op::hard_tanh_grad, DType>();
+    })
+      return op;
+  }
 
 #if MXNET_USE_CUDNN == 1
   MSHADOW_REAL_TYPE_SWITCH(dtype, DType, {
