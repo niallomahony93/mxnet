@@ -203,6 +203,56 @@ def test_dot():
     C = mx.nd.dot(A, B)
     assert reldiff(c, C.asnumpy()) < 1e-5
 
+def test_reduce():
+    sample_num = 1000
+    def test_reduce_inner(numpy_reduce_func, nd_reduce_func):
+        for i in range(sample_num):
+            ndim = np.random.randint(1, 6)
+            shape = np.random.randint(1, 16, size=ndim)
+            axis_flags = np.random.randint(0, 2, size=ndim)
+            axes = []
+            for (axis, flag) in enumerate(axis_flags):
+                if flag:
+                    axes.append(axis)
+            keepdims = np.random.randint(0, 2)
+            dat = np.random.rand(*shape) - 0.5
+            if 0 == len(axes):
+                axes = tuple(range(ndim))
+            else:
+                axes = tuple(axes)
+            numpy_ret = numpy_reduce_func(dat, axis=axes, keepdims=keepdims)
+
+            ndarray_ret = nd_reduce_func(arr=mx.nd.array(dat), axis=axes, keepdims=keepdims)
+            if type(ndarray_ret) is mx.ndarray.NDArray:
+                ndarray_ret = ndarray_ret.asnumpy()
+            err = np.square(ndarray_ret - numpy_ret).mean()
+            assert err < 1E-4
+    test_reduce_inner(np.sum, mx.nd.sum)
+    test_reduce_inner(np.max, mx.nd.max)
+    test_reduce_inner(np.min, mx.nd.min)
+
+def test_broadcast():
+    sample_num = 1000
+    def test_broadcast_to():
+        for i in range(sample_num):
+            ndim = np.random.randint(1, 6)
+            target_shape = np.random.randint(1, 16, size=ndim)
+            shape = target_shape.copy()
+            axis_flags = np.random.randint(0, 2, size=ndim)
+            axes = []
+            for (axis, flag) in enumerate(axis_flags):
+                if flag:
+                    shape[axis] = 1
+            dat = np.random.rand(*shape) - 0.5
+            numpy_ret = np.broadcast_to(dat, shape=shape)
+            ndarray_ret = mx.nd.array(dat).broadcast_to(shape=target_shape)
+            if type(ndarray_ret) is mx.ndarray.NDArray:
+                ndarray_ret = ndarray_ret.asnumpy()
+            assert (ndarray_ret.shape == target_shape).all()
+            err = np.square(ndarray_ret - numpy_ret).mean()
+            assert err < 1E-8
+    test_broadcast_to()
+
 if __name__ == '__main__':
     test_ndarray_slice()
     test_ndarray_pickle()
@@ -216,3 +266,5 @@ if __name__ == '__main__':
     test_ndarray_choose()
     test_ndarray_onehot()
     test_ndarray_fill()
+    test_reduce()
+    test_broadcast()
