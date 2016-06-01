@@ -23,7 +23,7 @@ struct ReduceAxisParam : public dmlc::Parameter<ReduceAxisParam> {
   bool keepdims;
   int axis;
   DMLC_DECLARE_PARAMETER(ReduceAxisParam) {
-    DMLC_DECLARE_FIELD(axis).set_default(0).set_range(-1, 4)
+    DMLC_DECLARE_FIELD(axis).set_default(-1).set_lower_bound(-1)
       .describe("The axis to perform the reduction. axis=-1 means to reduce all dimensions");
     DMLC_DECLARE_FIELD(keepdims).set_default(false)
       .describe("Same as Numpy. If keepdims is set to true, "
@@ -35,7 +35,7 @@ struct BroadcastAxisParam : public dmlc::Parameter<BroadcastAxisParam> {
   int axis;
   int size;
   DMLC_DECLARE_PARAMETER(BroadcastAxisParam) {
-    DMLC_DECLARE_FIELD(axis).set_default(0)
+    DMLC_DECLARE_FIELD(axis).set_default(0).set_lower_bound(0)
       .describe("The target axis of broadcasting.");
     DMLC_DECLARE_FIELD(size).set_default(0).set_lower_bound(1)
       .describe("Size of the broadcasting axis.");
@@ -46,7 +46,6 @@ inline TShape ReduceAxisShape(const TShape& ishape,
   const EnvArguments& env) {
   ReduceAxisParam param;
   param.Init(env.kwargs);
-  CHECK(ishape.ndim() <= 5) << "Reduce support at most 5 dimensions";
   CHECK(param.axis < ishape.ndim() || -1 == param.axis) <<
     "axis must be smaller than the source ndim or equal to -1! Received axis=" <<
     param.axis << ", src_ndim=" << ishape.ndim();
@@ -74,8 +73,6 @@ inline TShape BroadcastAxisShape(const TShape& ishape,
   const EnvArguments& env) {
   BroadcastAxisParam param;
   param.Init(env.kwargs);
-  CHECK(ishape.ndim() <= 5) <<
-    "Broadcast support at most 5 dimensions, src_ndim=" << ishape.ndim();
   CHECK(param.axis < ishape.ndim()) <<
     "axis must be smaller than the source ndim" << param.axis << ", src_ndim=" << ishape.ndim();
   CHECK_EQ(ishape[param.axis], 1) <<
@@ -146,47 +143,6 @@ void SumBackward_(const OutputGrad& scale,
   });
 }
 
-template <typename xpu, typename Reducer>
-void ReduceMid(TBlob const& src,
-               const EnvArguments& env,
-               TBlob* ret,
-               OpReqType,
-               RunContext ctx) {
-  mshadow::Stream<xpu>* s = ctx.get_stream<xpu>();
-  mshadow::Tensor<xpu, 2> out = ret->get<xpu, 2, real_t>(s);
-  mshadow::Tensor<xpu, 3> in = src.get<xpu, 3, real_t>(s);
-  out = mshadow::expr::reduce_with_axis<Reducer, false>(in, 1);
-}
-
-// backward function that takes input value of the op
-template<typename xpu>
-void SumMidBackward_(const OutputGrad& out_grad,
-  const EnvArguments& env,
-  TBlob *in_grad,
-  OpReqType req,
-  RunContext ctx) {
-  using namespace mxnet::op;
-  using namespace mshadow::expr;
-  mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
-  CHECK_EQ(in_grad->type_flag_, out_grad.data.type_flag_)
-    << "Unary function only support input/output with the same type";
-  MSHADOW_TYPE_SWITCH(in_grad->type_flag_, DType, {
-    mshadow::Tensor<xpu, 2, DType> ograd = out_grad.data.get<xpu, 2, DType>(s);
-    mshadow::Tensor<xpu, 3, DType> igrad = in_grad->get<xpu, 3, DType>(s);
-    ASSIGN_DISPATCH(igrad, req,
-      broadcast_with_axis(ograd, 0, igrad.shape_[1]));
-  });
-}
-
-inline TShape ReduceMidShape(const TShape& ishape,
-                             const EnvArguments& env)  {
-  CHECK_EQ(ishape.ndim(), 3) << "Input shape must be 3 dimensional.";
-  std::vector<mshadow::index_t> shape;
-  shape.push_back(ishape[0]);
-  shape.push_back(ishape[2]);
-  return TShape(shape.begin(), shape.end());
-}
-
 template<typename xpu, typename Reducer, bool get_mask>
 void ReduceChannel(const TBlob &src,
                    const EnvArguments& env,
@@ -228,7 +184,7 @@ void ReduceAxisImpl_(const TBlob &src,
   bool keepdims) {
   using namespace mshadow::expr;
   mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
-  if (axis == -1) {
+  if (-1 == axis) {
     // Reduce all dimensions if axis == -1
     mshadow::Tensor<xpu, 2> in =
       src.get_with_shape<xpu, 2, real_t>(mshadow::Shape2(1, src.shape_.Size()), s);
@@ -237,29 +193,23 @@ void ReduceAxisImpl_(const TBlob &src,
     out = mshadow::expr::reduce_except_dim<0, Reducer>(in);
     return;
   }
-
-  if (src.shape_.ndim() == 1) {
-    mshadow::Tensor<xpu, 1> in = src.get<xpu, 1, real_t>(s);
-    mshadow::Tensor<xpu, 1> out = ret->get<xpu, 1, real_t>(s);
-    ASSIGN_DISPATCH(out, req,
-      (reduce_keepdim<Reducer, get_mask>(in, axis)));
-  } else {
-    MXNET_RANGE_SWITCH(src.shape_.ndim() - 1, NDIM, {
-      mshadow::Tensor<xpu, NDIM + 1> in = src.get<xpu, NDIM + 1, real_t>(s);
-      if (keepdims) {
-        mshadow::Tensor<xpu, NDIM + 1> out = ret->get<xpu, NDIM + 1, real_t>(s);
-        ASSIGN_DISPATCH(out, req,
-          (reduce_keepdim<Reducer, get_mask>(in, axis)));
-      } else {
-        mshadow::Tensor<xpu, NDIM> out = ret->get<xpu, NDIM, real_t>(s);
-        ASSIGN_DISPATCH(out, req,
-          (reduce_with_axis<Reducer, get_mask>(in, axis)));
-      }
-    });
+  int trailing = 1;
+  int leading = 1;
+  for (int i = 0; i < src.shape_.ndim(); ++i) {
+    if (i < axis) {
+      leading *= src.shape_[i];
+    } else if (i > axis) {
+      trailing *= src.shape_[i];
+    }
   }
+  mshadow::Tensor<xpu, 3> in =
+    src.get_with_shape<xpu, 3, real_t>(mshadow::Shape3(leading, src.shape_[axis], trailing), s);
+  mshadow::Tensor<xpu, 2> out =
+    ret->get_with_shape<xpu, 2, real_t>(mshadow::Shape2(leading, trailing), s);
+  out = mshadow::expr::reduce_with_axis<Reducer, get_mask>(in, 1);
 }
 
-// Broadcast the given axis to the give broadcasting size
+// Broadcast the given axis to the given broadcasting size
 template<typename xpu>
 void BroadcastAxisImpl_(const TBlob &src,
   const EnvArguments& env,
@@ -281,29 +231,21 @@ void BroadcastAxisImpl_(const TBlob &src,
     });
     return;
   }
-
-  MSHADOW_TYPE_SWITCH(ret->type_flag_, DType, {
-    if (ret->shape_.ndim() == 1) {
-      // Always use keepdim if the igrad has dim 1, since we cannot have dim=0
-      mshadow::Tensor<xpu, 1, DType> in = src.get<xpu, 1, DType>(s);
-      mshadow::Tensor<xpu, 1, DType> out = ret->get<xpu, 1, DType>(s);
-      ASSIGN_DISPATCH(out, req,
-        broadcast_keepdim(in, axis, bsize));
-    } else {
-      MXNET_RANGE_SWITCH(ret->shape_.ndim() - 1, NDIM, {
-        mshadow::Tensor<xpu, NDIM + 1, DType> out = ret->get<xpu, NDIM + 1, DType>(s);
-        if (keepdims) {
-          mshadow::Tensor<xpu, NDIM + 1, DType> in = src.get<xpu, NDIM + 1, DType>(s);
-          ASSIGN_DISPATCH(out, req,
-            broadcast_keepdim(in, axis, bsize));
-        } else {
-          mshadow::Tensor<xpu, NDIM, DType> in = src.get<xpu, NDIM, DType>(s);
-          ASSIGN_DISPATCH(out, req,
-            broadcast_with_axis(in, axis - 1, bsize));
-        }
-      });
+  int trailing = 1;
+  int leading = 1;
+  for (int i = 0; i < ret->shape_.ndim(); ++i) {
+    if (i < axis) {
+      leading *= ret->shape_[i];
     }
-  });
+    else if (i > axis) {
+      trailing *= ret->shape_[i];
+    }
+  }
+  mshadow::Tensor<xpu, 2> in =
+    src.get_with_shape<xpu, 2, real_t>(mshadow::Shape2(leading, trailing), s);
+  mshadow::Tensor<xpu, 3> out =
+    ret->get_with_shape<xpu, 3, real_t>(mshadow::Shape3(leading, bsize, trailing), s);
+  out = mshadow::expr::broadcast_with_axis(in, 0, bsize);
 }
 
 // Forward pass of reduce over the given axis
@@ -356,8 +298,6 @@ void BroadcastAxis(const TBlob &src,
   using namespace mshadow::expr;
   BroadcastAxisParam param;
   param.Init(env.kwargs);
-  CHECK(src.shape_.ndim() <= 5) <<
-    "Broadcast support at most 5 dimensions, src_ndim=" << src.shape_.ndim();
   CHECK(param.axis < src.shape_.ndim()) <<
     "axis must be smaller than the source ndim" << param.axis <<
     ", src_ndim=" << src.shape_.ndim();
@@ -379,8 +319,6 @@ void BroadcastAxisGrad_(const OutputGrad& out_grad,
   mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
   BroadcastAxisParam param;
   param.Init(env.kwargs);
-  CHECK(in_grad->shape_.ndim() <= 5) <<
-    "Broadcast support at most 5 dimensions, src_ndim=" << in_grad->shape_.ndim();
   CHECK(param.axis < in_grad->shape_.ndim()) <<
     "axis must be smaller than the source ndim" << param.axis <<
     ", src_ndim=" << in_grad->shape_.ndim();
@@ -427,8 +365,7 @@ MXNET_REGISTER_SIMPLE_OP(max_axis, XPU)
               kNoInplace, kNotRegisterSymbolic)
 .set_shape_function(ReduceAxisShape)
 .describe("Take max of the src in the given axis. axis=-1 means to reduce all the dimensions."
-"The keepdims option has the same meaning as Numpy."
-"Currently we only support source ndim up to 5.");
+"The keepdims option has the same meaning as Numpy.");
 
 // min_axis
 MXNET_REGISTER_SIMPLE_OP(min_axis, XPU)
@@ -437,8 +374,7 @@ MXNET_REGISTER_SIMPLE_OP(min_axis, XPU)
               kNoInplace, kNotRegisterSymbolic)
 .set_shape_function(ReduceAxisShape)
 .describe("Take min of the src in the given axis. axis=-1 means to reduce all the dimensions."
-"The keepdims option has the same meaning as Numpy."
-"Currently we only support source ndim up to 5.");
+"The keepdims option has the same meaning as Numpy.");
 
 // sum_axis
 MXNET_REGISTER_SIMPLE_OP(sum_axis, XPU)
@@ -448,15 +384,7 @@ MXNET_REGISTER_SIMPLE_OP(sum_axis, XPU)
 .set_shape_function(ReduceAxisShape)
 .set_gradient(XPU::kDevMask, SumAxisGrad_<XPU>, kNoInplace)
 .describe("Take sum of the src in the given axis. axis=-1 means to reduce all the dimensions."
-"The keepdims option has the same meaning as Numpy."
-"Currently we only support source ndim up to 5.");
-
-// sum_mid
-MXNET_REGISTER_SIMPLE_OP(sum_mid_internal, XPU)
-.set_function(XPU::kDevMask, ReduceMid<XPU, mshadow::red::sum>, kNoInplace, kRegisterSymbolic)
-.set_shape_function(ReduceMidShape)
-.set_gradient(XPU::kDevMask, SumMidBackward_<XPU>, kNoInplace)
-.describe("(Deprecated! Use sum_axis instead.) Take sum on medium dimension of the 3D src.");
+"The keepdims option has the same meaning as Numpy.");
 
 // argmax channel
 MXNET_REGISTER_SIMPLE_OP(argmax_channel, XPU)
@@ -474,8 +402,7 @@ MXNET_REGISTER_SIMPLE_OP(broadcast_axis, XPU)
 .set_shape_function(BroadcastAxisShape)
 .set_gradient(XPU::kDevMask, BroadcastAxisGrad_<XPU>, kNoInplace)
 .describe("Broadcast data in the given axis to the given size. "
-"The original size of the broadcasting axis must be 1."
-"Currently we only support source ndim up to 5.");
+"The original size of the broadcasting axis must be 1.");
 
 }  // namespace op
 }  // namespace mxnet

@@ -1222,7 +1222,7 @@ def _reduce(data, axis=None, keepdims=False, name=None, typ='sum'):
     else:
         raise TypeError('typ=\'%s\' is not supported.' % typ)
     if axis is None:
-        ret = reduce_func(ret, axis=-1, keepdims=keepdims, name=name)
+        ret = reduce_func(data, axis=-1, keepdims=keepdims, name=name)
         return ret
     elif isinstance(axis, int):
         axis = [axis]

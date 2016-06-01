@@ -208,8 +208,8 @@ def test_reduce():
     sample_num = 1000
     def test_reduce_inner(numpy_reduce_func, nd_reduce_func):
         for i in range(sample_num):
-            ndim = np.random.randint(1, 6)
-            shape = np.random.randint(1, 16, size=ndim)
+            ndim = np.random.randint(1, 8)
+            shape = np.random.randint(1, 11, size=ndim)
             axis_flags = np.random.randint(0, 2, size=ndim)
             axes = []
             for (axis, flag) in enumerate(axis_flags):
@@ -240,8 +240,8 @@ def test_broadcast():
     sample_num = 1000
     def test_broadcast_to():
         for i in range(sample_num):
-            ndim = np.random.randint(1, 6)
-            target_shape = np.random.randint(1, 16, size=ndim)
+            ndim = np.random.randint(1, 8)
+            target_shape = np.random.randint(1, 11, size=ndim)
             shape = target_shape.copy()
             axis_flags = np.random.randint(0, 2, size=ndim)
             axes = []
