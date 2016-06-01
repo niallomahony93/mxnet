@@ -285,13 +285,14 @@ class NDArray(object):
         if len(shape) < len(cur_shape):
             raise ValueError(err_str)
         cur_shape = (1,) * (len(shape) - len(cur_shape)) + cur_shape
-        for i, j in zip(cur_shape, shape):
-            if i != 1 and i != j:
-                raise ValueError(err_str)
-        ret = self.reshape(cur_shape)
-        for axis, (i, j) in enumerate(zip(cur_shape, shape)):
-            if i != j:
-                ret = broadcast_axis(ret, axis=axis, size=j)
+        cur_shape = np.array(cur_shape)
+        shape = np.array(shape)
+        broadcasting_axes = np.nonzero(cur_shape != shape)
+        if (cur_shape[broadcasting_axes] != 1).any():
+            raise ValueError(err_str)
+        ret = self.reshape(tuple(cur_shape))
+        for axis in broadcasting_axes[0]:
+            ret = broadcast_axis(ret, axis=axis, size=shape[axis])
         return ret
     # pylint: enable= undefined-variable
 
