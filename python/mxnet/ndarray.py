@@ -269,6 +269,7 @@ class NDArray(object):
                                          ctypes.byref(handle)))
         return NDArray(handle=handle, writable=self.writable)
 
+    # pylint: disable= undefined-variable
     def broadcast_to(self, shape):
         """ Broadcasting the current NDArray into the given shape. The semantics is
         the same with `numpy`'s broadcasting
@@ -284,14 +285,16 @@ class NDArray(object):
         if len(shape) < len(cur_shape):
             raise ValueError(err_str)
         cur_shape = (1,) * (len(shape) - len(cur_shape)) + cur_shape
-        for i, j in zip(cur_shape, shape):
-            if i != 1 and i != j:
-                raise ValueError(err_str)
-        ret = self.reshape(cur_shape)
-        for axis, (i, j) in enumerate(zip(cur_shape, shape)):
-            if i != j:
-                ret = broadcast_axis(ret, axis=axis, size=j)
+        cur_shape = np.array(cur_shape)
+        shape = np.array(shape)
+        broadcasting_axes = np.nonzero(cur_shape != shape)
+        if (cur_shape[broadcasting_axes] != 1).any():
+            raise ValueError(err_str)
+        ret = self.reshape(tuple(cur_shape))
+        for axis in broadcasting_axes[0]:
+            ret = broadcast_axis(ret, axis=axis, size=shape[axis])
         return ret
+    # pylint: enable= undefined-variable
 
     def wait_to_read(self):
         """Block until all pending writes operations on current NDArray are finished.
@@ -709,6 +712,7 @@ def ones(shape, ctx=None, dtype=mx_real_t):
     return arr
 
 # pylint: disable=too-many-locals, invalid-name, no-member, protected-access, undefined-variable
+# pylint: disable=too-many-branches
 def _reduce(arr, axis=None, keepdims=False, typ='sum'):
     """ Reduce the array along given axises. The semantic strictly follows numpy's document.
 
@@ -736,22 +740,17 @@ def _reduce(arr, axis=None, keepdims=False, typ='sum'):
         raise TypeError('typ=\'%s\' is not supported.' % typ)
     ndim = len(arr.shape)
     if axis is None:
-        axis = -1#list(range(ndim))
-        ret = reduce_func(arr, axis=-1, keepdims=keepdims)
-        if 1 == len(ret.shape):
-            return ret.asnumpy()[0]
-        else:
-            return ret
+        axis = list(range(ndim))
     elif isinstance(axis, int):
         axis = [axis]
-    elif type(axis) in [tuple, list]:
+    elif isinstance(axis, tuple) or isinstance(axis, list):
         axis = list(axis)
     else:
         raise TypeError('\'%s\' object is not supported as axis.' % type(axis).__name__)
 
     if list(range(ndim)) == axis:
         ret = reduce_func(arr, axis=-1, keepdims=keepdims)
-        if (1,) == ret.shape:
+        if not keepdims:
             return ret.asnumpy()[0]
         else:
             return ret
@@ -768,11 +767,9 @@ def _reduce(arr, axis=None, keepdims=False, typ='sum'):
     ret = arr
     for i in reversed(axis):
         ret = reduce_func(ret, axis=i, keepdims=keepdims)
-    if (1,) == ret.shape:
-        return ret.asnumpy()[0]
-    else:
-        return ret
+    return ret
 # pylint: enable=too-many-locals, invalid-name, no-member, protected-access, undefined-variable
+# pylint: enable=too-many-branches
 
 def sum(arr, axis=None, keepdims=False):
     """ Sum the array along given axises. The semantic strictly follows numpy's document.
@@ -794,7 +791,8 @@ def sum(arr, axis=None, keepdims=False):
     return _reduce(arr=arr, axis=axis, keepdims=keepdims, typ='sum')
 
 def max(arr, axis=None, keepdims=False):
-    """ Take the maximum of the array along given axises. The semantic strictly follows numpy's document.
+    """ Take the maximum of the array along given axises.
+    The semantic strictly follows numpy's document.
 
     Parameters
     ----------
@@ -813,7 +811,8 @@ def max(arr, axis=None, keepdims=False):
     return _reduce(arr=arr, axis=axis, keepdims=keepdims, typ='max')
 
 def min(arr, axis=None, keepdims=False):
-    """ Take the minimum of the array along given axises. The semantic strictly follows numpy's document.
+    """ Take the minimum of the array along given axises.
+    The semantic strictly follows numpy's document.
 
     Parameters
     ----------
@@ -1121,7 +1120,7 @@ def _make_ndarray_function(handle):
                                        c_array(ctypes.c_char_p, [])))
         return out
 
-    def unary_ndarray_function(src, out=None, **kwargs):
+    def unary_ndarray_function(src, out=None, *args, **kwargs):
         """internal NDArray function"""
         if out:
             if isinstance(out, NDArray) == False:
@@ -1135,11 +1134,11 @@ def _make_ndarray_function(handle):
         check_call(_LIB.MXFuncInvokeEx( \
                 handle, \
                 c_array(NDArrayHandle, (src.handle,)), \
-                c_array(mx_float, ()), \
+                c_array(mx_float, [args[i] for i in scalar_range]), \
                 c_array(NDArrayHandle, (out.handle,)), \
                 ctypes.c_int(len(kwargs)), \
-                c_array(ctypes.c_char_p, kwargs.keys()), \
-                c_array(ctypes.c_char_p, [str(i) for i in kwargs.values()])))
+                c_array(ctypes.c_char_p, [key.encode('ascii') for key in kwargs.keys()]), \
+                c_array(ctypes.c_char_p, [str(i).encode('ascii') for i in kwargs.values()])))
         return out
 
     def generic_ndarray_function(*args, **kwargs):
@@ -1176,8 +1175,8 @@ def _make_ndarray_function(handle):
                 c_array(mx_float, [args[i] for i in scalar_range]), \
                 c_array(NDArrayHandle, [v.handle for v in mutate_vars]), \
                 ctypes.c_int(len(kwargs)), \
-                c_array(ctypes.c_char_p, kwargs.keys()), \
-                c_array(ctypes.c_char_p, [str(i) for i in kwargs.values()])))
+                c_array(ctypes.c_char_p, [key.encode('ascii') for key in kwargs.keys()]), \
+                c_array(ctypes.c_char_p, [str(i).encode('ascii') for i in kwargs.values()])))
         if n_mutate_vars == 1:
             return mutate_vars[0]
         else:

@@ -2,6 +2,7 @@ import os
 import mxnet as mx
 import numpy as np
 import pickle as pkl
+from check_utils import _np_reduce
 
 def reldiff(a, b):
     diff = np.sum(np.abs(a - b))
@@ -225,11 +226,15 @@ def test_reduce():
             ndarray_ret = nd_reduce_func(arr=mx.nd.array(dat), axis=axes, keepdims=keepdims)
             if type(ndarray_ret) is mx.ndarray.NDArray:
                 ndarray_ret = ndarray_ret.asnumpy()
+            assert ndarray_ret.shape == numpy_ret.shape
             err = np.square(ndarray_ret - numpy_ret).mean()
             assert err < 1E-4
-    test_reduce_inner(np.sum, mx.nd.sum)
-    test_reduce_inner(np.max, mx.nd.max)
-    test_reduce_inner(np.min, mx.nd.min)
+    test_reduce_inner(lambda data, axis, keepdims:_np_reduce(data, axis, keepdims, np.sum),
+                      mx.nd.sum)
+    test_reduce_inner(lambda data, axis, keepdims:_np_reduce(data, axis, keepdims, np.max),
+                      mx.nd.max)
+    test_reduce_inner(lambda data, axis, keepdims:_np_reduce(data, axis, keepdims, np.min),
+                      mx.nd.min)
 
 def test_broadcast():
     sample_num = 1000
@@ -244,7 +249,7 @@ def test_broadcast():
                 if flag:
                     shape[axis] = 1
             dat = np.random.rand(*shape) - 0.5
-            numpy_ret = np.broadcast_to(dat, shape=shape)
+            numpy_ret = dat
             ndarray_ret = mx.nd.array(dat).broadcast_to(shape=target_shape)
             if type(ndarray_ret) is mx.ndarray.NDArray:
                 ndarray_ret = ndarray_ret.asnumpy()
