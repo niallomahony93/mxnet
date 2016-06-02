@@ -236,8 +236,7 @@ void BroadcastAxisImpl_(const TBlob &src,
   for (int i = 0; i < ret->shape_.ndim(); ++i) {
     if (i < axis) {
       leading *= ret->shape_[i];
-    }
-    else if (i > axis) {
+    } else if (i > axis) {
       trailing *= ret->shape_[i];
     }
   }
