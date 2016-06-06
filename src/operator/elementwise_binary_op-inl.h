@@ -209,6 +209,140 @@ void MinimumBackward_(const OutputGrad& out_grad,
     });
 }
 
+template<typename xpu, int calctype, typename OP>
+void ComplexBinaryForward_(const TBlob& lhs,
+  const TBlob& rhs,
+  const EnvArguments& env,
+  TBlob *ret,
+  OpReqType req,
+  RunContext ctx) {
+  using namespace mshadow::expr;
+  using namespace mshadow::op::complex;
+  mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
+  CHECK_EQ(ret->type_flag_, lhs.type_flag_)
+    << "Complex Binary function only support input/output with the same type";
+  CHECK_EQ(ret->type_flag_, rhs.type_flag_)
+    << "Complex Binary function only support input/output with the same type";
+  MSHADOW_TYPE_SWITCH(ret->type_flag_, DType, {
+    mshadow::Tensor<xpu, 2, DType> out = ret->FlatTo2D<xpu, DType>(s);
+    ASSIGN_DISPATCH(out, req,
+      (ComplexF<calctype, OP>(lhs.FlatTo2D<xpu, DType>(s),
+      rhs.FlatTo2D<xpu, DType>(s))));
+  });
+}
+
+template<int calctype>
+inline TShape ComplexBinaryForwardShape_(const TShape& lhs,
+  const TShape& rhs, const EnvArguments& env) {
+  using namespace mshadow::op::complex;
+  if (calctype != kBinaryRC) {
+    CHECK_EQ(lhs[lhs.ndim() - 1] % 2, 0) <<
+      "Last dimension of complex tensor must be even, last dim of lhs:" << lhs[lhs.ndim() - 1];
+  }
+  if (calctype != kBinaryCR) {
+    CHECK_EQ(rhs[rhs.ndim() - 1] % 2, 0) <<
+      "Last dimension of complex tensor must be even, last dim of rhs:" << rhs[rhs.ndim() - 1];
+  }
+  std::vector<mshadow::index_t> shape;
+  for (index_t i = 0; i < lhs.ndim(); ++i) {
+    shape.push_back(std::max(lhs[i], rhs[i]));
+  }
+  return TShape(shape.begin(), shape.end());
+}
+
+template<typename xpu, int calctype>
+void ComplexMulBackward_(const OutputGrad& out_grad,
+  const Input0& lhs,
+  const Input1& rhs,
+  const EnvArguments& env,
+  TBlob* lhs_grad,
+  TBlob* rhs_grad,
+  OpReqType req_lhs_grad,
+  OpReqType req_rhs_grad,
+  RunContext ctx) {
+  using namespace mshadow;
+  using namespace mshadow::expr;
+  using namespace mshadow::op;
+  using namespace mshadow::op::complex;
+  Stream<xpu> *s = ctx.get_stream<xpu>();
+  MSHADOW_TYPE_SWITCH(lhs_grad->type_flag_, DType, {
+    Tensor<xpu, 2, DType> mout_grad = out_grad.data.FlatTo2D<xpu, DType>(s);
+    Tensor<xpu, 2, DType> mlhs_data = lhs.data.FlatTo2D<xpu, DType>(s);
+    Tensor<xpu, 2, DType> mrhs_data = rhs.data.FlatTo2D<xpu, DType>(s);
+    Tensor<xpu, 2, DType> mlhs_grad = lhs_grad->FlatTo2D<xpu, DType>(s);
+    Tensor<xpu, 2, DType> mrhs_grad = rhs_grad->FlatTo2D<xpu, DType>(s);
+    if (kBinaryCC == calctype) {
+      CHECK_NE(req_rhs_grad, kWriteInplace);
+      ASSIGN_DISPATCH(mlhs_grad, req_lhs_grad, complex_mul_cc (conj(mrhs_data), mout_grad));
+      ASSIGN_DISPATCH(mrhs_grad, req_rhs_grad, complex_mul_cc(conj(mlhs_data), mout_grad));
+    } else if (kBinaryCR == calctype) {
+      CHECK_NE(req_rhs_grad, kWriteInplace);
+      ASSIGN_DISPATCH(mlhs_grad, req_lhs_grad, complex_mul_rc(mrhs_data, mout_grad));
+      ASSIGN_DISPATCH(mrhs_grad, req_rhs_grad, complex_sum_real_imag(mlhs_data * mout_grad));
+    } else if (kBinaryRC == calctype) {
+      CHECK_NE(req_lhs_grad, kWriteInplace);
+      ASSIGN_DISPATCH(mlhs_grad, req_lhs_grad, complex_sum_real_imag(mrhs_data * mout_grad));
+      ASSIGN_DISPATCH(mrhs_grad, req_rhs_grad, complex_mul_rc(mlhs_data, mout_grad));
+    }
+    else {
+      LOG(FATAL) << "ComplexMulBackward: Unsupported Calculation Type: calctype=" << calctype;
+    }
+    
+  });
+}
+
+template<typename xpu, int calctype>
+void ComplexDivBackward_(const OutputGrad& out_grad,
+  const Input0& lhs,
+  const Input1& rhs,
+  const EnvArguments& env,
+  TBlob* lhs_grad,
+  TBlob* rhs_grad,
+  OpReqType req_lhs_grad,
+  OpReqType req_rhs_grad,
+  RunContext ctx) {
+  using namespace mshadow;
+  using namespace mshadow::expr;
+  using namespace mshadow::op;
+  using namespace mshadow::op::complex;
+  Stream<xpu> *s = ctx.get_stream<xpu>();
+  MSHADOW_TYPE_SWITCH(lhs_grad->type_flag_, DType, {
+    Tensor<xpu, 2, DType> mout_grad = out_grad.data.FlatTo2D<xpu, DType>(s);
+    Tensor<xpu, 2, DType> mlhs_data = lhs.data.FlatTo2D<xpu, DType>(s);
+    Tensor<xpu, 2, DType> mrhs_data = rhs.data.FlatTo2D<xpu, DType>(s);
+    Tensor<xpu, 2, DType> mlhs_grad = lhs_grad->FlatTo2D<xpu, DType>(s);
+    Tensor<xpu, 2, DType> mrhs_grad = rhs_grad->FlatTo2D<xpu, DType>(s);
+    if (kBinaryCC == calctype) {
+      CHECK_NE(req_rhs_grad, kWriteInplace);
+      ASSIGN_DISPATCH(mlhs_grad, req_lhs_grad,
+        complex_div_cr(complex_mul_cc(mrhs_data, mout_grad),
+        complex_abs_square(mrhs_data)));
+      ASSIGN_DISPATCH(mrhs_grad, req_rhs_grad,
+        complex_div_cr(complex_mul_cc(mlhs_data, conj(mout_grad)) -
+        complex_mul_cr(mrhs_data * scalar<DType>(2),
+        complex_sum_real_imag(complex_div_cc(mlhs_data, mrhs_data) * mout_grad)),
+        complex_abs_square(mrhs_data)));
+    } else if (kBinaryCR == calctype) {
+      CHECK_NE(req_rhs_grad, kWriteInplace);
+      ASSIGN_DISPATCH(mlhs_grad, req_lhs_grad, complex_div_cr(mout_grad, mrhs_data));
+      ASSIGN_DISPATCH(mrhs_grad, req_rhs_grad, 
+        F<mshadow_op::negation>(complex_sum_real_imag(mlhs_data * mout_grad)) /
+        F<mshadow_op::square>(mrhs_data));
+    } else if (kBinaryRC == calctype) {
+      CHECK_NE(req_lhs_grad, kWriteInplace);
+      ASSIGN_DISPATCH(mlhs_grad, req_lhs_grad, complex_sum_real_imag(mrhs_data * conj(mout_grad)) /
+        complex_abs_square(mrhs_data));
+      ASSIGN_DISPATCH(mrhs_grad, req_rhs_grad, 
+        complex_div_cr(complex_mul_rc(mlhs_data, conj(mout_grad)) -
+        complex_mul_cr(mrhs_data * scalar<DType>(2),
+        complex_sum_real_imag(complex_div_rc(mlhs_data, mrhs_data) * mout_grad)),
+        complex_abs_square(mrhs_data)));
+    } else {
+      LOG(FATAL) << "ComplexDivBackward: Unsupported Calculation Type: calctype=" << calctype;
+    }
+  });
+}
+
 
 MXNET_REGISTER_SIMPLE_OP(_plus, XPU)
 .set_symbol_op_name("_Plus")
@@ -251,6 +385,54 @@ MXNET_REGISTER_SIMPLE_OP(_minimum, XPU)
 .set_function(XPU::kDevMask, BinaryForward_<XPU, mshadow_op::minimum>, kInplaceLhsOut)
 .set_gradient(XPU::kDevMask, MinimumBackward_<XPU>, kInplaceOutLhs)
 .describe("Elementwise min of lhs by rhs");
+
+MXNET_REGISTER_SIMPLE_OP(complex_mul_cc, XPU)
+.set_shape_function(ComplexBinaryForwardShape_<mshadow::op::complex::kBinaryCC>)
+.set_function(XPU::kDevMask, ComplexBinaryForward_<XPU, mshadow::op::complex::kBinaryCC,
+mshadow::op::complex::mul>, kInplaceLhsOut)
+.set_gradient(XPU::kDevMask, ComplexMulBackward_<XPU,
+mshadow::op::complex::kBinaryCC>, kInplaceOutLhs)
+.describe("Multiply lhs (complex) and rhs (complex)");
+
+MXNET_REGISTER_SIMPLE_OP(complex_mul_cr, XPU)
+.set_shape_function(ComplexBinaryForwardShape_<mshadow::op::complex::kBinaryCR>)
+.set_function(XPU::kDevMask, ComplexBinaryForward_<XPU, mshadow::op::complex::kBinaryCR,
+mshadow::op::complex::mul>, kInplaceLhsOut)
+.set_gradient(XPU::kDevMask, ComplexMulBackward_<XPU,
+mshadow::op::complex::kBinaryCR>, kInplaceOutLhs)
+.describe("Multiply lhs (complex) and rhs (real)");
+
+MXNET_REGISTER_SIMPLE_OP(complex_mul_rc, XPU)
+.set_shape_function(ComplexBinaryForwardShape_<mshadow::op::complex::kBinaryRC>)
+.set_function(XPU::kDevMask, ComplexBinaryForward_<XPU, mshadow::op::complex::kBinaryRC,
+mshadow::op::complex::mul>, kNoInplace)
+.set_gradient(XPU::kDevMask, ComplexMulBackward_<XPU,
+mshadow::op::complex::kBinaryRC>, kNoInplace)
+.describe("Multiply lhs (real) and rhs (complex)");
+
+MXNET_REGISTER_SIMPLE_OP(complex_div_cc, XPU)
+.set_shape_function(ComplexBinaryForwardShape_<mshadow::op::complex::kBinaryCC>)
+.set_function(XPU::kDevMask, ComplexBinaryForward_<XPU, mshadow::op::complex::kBinaryCC,
+mshadow::op::complex::div>, kInplaceLhsOut)
+.set_gradient(XPU::kDevMask, ComplexDivBackward_<XPU,
+mshadow::op::complex::kBinaryCC>, kInplaceOutLhs)
+.describe("Divide lhs (complex) and rhs (complex)");
+
+MXNET_REGISTER_SIMPLE_OP(complex_div_cr, XPU)
+.set_shape_function(ComplexBinaryForwardShape_<mshadow::op::complex::kBinaryCR>)
+.set_function(XPU::kDevMask, ComplexBinaryForward_<XPU, mshadow::op::complex::kBinaryCR,
+mshadow::op::complex::div>, kInplaceLhsOut)
+.set_gradient(XPU::kDevMask, ComplexDivBackward_<XPU,
+mshadow::op::complex::kBinaryCR>, kInplaceOutLhs)
+.describe("Divide lhs (complex) and rhs (real)");
+
+MXNET_REGISTER_SIMPLE_OP(complex_div_rc, XPU)
+.set_shape_function(ComplexBinaryForwardShape_<mshadow::op::complex::kBinaryRC>)
+.set_function(XPU::kDevMask, ComplexBinaryForward_<XPU, mshadow::op::complex::kBinaryRC,
+mshadow::op::complex::div>, kNoInplace)
+.set_gradient(XPU::kDevMask, ComplexDivBackward_<XPU,
+mshadow::op::complex::kBinaryRC>, kNoInplace)
+.describe("Divide lhs (real) and rhs (complex)");
 
 }  // namespace op
 }  // namespace mxnet
