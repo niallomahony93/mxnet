@@ -81,6 +81,90 @@ void UnaryBackwardUseOut_(const OutputGrad& out_grad,
     });
 }
 
+// Compute conj(x)
+template<typename xpu>
+void ConjForward_(const TBlob& src,
+  const EnvArguments& env,
+  TBlob *ret,
+  OpReqType req,
+  RunContext ctx) {
+  using namespace mxnet::op;
+  using namespace mshadow::expr;
+  mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
+  CHECK_EQ(ret->type_flag_, src.type_flag_)
+    << "Unary function only support input/output with the same type";
+  MSHADOW_TYPE_SWITCH(ret->type_flag_, DType, {
+    mshadow::Tensor<xpu, 2, DType> out = ret->FlatTo2D<xpu, DType>(s);
+    ASSIGN_DISPATCH(out, req, conj(src.FlatTo2D<xpu, DType>(s)));
+  });
+}
+
+// backward function of the complex conjugate operator
+template<typename xpu>
+void ConjBackward_(const OutputGrad& out_grad,
+  const EnvArguments& env,
+  TBlob* in_grad,
+  OpReqType req,
+  RunContext ctx) {
+  using namespace mxnet::op;
+  using namespace mshadow::expr;
+  mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
+  CHECK_EQ(in_grad->type_flag_, out_grad.data.type_flag_)
+    << "Unary function only support input/output with the same type";
+  MSHADOW_TYPE_SWITCH(in_grad->type_flag_, DType, {
+    mshadow::Tensor<xpu, 2, DType> igrad = in_grad->FlatTo2D<xpu, DType>(s);
+    ASSIGN_DISPATCH(igrad, req, conj(out_grad.data.FlatTo2D<xpu, DType>(s)));
+  });
+}
+
+// Compute the square of the absolute value of the complex tensor A: |A|^2
+template<typename xpu>
+void ComplexAbsSquareForward_(const TBlob& src,
+  const EnvArguments& env,
+  TBlob *ret,
+  OpReqType req,
+  RunContext ctx) {
+  using namespace mxnet::op;
+  using namespace mshadow::expr;
+  mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
+  CHECK_EQ(ret->type_flag_, src.type_flag_)
+    << "Unary function only support input/output with the same type";
+  MSHADOW_TYPE_SWITCH(ret->type_flag_, DType, {
+    mshadow::Tensor<xpu, 2, DType> out = ret->FlatTo2D<xpu, DType>(s);
+    ASSIGN_DISPATCH(out, req, complex_abs_square(src.FlatTo2D<xpu, DType>(s)));
+  });
+}
+
+inline TShape ComplexAbsSquareShape_(const TShape& ishape,
+  const EnvArguments& env) {
+  TShape ret = ishape;
+  ret[ret.ndim() - 1] /= 2;
+  return ret;
+}
+
+// backward function of the complex_abs_square operator
+template<typename xpu>
+void ComplexAbsSquareBackward_(const OutputGrad& out_grad,
+  const Input0& in_data0,
+  const EnvArguments& env,
+  TBlob* in_grad,
+  OpReqType req,
+  RunContext ctx) {
+  using namespace mxnet::op;
+  using namespace mshadow::expr;
+  mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
+  CHECK_EQ(in_grad->type_flag_, out_grad.data.type_flag_)
+    << "Unary function only support input/output with the same type";
+  CHECK_EQ(in_grad->type_flag_, in_data0.data.type_flag_)
+    << "Unary function only support input/output with the same type";
+  MSHADOW_TYPE_SWITCH(in_grad->type_flag_, DType, {
+    mshadow::Tensor<xpu, 2, DType> igrad = in_grad->FlatTo2D<xpu, DType>(s);
+    mshadow::Tensor<xpu, 2, DType> ograd = out_grad.data.FlatTo2D<xpu, DType>(s);
+    mshadow::Tensor<xpu, 2, DType> idata = in_data0.data.FlatTo2D<xpu, DType>(s);
+    ASSIGN_DISPATCH(igrad, req, scalar<DType>(2) * complex_mul_rc(ograd, idata));
+  });
+}
+
 MXNET_REGISTER_SIMPLE_OP(abs, XPU)
 .set_function(XPU::kDevMask, UnaryForward_<XPU, mshadow_op::abs>, kInplaceInOut)
 .set_gradient(XPU::kDevMask, UnaryBackwardUseIn_<XPU, mshadow_op::sign>, kInplaceOutIn)
@@ -143,6 +227,17 @@ MXNET_REGISTER_SIMPLE_OP(clip_zero_one, XPU)
 .set_function(XPU::kDevMask, UnaryForward_<XPU, mshadow_op::clip_zero_one>, kInplaceInOut)
 .set_gradient(XPU::kDevMask, UnaryBackwardUseIn_<XPU, mshadow_op::clip_zero_one>, kInplaceOutIn)
 .describe("Clip the src to 0 and 1");
+// conj
+MXNET_REGISTER_SIMPLE_OP(conj, XPU)
+.set_function(XPU::kDevMask, ConjForward_<XPU>, kInplaceInOut)
+.set_gradient(XPU::kDevMask, ConjBackward_<XPU>, kInplaceOutIn)
+.describe("Take complex conjugate of the src");
+// complex_abs_square
+MXNET_REGISTER_SIMPLE_OP(complex_abs_square, XPU)
+.set_shape_function(ComplexAbsSquareShape_)
+.set_function(XPU::kDevMask, ComplexAbsSquareForward_<XPU>, kNoInplace)
+.set_gradient(XPU::kDevMask, ComplexAbsSquareBackward_<XPU>, kNoInplace)
+.describe("Take square of the absolute value of the src, which is a complex tensor");
 
 }  // namespace op
 }  // namespace mxnet
