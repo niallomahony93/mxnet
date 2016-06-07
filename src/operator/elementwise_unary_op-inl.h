@@ -225,7 +225,7 @@ MXNET_REGISTER_SIMPLE_OP(sin, XPU)
 // clip_zero_one
 MXNET_REGISTER_SIMPLE_OP(clip_zero_one, XPU)
 .set_function(XPU::kDevMask, UnaryForward_<XPU, mshadow_op::clip_zero_one>, kInplaceInOut)
-.set_gradient(XPU::kDevMask, UnaryBackwardUseIn_<XPU, mshadow_op::clip_zero_one>, kInplaceOutIn)
+.set_gradient(XPU::kDevMask, UnaryBackwardUseIn_<XPU, mshadow_op::clip_zero_one_grad>, kInplaceOutIn)
 .describe("Clip the src to 0 and 1");
 // conj
 MXNET_REGISTER_SIMPLE_OP(conj, XPU)
