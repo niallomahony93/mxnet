@@ -107,7 +107,7 @@ void L2Norm(const TBlob &src,
   mshadow::Tensor<xpu, 1> in =
       src.get_with_shape<xpu, 1, real_t>(mshadow::Shape1(src.shape_.Size()), s);
   mshadow::VectorDot(out, in, in);
-  out = mshadow::expr::F<mxnet::op::mshadow_op::square_root>(out);
+  ASSIGN_DISPATCH(out, req, mshadow::expr::F<mxnet::op::mshadow_op::square_root>(out));
 }
 
 template<typename xpu, typename Reducer>
@@ -120,7 +120,7 @@ void Reduce(const TBlob &src,
   mshadow::Tensor<xpu, 1> out = ret->get<xpu, 1, real_t>(s);
   mshadow::Tensor<xpu, 2> in =
       src.get_with_shape<xpu, 2, real_t>(mshadow::Shape2(1, src.shape_.Size()), s);
-  out = mshadow::expr::reduce_except_dim<0, Reducer>(in);
+  ASSIGN_DISPATCH(out, req, (mshadow::expr::reduce_except_dim<0, Reducer>(in)));
 }
 
 // backward function that takes input value of the op
@@ -143,7 +143,7 @@ void SumBackward_(const OutputGrad& scale,
   });
 }
 
-template<typename xpu, typename Reducer, bool get_mask>
+template<typename xpu, typename Reducer>
 void ReduceChannel(const TBlob &src,
                    const EnvArguments& env,
                    TBlob *ret,
@@ -159,7 +159,8 @@ void ReduceChannel(const TBlob &src,
   Tensor<xpu, 3> in = src.get_with_shape<xpu, 3, real_t>(
     Shape3(src.shape_[0], src.shape_[1], src.Size()/src.shape_[0]/src.shape_[1]),
     s);
-  out = reduce_with_axis<Reducer, get_mask>(in, 1);
+  CHECK(req != kAddTo) << "AddTo is not supported";
+  ASSIGN_DISPATCH(out, req, (reduce_with_axis<Reducer, true>(in, 1)));
 }
 
 // return a shape of ReduceChannel output
@@ -190,7 +191,7 @@ void ReduceAxisImpl_(const TBlob &src,
       src.get_with_shape<xpu, 2, real_t>(mshadow::Shape2(1, src.shape_.Size()), s);
     mshadow::Tensor<xpu, 1> out =
       ret->get_with_shape<xpu, 1, real_t>(mshadow::Shape1(ret->shape_.Size()), s);
-    out = mshadow::expr::reduce_except_dim<0, Reducer>(in);
+    ASSIGN_DISPATCH(out, req, (reduce_except_dim<0, Reducer>(in)));
     return;
   }
   int trailing = 1;
@@ -202,11 +203,37 @@ void ReduceAxisImpl_(const TBlob &src,
       trailing *= src.shape_[i];
     }
   }
-  mshadow::Tensor<xpu, 3> in =
-    src.get_with_shape<xpu, 3, real_t>(mshadow::Shape3(leading, src.shape_[axis], trailing), s);
-  mshadow::Tensor<xpu, 2> out =
-    ret->get_with_shape<xpu, 2, real_t>(mshadow::Shape2(leading, trailing), s);
-  out = mshadow::expr::reduce_with_axis<Reducer, get_mask>(in, 1);
+  if (get_mask) {
+    // If get_mask is on, we have to use the slower `reduce_with_axis` since reduce_except_dim does not support the flag.
+    mshadow::Tensor<xpu, 3> in =
+      src.get_with_shape<xpu, 3, real_t>(mshadow::Shape3(leading, src.shape_[axis], trailing), s);
+    mshadow::Tensor<xpu, 2> out =
+      ret->get_with_shape<xpu, 2, real_t>(mshadow::Shape2(leading, trailing), s);
+    CHECK(req != kAddTo) << "AddTo is not supported for `get_mask = true`";
+    ASSIGN_DISPATCH(out, req, (reduce_with_axis<Reducer, true>(in, 1)));
+    return;
+  }
+  if (1 == leading) {
+    mshadow::Tensor<xpu, 2> in =
+      src.get_with_shape<xpu, 2, real_t>(mshadow::Shape2(src.shape_[axis], trailing), s);
+    mshadow::Tensor<xpu, 1> out =
+      ret->get_with_shape<xpu, 1, real_t>(mshadow::Shape1(trailing), s);
+    ASSIGN_DISPATCH(out, req, (reduce_except_dim<1, Reducer>(in)));
+  } else if (1 == trailing) {
+    mshadow::Tensor<xpu, 2> in =
+      src.get_with_shape<xpu, 2, real_t>(mshadow::Shape2(leading, src.shape_[axis]), s);
+    mshadow::Tensor<xpu, 1> out =
+      ret->get_with_shape<xpu, 1, real_t>(mshadow::Shape1(leading), s);
+    ASSIGN_DISPATCH(out, req, (reduce_except_dim<0, Reducer>(in)));
+  } else {
+    mshadow::Tensor<xpu, 3> in =
+      src.get_with_shape<xpu, 3, real_t>(mshadow::Shape3(leading, src.shape_[axis], trailing), s);
+    mshadow::Tensor<xpu, 1> out =
+      ret->get_with_shape<xpu, 1, real_t>(mshadow::Shape1(leading * trailing), s);
+    ASSIGN_DISPATCH(out, req, 
+      (reduce_except_dim<0, Reducer>(reshape(swapaxis<2, 1>(in),
+      mshadow::Shape2(leading * trailing, src.shape_[axis])))));
+  }
 }
 
 // Broadcast the given axis to the given broadcasting size
@@ -244,7 +271,7 @@ void BroadcastAxisImpl_(const TBlob &src,
     src.get_with_shape<xpu, 2, real_t>(mshadow::Shape2(leading, trailing), s);
   mshadow::Tensor<xpu, 3> out =
     ret->get_with_shape<xpu, 3, real_t>(mshadow::Shape3(leading, bsize, trailing), s);
-  out = mshadow::expr::broadcast_with_axis(in, 0, bsize);
+  ASSIGN_DISPATCH(out, req, mshadow::expr::broadcast_with_axis(in, 0, bsize));
 }
 
 // Forward pass of reduce over the given axis
@@ -386,7 +413,7 @@ MXNET_REGISTER_SIMPLE_OP(sum_axis, XPU)
 
 // argmax channel
 MXNET_REGISTER_SIMPLE_OP(argmax_channel, XPU)
-.set_function(XPU::kDevMask, ReduceChannel<XPU, mshadow::red::maximum, true>,
+.set_function(XPU::kDevMask, ReduceChannel<XPU, mshadow::red::maximum>,
               kNoInplace, kNotRegisterSymbolic)
 .set_shape_function(ReduceChannelShape)
 .describe("Take argmax indices of each channel of the src."
