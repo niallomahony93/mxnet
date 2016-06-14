@@ -103,11 +103,14 @@ void L2Norm(const TBlob &src,
             OpReqType req,
             RunContext ctx) {
   mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
-  mshadow::Tensor<xpu, 1> out = ret->get<xpu, 1, real_t>(s);
-  mshadow::Tensor<xpu, 1> in =
-      src.get_with_shape<xpu, 1, real_t>(mshadow::Shape1(src.shape_.Size()), s);
-  mshadow::VectorDot(out, in, in);
-  ASSIGN_DISPATCH(out, req, mshadow::expr::F<mxnet::op::mshadow_op::square_root>(out));
+  CHECK_EQ(src.type_flag_, ret->type_flag_);
+  MSHADOW_REAL_TYPE_SWITCH(src.type_flag_, DType, {
+    mshadow::Tensor<xpu, 1, DType> out = ret->get<xpu, 1, DType>(s);
+    mshadow::Tensor<xpu, 1, DType> in =
+      src.get_with_shape<xpu, 1, DType>(mshadow::Shape1(src.shape_.Size()), s);
+    mshadow::VectorDot(out, in, in);
+    ASSIGN_DISPATCH(out, req, mshadow::expr::F<mxnet::op::mshadow_op::square_root>(out));
+  });
 }
 
 template<typename xpu, typename Reducer>
@@ -117,10 +120,13 @@ void Reduce(const TBlob &src,
             OpReqType req,
             RunContext ctx) {
   mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
-  mshadow::Tensor<xpu, 1> out = ret->get<xpu, 1, real_t>(s);
-  mshadow::Tensor<xpu, 2> in =
-      src.get_with_shape<xpu, 2, real_t>(mshadow::Shape2(1, src.shape_.Size()), s);
-  ASSIGN_DISPATCH(out, req, (mshadow::expr::reduce_except_dim<0, Reducer>(in)));
+  CHECK_EQ(src.type_flag_, ret->type_flag_);
+  MSHADOW_REAL_TYPE_SWITCH(src.type_flag_, DType, {
+    mshadow::Tensor<xpu, 1, DType> out = ret->get<xpu, 1, DType>(s);
+    mshadow::Tensor<xpu, 2, DType> in =
+      src.get_with_shape<xpu, 2, DType>(mshadow::Shape2(1, src.shape_.Size()), s);
+    ASSIGN_DISPATCH(out, req, (mshadow::expr::reduce_except_dim<0, Reducer>(in)));
+  });
 }
 
 // backward function that takes input value of the op
@@ -135,7 +141,7 @@ void SumBackward_(const OutputGrad& scale,
   mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
   CHECK_EQ(in_grad->type_flag_, scale.data.type_flag_)
     << "Unary function only support input/output with the same type";
-  MSHADOW_TYPE_SWITCH(in_grad->type_flag_, DType, {
+  MSHADOW_REAL_TYPE_SWITCH(in_grad->type_flag_, DType, {
       mshadow::Tensor<xpu, 1, DType> mscale = scale.data.get<xpu, 1, DType>(s);
       mshadow::Tensor<xpu, 2, DType> igrad = in_grad->FlatTo2D<xpu, DType>(s);
       ASSIGN_DISPATCH(igrad, req,
@@ -153,14 +159,17 @@ void ReduceChannel(const TBlob &src,
   using namespace mshadow;
   using namespace mshadow::expr;
   Stream<xpu> *s = ctx.get_stream<xpu>();
-  Tensor<xpu, 2> out = ret->get_with_shape<xpu, 2, real_t>(
-    Shape2(src.shape_[0], src.Size()/src.shape_[0]/src.shape_[1]),
+  CHECK_EQ(src.type_flag_, ret->type_flag_);
+  MSHADOW_REAL_TYPE_SWITCH(src.type_flag_, DType, {
+    Tensor<xpu, 2, DType> out = ret->get_with_shape<xpu, 2, DType>(
+    Shape2(src.shape_[0], src.Size() / src.shape_[0] / src.shape_[1]),
     s);
-  Tensor<xpu, 3> in = src.get_with_shape<xpu, 3, real_t>(
-    Shape3(src.shape_[0], src.shape_[1], src.Size()/src.shape_[0]/src.shape_[1]),
-    s);
-  CHECK(req != kAddTo) << "AddTo is not supported";
-  ASSIGN_DISPATCH(out, req, (reduce_with_axis<Reducer, true>(in, 1)));
+    Tensor<xpu, 3, DType> in = src.get_with_shape<xpu, 3, DType>(
+      Shape3(src.shape_[0], src.shape_[1], src.Size() / src.shape_[0] / src.shape_[1]),
+      s);
+    CHECK(req != kAddTo) << "AddTo is not supported";
+    ASSIGN_DISPATCH(out, req, (reduce_with_axis<Reducer, true>(in, 1)));
+  });
 }
 
 // return a shape of ReduceChannel output
@@ -185,13 +194,16 @@ void ReduceAxisImpl_(const TBlob &src,
   bool keepdims) {
   using namespace mshadow::expr;
   mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
+  CHECK_EQ(src.type_flag_, ret->type_flag_);
   if (-1 == axis) {
     // Reduce all dimensions if axis == -1
-    mshadow::Tensor<xpu, 2> in =
-      src.get_with_shape<xpu, 2, real_t>(mshadow::Shape2(1, src.shape_.Size()), s);
-    mshadow::Tensor<xpu, 1> out =
-      ret->get_with_shape<xpu, 1, real_t>(mshadow::Shape1(ret->shape_.Size()), s);
-    ASSIGN_DISPATCH(out, req, (reduce_except_dim<0, Reducer>(in)));
+    MSHADOW_REAL_TYPE_SWITCH(src.type_flag_, DType, {
+      mshadow::Tensor<xpu, 2, DType> in =
+        src.get_with_shape<xpu, 2, DType>(mshadow::Shape2(1, src.shape_.Size()), s);
+      mshadow::Tensor<xpu, 1, DType> out =
+        ret->get_with_shape<xpu, 1, DType>(mshadow::Shape1(ret->shape_.Size()), s);
+      ASSIGN_DISPATCH(out, req, (reduce_except_dim<0, Reducer>(in)));
+    });
     return;
   }
   int trailing = 1;
@@ -204,35 +216,44 @@ void ReduceAxisImpl_(const TBlob &src,
     }
   }
   if (get_mask) {
-    // If get_mask is on, we have to use the slower `reduce_with_axis` since reduce_except_dim does not support the flag.
-    mshadow::Tensor<xpu, 3> in =
-      src.get_with_shape<xpu, 3, real_t>(mshadow::Shape3(leading, src.shape_[axis], trailing), s);
-    mshadow::Tensor<xpu, 2> out =
-      ret->get_with_shape<xpu, 2, real_t>(mshadow::Shape2(leading, trailing), s);
-    CHECK(req != kAddTo) << "AddTo is not supported for `get_mask = true`";
-    ASSIGN_DISPATCH(out, req, (reduce_with_axis<Reducer, true>(in, 1)));
+    // If get_mask is on, we have to use the slower `reduce_with_axis` 
+    // since reduce_except_dim does not support the flag.
+    MSHADOW_REAL_TYPE_SWITCH(src.type_flag_, DType, {
+      mshadow::Tensor<xpu, 3, DType> in =
+        src.get_with_shape<xpu, 3, DType>(mshadow::Shape3(leading, src.shape_[axis], trailing), s);
+      mshadow::Tensor<xpu, 2, DType> out =
+        ret->get_with_shape<xpu, 2, DType>(mshadow::Shape2(leading, trailing), s);
+      CHECK(req != kAddTo) << "AddTo is not supported for `get_mask = true`";
+      ASSIGN_DISPATCH(out, req, (reduce_with_axis<Reducer, true>(in, 1)));
+    });
     return;
   }
   if (1 == leading) {
-    mshadow::Tensor<xpu, 2> in =
-      src.get_with_shape<xpu, 2, real_t>(mshadow::Shape2(src.shape_[axis], trailing), s);
-    mshadow::Tensor<xpu, 1> out =
-      ret->get_with_shape<xpu, 1, real_t>(mshadow::Shape1(trailing), s);
-    ASSIGN_DISPATCH(out, req, (reduce_except_dim<1, Reducer>(in)));
+    MSHADOW_REAL_TYPE_SWITCH(src.type_flag_, DType, {
+      mshadow::Tensor<xpu, 2, DType> in =
+        src.get_with_shape<xpu, 2, DType>(mshadow::Shape2(src.shape_[axis], trailing), s);
+      mshadow::Tensor<xpu, 1, DType> out =
+        ret->get_with_shape<xpu, 1, DType>(mshadow::Shape1(trailing), s);
+      ASSIGN_DISPATCH(out, req, (reduce_except_dim<1, Reducer>(in)));
+    });
   } else if (1 == trailing) {
-    mshadow::Tensor<xpu, 2> in =
-      src.get_with_shape<xpu, 2, real_t>(mshadow::Shape2(leading, src.shape_[axis]), s);
-    mshadow::Tensor<xpu, 1> out =
-      ret->get_with_shape<xpu, 1, real_t>(mshadow::Shape1(leading), s);
-    ASSIGN_DISPATCH(out, req, (reduce_except_dim<0, Reducer>(in)));
+    MSHADOW_REAL_TYPE_SWITCH(src.type_flag_, DType, {
+      mshadow::Tensor<xpu, 2, DType> in =
+        src.get_with_shape<xpu, 2, DType>(mshadow::Shape2(leading, src.shape_[axis]), s);
+      mshadow::Tensor<xpu, 1, DType> out =
+        ret->get_with_shape<xpu, 1, DType>(mshadow::Shape1(leading), s);
+      ASSIGN_DISPATCH(out, req, (reduce_except_dim<0, Reducer>(in)));
+    });
   } else {
-    mshadow::Tensor<xpu, 3> in =
-      src.get_with_shape<xpu, 3, real_t>(mshadow::Shape3(leading, src.shape_[axis], trailing), s);
-    mshadow::Tensor<xpu, 1> out =
-      ret->get_with_shape<xpu, 1, real_t>(mshadow::Shape1(leading * trailing), s);
-    ASSIGN_DISPATCH(out, req, 
-      (reduce_except_dim<0, Reducer>(reshape(swapaxis<2, 1>(in),
-      mshadow::Shape2(leading * trailing, src.shape_[axis])))));
+    MSHADOW_REAL_TYPE_SWITCH(src.type_flag_, DType, {
+      mshadow::Tensor<xpu, 3, DType> in =
+        src.get_with_shape<xpu, 3, DType>(mshadow::Shape3(leading, src.shape_[axis], trailing), s);
+      mshadow::Tensor<xpu, 1, DType> out =
+        ret->get_with_shape<xpu, 1, DType>(mshadow::Shape1(leading * trailing), s);
+      ASSIGN_DISPATCH(out, req,
+        (reduce_except_dim<0, Reducer>(reshape(swapaxis<2, 1>(in),
+        mshadow::Shape2(leading * trailing, src.shape_[axis])))));
+    });
   }
 }
 
@@ -267,11 +288,13 @@ void BroadcastAxisImpl_(const TBlob &src,
       trailing *= ret->shape_[i];
     }
   }
-  mshadow::Tensor<xpu, 2> in =
-    src.get_with_shape<xpu, 2, real_t>(mshadow::Shape2(leading, trailing), s);
-  mshadow::Tensor<xpu, 3> out =
-    ret->get_with_shape<xpu, 3, real_t>(mshadow::Shape3(leading, bsize, trailing), s);
-  ASSIGN_DISPATCH(out, req, mshadow::expr::broadcast_with_axis(in, 0, bsize));
+  MSHADOW_TYPE_SWITCH(ret->type_flag_, DType, {
+    mshadow::Tensor<xpu, 2, DType> in =
+    src.get_with_shape<xpu, 2, DType>(mshadow::Shape2(leading, trailing), s);
+    mshadow::Tensor<xpu, 3, DType> out =
+      ret->get_with_shape<xpu, 3, DType>(mshadow::Shape3(leading, bsize, trailing), s);
+    ASSIGN_DISPATCH(out, req, broadcast_with_axis(in, 0, bsize));
+  });
 }
 
 // Forward pass of reduce over the given axis
