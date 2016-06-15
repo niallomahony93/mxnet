@@ -216,7 +216,7 @@ void ReduceAxisImpl_(const TBlob &src,
     }
   }
   if (get_mask) {
-    // If get_mask is on, we have to use the slower `reduce_with_axis` 
+    // If get_mask is on, we have to use the slower `reduce_with_axis`
     // since reduce_except_dim does not support the flag.
     MSHADOW_REAL_TYPE_SWITCH(src.type_flag_, DType, {
       mshadow::Tensor<xpu, 3, DType> in =

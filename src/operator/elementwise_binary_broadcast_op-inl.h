@@ -101,7 +101,8 @@ void BinaryBroadcastForward_(const TBlob& lhs,
     });
     return;
   }
-  CHECK(lhs.shape_.ndim() < MXNET_MAX_RANGE_SWITCH_DIM) << "Only support input dimension up to " << MXNET_MAX_RANGE_SWITCH_DIM;
+  CHECK(lhs.shape_.ndim() <= MXNET_MAX_RANGE_SWITCH_DIM) <<
+    "Only support input dimension up to " << MXNET_MAX_RANGE_SWITCH_DIM;
   MSHADOW_TYPE_SWITCH(ret->type_flag_, DType, {
     MXNET_RANGE_SWITCH(ret->ndim(), NDIM, {
       Tensor<xpu, NDIM, DType> out = ret->get<xpu, NDIM, DType>(s);
@@ -184,7 +185,7 @@ void BroadcastMulBackward_(const OutputGrad& out_grad,
     });
     return;
   }
-  
+
   MSHADOW_REAL_TYPE_SWITCH(lhs_grad->type_flag_, DType, {
     MXNET_RANGE_SWITCH(lhs_grad->ndim(), NDIM, {
       mshadow::Tensor<xpu, NDIM, DType> mout_grad = out_grad.data.get<xpu, NDIM, DType>(s);

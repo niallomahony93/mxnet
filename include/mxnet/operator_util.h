@@ -12,7 +12,7 @@
 #define MXNET_OPERATOR_UTIL_H_
 
 #ifdef _MSC_VER
-#pragma warning (disable:4503) // disable warning: decorated name length exceeded.
+#pragma warning(disable:4503)  // disable warning: decorated name length exceeded.
 #endif
 
 #include <dmlc/registry.h>

@@ -734,7 +734,7 @@ def test_convolution_grouping():
 
 def _gen_broadcast_data():
     # Generate random data that has ndim between 1-7 and all the shape dims between 1-10
-    ndim = np.random.randint(1, 7)
+    ndim = np.random.randint(1, 8)
     shape = np.random.randint(1, 11, size=(ndim,))
     l_same_dim = np.random.randint(0, 5)
     r_same_dim = np.random.randint(0, 5)
@@ -765,7 +765,7 @@ def _check_broadcast_op_backward(symbol, baseline):
     sample_num = 1000
     for i in range(sample_num):
         d = _gen_broadcast_data()
-        out = d[0] + d[1]
+        out = np.random.random((d[0] + d[1]).shape)
         def reduce_op(shape, x):
             if shape == x.shape:
                 return x

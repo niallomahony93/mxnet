@@ -8,8 +8,8 @@
 #define MXNET_OPERATOR_BROADCAST_REDUCE_OP_COMMON_H_
 #include <dmlc/logging.h>
 #include <mxnet/operator.h>
-#include <vector>
 #include <mxnet/operator_util.h>
+#include <vector>
 
 namespace mxnet {
 namespace op {
@@ -25,21 +25,22 @@ namespace op {
 * \tparam etype type of expression
 */
 template<typename Reducer, typename xpu, typename SrcExp, typename DType>
-void reduce_multi_axes_assign(mshadow::Tensor<xpu, 1, DType> &out, const OpReqType req,
+void reduce_multi_axes_assign(mshadow::Tensor<xpu, 1, DType> out, const OpReqType req,
   const SrcExp &src_, const TShape &axes) {
   using namespace mshadow;
   using namespace mshadow::expr;
   static const int dimsrc = ExpInfo<SrcExp>::kDim;
   CHECK(axes.ndim() <= dimsrc);
   Shape<dimsrc> src_shape = ShapeCheck<dimsrc, SrcExp>::Check(src_);
-  
-  //1. Check if the axes has size 0, if so, no reducing is needed.
+
+  // 1. Check if the axes has size 0, if so, no reducing is needed.
   if (0 == axes.ndim()) {
     ASSIGN_DISPATCH(out, req, reshape(src_, Shape1(src_shape.ProdShape(0, dimsrc))));
     return;
   }
 
-  //2. Check if we want to reduce over contiguous axes and get the total number of reducing elements. (1,2,3) --> contiguous, (1,3) --> noncontiguous
+  // 2. Check if we want to reduce over contiguous axes and get the reducing size.
+  //  e.g. (1,2,3) --> contiguous, (1,3) --> noncontiguous
   bool is_contiguous_axes = true;
   index_t reducing_size = 1;
   for (index_t i = 0; i < axes.ndim(); ++i) {
@@ -50,7 +51,8 @@ void reduce_multi_axes_assign(mshadow::Tensor<xpu, 1, DType> &out, const OpReqTy
     }
   }
 
-  //3. For contiguous axes, we can always reshape them to (leading, reducing_size, trailing) and simplify the combination of mshadow symbols.
+  // 3. For contiguous axes, we can always reshape them to (leading, reducing_size, trailing)
+  //  and we can then simplify the combination of mshadow symbols.
   if (is_contiguous_axes) {
     index_t leading = 1;
     index_t trailing = 1;
@@ -62,9 +64,11 @@ void reduce_multi_axes_assign(mshadow::Tensor<xpu, 1, DType> &out, const OpReqTy
       }
     }
     if (1 == leading) {
-      ASSIGN_DISPATCH(out, req, (reduce_except_dim<1, Reducer>(reshape(src_, Shape2(reducing_size, trailing)))));
+      ASSIGN_DISPATCH(out, req,
+        (reduce_except_dim<1, Reducer>(reshape(src_, Shape2(reducing_size, trailing)))));
     } else if (1 == trailing) {
-      ASSIGN_DISPATCH(out, req, (reduce_except_dim<0, Reducer>(reshape(src_, Shape2(leading, reducing_size)))));
+      ASSIGN_DISPATCH(out, req,
+        (reduce_except_dim<0, Reducer>(reshape(src_, Shape2(leading, reducing_size)))));
     } else {
       ASSIGN_DISPATCH(out, req, (reduce_except_dim<0, Reducer>(
         reshape(swapaxis<2, 1>(reshape(src_, Shape3(leading, reducing_size, trailing))),
@@ -72,9 +76,9 @@ void reduce_multi_axes_assign(mshadow::Tensor<xpu, 1, DType> &out, const OpReqTy
     }
     return;
   }
-  //4. For non-contiguous axes, we need to push axes to the front of the shape vector and do the reshaping + reducing. 
+  // 4. For non-contiguous axes, we need to push axes to the front of the shape vector then reduce.
   //   E.g axes = (1, 2), dim = 6 => transpose_shape = (1, 2, 0, 3, 4, 5)
-  Shape<dimsrc> transpose_shape;
+  Shape<dimsrc> transpose_shape = src_shape;
   index_t remaining_size = 1;
   for (index_t i = 0; i < axes.ndim(); ++i) {
     transpose_shape[i] = axes[i];
@@ -97,7 +101,7 @@ void reduce_multi_axes_assign(mshadow::Tensor<xpu, 1, DType> &out, const OpReqTy
       }
     }
   }
-  ASSIGN_DISPATCH(out, req, 
+  ASSIGN_DISPATCH(out, req,
     (reduce_except_dim<1, Reducer>(reshape(transpose(src_, transpose_shape),
     Shape2(reducing_size, remaining_size)))));
 }
@@ -113,7 +117,7 @@ void reduce_multi_axes_assign(mshadow::Tensor<xpu, 1, DType> &out, const OpReqTy
 * \tparam etype type of expression
 */
 template<typename Reducer, typename xpu, typename SrcExp, typename DType>
-void reduce_to_assign(mshadow::Tensor<xpu, 1, DType> &out, const OpReqType req,
+void reduce_to_assign(mshadow::Tensor<xpu, 1, DType> out, const OpReqType req,
   const TShape &target_shape, const SrcExp &src_) {
   using namespace mshadow;
   using namespace mshadow::expr;
