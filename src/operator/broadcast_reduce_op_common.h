@@ -66,13 +66,10 @@ void reduce_multi_axes_assign(mshadow::Tensor<xpu, 1, DType> out, const OpReqTyp
     if (1 == leading) {
       ASSIGN_DISPATCH(out, req,
         (reduce_except_dim<1, Reducer>(reshape(src_, Shape2(reducing_size, trailing)))));
-    } else if (1 == trailing) {
-      ASSIGN_DISPATCH(out, req,
-        (reduce_except_dim<0, Reducer>(reshape(src_, Shape2(leading, reducing_size)))));
     } else {
-      ASSIGN_DISPATCH(out, req, (reduce_except_dim<0, Reducer>(
-        reshape(swapaxis<2, 1>(reshape(src_, Shape3(leading, reducing_size, trailing))),
-        Shape2(leading * trailing, reducing_size)))));
+      ASSIGN_DISPATCH(out, req, (reduce_except_dim<1, Reducer>(
+        reshape(swapaxis<1, 0>(reshape(src_, Shape3(leading, reducing_size, trailing))),
+        Shape2(reducing_size, leading * trailing)))));
     }
     return;
   }

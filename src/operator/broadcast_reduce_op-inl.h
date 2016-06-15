@@ -199,10 +199,10 @@ void ReduceAxisImpl_(const TBlob &src,
     // Reduce all dimensions if axis == -1
     MSHADOW_REAL_TYPE_SWITCH(src.type_flag_, DType, {
       mshadow::Tensor<xpu, 2, DType> in =
-        src.get_with_shape<xpu, 2, DType>(mshadow::Shape2(1, src.shape_.Size()), s);
+        src.get_with_shape<xpu, 2, DType>(mshadow::Shape2(src.shape_.Size(), 1), s);
       mshadow::Tensor<xpu, 1, DType> out =
         ret->get_with_shape<xpu, 1, DType>(mshadow::Shape1(ret->shape_.Size()), s);
-      ASSIGN_DISPATCH(out, req, (reduce_except_dim<0, Reducer>(in)));
+      ASSIGN_DISPATCH(out, req, (reduce_except_dim<1, Reducer>(in)));
     });
     return;
   }
@@ -242,7 +242,7 @@ void ReduceAxisImpl_(const TBlob &src,
         src.get_with_shape<xpu, 2, DType>(mshadow::Shape2(leading, src.shape_[axis]), s);
       mshadow::Tensor<xpu, 1, DType> out =
         ret->get_with_shape<xpu, 1, DType>(mshadow::Shape1(leading), s);
-      ASSIGN_DISPATCH(out, req, (reduce_except_dim<0, Reducer>(in)));
+      ASSIGN_DISPATCH(out, req, (reduce_except_dim<1, Reducer>(in.T())));
     });
   } else {
     MSHADOW_REAL_TYPE_SWITCH(src.type_flag_, DType, {
@@ -251,8 +251,8 @@ void ReduceAxisImpl_(const TBlob &src,
       mshadow::Tensor<xpu, 1, DType> out =
         ret->get_with_shape<xpu, 1, DType>(mshadow::Shape1(leading * trailing), s);
       ASSIGN_DISPATCH(out, req,
-        (reduce_except_dim<0, Reducer>(reshape(swapaxis<2, 1>(in),
-        mshadow::Shape2(leading * trailing, src.shape_[axis])))));
+        (reduce_except_dim<1, Reducer>(reshape(swapaxis<1, 0>(in),
+        mshadow::Shape2(src.shape_[axis], leading * trailing)))));
     });
   }
 }
