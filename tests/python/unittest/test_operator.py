@@ -751,7 +751,7 @@ def _gen_broadcast_data():
     return [np.random.random(l_shape), np.random.random(r_shape)]
 
 def _check_broadcast_op_forward(symbol, baseline):
-    sample_num = 1000
+    sample_num = 200
     for i in range(sample_num):
         d = _gen_broadcast_data()
         x = baseline(d[0], d[1])
@@ -762,7 +762,7 @@ def _check_broadcast_op_forward(symbol, baseline):
             err, d[0].shape, d[1].shape)
 
 def _check_broadcast_op_backward(symbol, baseline):
-    sample_num = 1000
+    sample_num = 200
     for i in range(sample_num):
         d = _gen_broadcast_data()
         out = np.random.random((d[0] + d[1]).shape)
@@ -932,7 +932,7 @@ def test_reshape():
     assert(output_shape[0] == (2, 75))
 
 def test_reduce():
-    sample_num = 1000
+    sample_num = 200
     def test_reduce_inner(numpy_reduce_func, numpy_reduce_grad_func, mx_reduce_sym):
         for i in range(sample_num):
             # Generate random data that has ndim between 1-7 and all the shape dims between 1-10
@@ -974,7 +974,7 @@ def test_reduce():
                       mx.symbol.sum)
 
 def test_broadcast():
-    sample_num = 1000
+    sample_num = 200
     def test_broadcast_axis():
         for i in range(sample_num):
             # Generate random data that has ndim between 1-7 and all the shape dims between 1-10
