@@ -15,6 +15,48 @@ namespace mxnet {
 namespace op {
 
 /*!
+* \brief Check if the axes are continuous + get reducing size. E.g (1, 3) -> false, (1,2,3) -> true
+* \param is_contiguous_axes whether the axes is contiguous
+* \param reducing_size product of source shape in the given axes
+* \param axes 
+* \param src_shape shape of the source tensor
+*/
+inline void CheckContiguousAxes_(bool *is_contiguous_axes, index_t *reducing_size,
+  const mshadow::TShape &axes, const mshadow::TShape &src_shape) {
+  *is_contiguous_axes = true;
+  *reducing_size = 1;
+  for (index_t i = 0; i < axes.ndim(); ++i) {
+    *reducing_size *= src_shape[axes[i]];
+    if (i > 0) {
+      *is_contiguous_axes = *is_contiguous_axes && (axes[i] == (axes[i - 1] + 1));
+      CHECK(axes[i - 1] < axes[i]) << "axes must be in increasing order, received axes=" << axes;
+    }
+  }
+}
+
+template<int dimsrc>
+inline void CheckContiguousAxes_(bool *is_contiguous_axes, index_t *reducing_size,
+  const mshadow::TShape &axes, const mshadow::Shape<dimsrc> &src_shape) {
+  CheckContiguousAxes_(is_contiguous_axes, reducing_size, axes,
+    TShape(src_shape.shape_, src_shape.shape_ + dimsrc));
+}
+
+inline TShape GetBroadcastingAxes_(const mshadow::TShape &src_shape,
+  const mshadow::TShape &target_shape) {
+  std::vector<index_t> axes_vec;
+  CHECK_EQ(target_shape.ndim(), src_shape.ndim());
+  for (int i = 0; i < src_shape.ndim(); ++i) {
+    if (src_shape[i] != target_shape[i]) {
+      CHECK_EQ(src_shape[i], 1) << "broadcastsing axis must have size 1, received src_shape="
+        << src_shape << " target_shape=" << target_shape;
+      axes_vec.push_back(i);
+    }
+  }
+  TShape axes = TShape(axes_vec.begin(), axes_vec.end());
+  return axes;
+}
+
+/*!
 * \brief a reduce over multiple axes and assign to the output tensor.
 * \param out output tensor, must have dim 1
 * \param src the source expression
@@ -25,7 +67,7 @@ namespace op {
 * \tparam etype type of expression
 */
 template<typename Reducer, typename xpu, typename SrcExp, typename DType>
-void reduce_multi_axes_assign(mshadow::Tensor<xpu, 1, DType> out, const OpReqType req,
+void ReduceAxesAssign(mshadow::Tensor<xpu, 1, DType> out, const OpReqType req,
   const SrcExp &src_, const TShape &axes) {
   using namespace mshadow;
   using namespace mshadow::expr;
@@ -43,13 +85,7 @@ void reduce_multi_axes_assign(mshadow::Tensor<xpu, 1, DType> out, const OpReqTyp
   //  e.g. (1,2,3) --> contiguous, (1,3) --> noncontiguous
   bool is_contiguous_axes = true;
   index_t reducing_size = 1;
-  for (index_t i = 0; i < axes.ndim(); ++i) {
-    reducing_size *= src_shape[axes[i]];
-    if (i > 0) {
-      is_contiguous_axes = is_contiguous_axes && (axes[i] == (axes[i - 1] + 1));
-      CHECK(axes[i - 1] < axes[i]) << "axes must be in increasing order, received axes=" << axes;
-    }
-  }
+  CheckContiguousAxes_(&is_contiguous_axes, &reducing_size, axes, src_shape);
 
   // 3. For contiguous axes, we can always reshape them to (leading, reducing_size, trailing)
   //  and we can then simplify the combination of mshadow symbols.
@@ -114,23 +150,15 @@ void reduce_multi_axes_assign(mshadow::Tensor<xpu, 1, DType> out, const OpReqTyp
 * \tparam etype type of expression
 */
 template<typename Reducer, typename xpu, typename SrcExp, typename DType>
-void reduce_to_assign(mshadow::Tensor<xpu, 1, DType> out, const OpReqType req,
+void ReduceToAssign(mshadow::Tensor<xpu, 1, DType> out, const OpReqType req,
   const TShape &target_shape, const SrcExp &src_) {
   using namespace mshadow;
   using namespace mshadow::expr;
   static const int dimsrc = ExpInfo<SrcExp>::kDim;
-  std::vector<index_t> axes_vec;
   Shape<dimsrc> src_shape = ShapeCheck<dimsrc, SrcExp>::Check(src_);
-  CHECK_EQ(target_shape.ndim(), dimsrc);
-  for (int i = 0; i < dimsrc; ++i) {
-    if (src_shape[i] != target_shape[i]) {
-      CHECK_EQ(target_shape[i], 1) << "reducing axis must have size 1, received src_shape="
-        << src_shape << " target_shape=" << target_shape;
-      axes_vec.push_back(i);
-    }
-  }
-  TShape axes = TShape(axes_vec.begin(), axes_vec.end());
-  reduce_multi_axes_assign<Reducer>(out, req, src_, axes);
+  TShape axes = GetBroadcastingAxes_(target_shape,
+    TShape(src_shape.shape_, src_shape.shape_ + dimsrc));
+  ReduceAxesAssign<Reducer>(out, req, src_, axes);
 }
 }  // namespace op
 }  // namespace mxnet
