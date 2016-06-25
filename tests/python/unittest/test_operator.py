@@ -1002,11 +1002,11 @@ def test_reduce():
                          args_grad={'a': grad_nd})
             net.forward(is_train=True)
 
-            err_forward = np.square(net.outputs[0].asnumpy() - sum_groundtruth).sum()/np.prod(shape)
-            assert err_forward < 1E-6
+            err_forward = reldiff(net.outputs[0].asnumpy(), sum_groundtruth)
+            assert err_forward < 1E-4
             net.backward(out_grads=mx.nd.array(outgrad_npy))
-            err_backward = np.square(grad_nd.asnumpy() - grad_groundtruth).sum()
-            assert err_backward < 1E-6
+            err_backward = reldiff(grad_nd.asnumpy(), grad_groundtruth)
+            assert err_backward < 1E-4
     test_reduce_inner(lambda data, axis, keepdims:_np_reduce(data, axis, keepdims, np.sum),
                       lambda outgrad, data, axis, keepdims:
                         outgrad.reshape(_np_reduce(data, axis, 1, np.sum).shape),
@@ -1039,12 +1039,11 @@ def test_broadcast():
                                              args_grad={'a': grad_nd})
             net.forward(is_train=True)
             assert (net.outputs[0].shape == target_shape).all()
-            err_forward = np.square(net.outputs[0].asnumpy() - groundtruth).mean()
-            assert err_forward < 1E-8
+            err_forward = reldiff(net.outputs[0].asnumpy(), groundtruth)
+            assert err_forward < 1E-4
             net.backward(out_grads=mx.nd.array(outgrad_npy))
-            err_backward = np.square(grad_nd.asnumpy() - grad_groundtruth).sum()\
-                           /np.prod(target_shape)
-            assert err_backward < 1E-6
+            err_backward = reldiff(grad_nd.asnumpy(), grad_groundtruth)
+            assert err_backward < 1E-4
         test_broadcasting_ele(sym_bcast_axis)
         test_broadcasting_ele(sym_bcast_to)
 
