@@ -476,8 +476,7 @@ void BroadcastPowerBackward_(const OutputGrad& out_grad,
         F<mshadow_op::power>(broadcast_to(mlhs_data, out_new_shape_),
                              broadcast_to(mrhs_data, out_new_shape_) - scalar<DType>(1)) *
         mout_grad);
-    }
-    else {
+    } else {
       Shape<MXNET_SPECIAL_MAX_NDIM> lhs_new_shape, rhs_new_shape, out_new_shape;
       for (index_t i = 0; i < MXNET_SPECIAL_MAX_NDIM; i++) {
         lhs_new_shape[i] = lhs_new_shape_[i];
