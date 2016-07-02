@@ -23,7 +23,7 @@ inline void CircularConvolution1DForwardImpl_(Tensor<cpu, 2, DType> out,
   for (int n = 0; n < batch_size; ++n) {
     for (int i = 0; i < content_size; ++i) {
       for (int j = 0; j < kernel_size; ++j) {
-        int indx = modn(i + kernel_size - 1 - j, content_size);
+        int indx = modn(i - j, content_size);
         out[n][i] += data[n][indx] * weight[n][j];
       }
     }
@@ -43,7 +43,7 @@ inline void CircularConvolution1DBackwardImpl_(const Tensor<cpu, 2, DType> &out_
   for (int n = 0; n < batch_size; ++n) {
     for (int i = 0; i < content_size; ++i) {
       for (int j = 0; j < kernel_size; ++j) {
-        int indx = modn(i - kernel_size + 1 + j, content_size);
+        int indx = modn(i + j, content_size);
         data_grad[n][i] += out_grad[n][indx] * weight[n][j];
       }
     }
@@ -52,7 +52,7 @@ inline void CircularConvolution1DBackwardImpl_(const Tensor<cpu, 2, DType> &out_
   for (int n = 0; n < batch_size; ++n) {
     for (int i = 0; i < kernel_size; ++i) {
       for (int j = 0; j < content_size; ++j) {
-        int indx = modn(j + kernel_size - 1 - i, content_size);
+        int indx = modn(j - i, content_size);
         weight_grad[n][i] += out_grad[n][j] * data[n][indx];
       }
     }

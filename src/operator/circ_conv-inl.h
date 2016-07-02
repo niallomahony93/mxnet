@@ -92,7 +92,7 @@ MXNET_REGISTER_SIMPLE_OP(batch_cconv, XPU)
 .set_function(XPU::kDevMask, CircularConvolutionForward_<XPU>, kNoInplace, kRegisterSymbolic)
 .set_shape_function(CircularConvolutionShape)
 .set_gradient(XPU::kDevMask, CircularConvolutionBackward_<XPU>, kNoInplace)
-.describe("Calculate batched circular convolution of two matrix."
+.describe("Calculate batched circular convolution of two matrix. Follows Matlab cconv syntax"
           " (Batchsize, N) conv (Batchsize, K) -> (Batchsize, N)");
 }  // namespace op
 }  // namespace mxnet
