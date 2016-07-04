@@ -6,6 +6,7 @@ from numpy.testing import assert_allclose
 from check_utils import (check_numeric_gradient, check_symbolic_backward,
                          check_symbolic_forward, reldiff, _np_reduce)
 
+np.random.seed(12345)
 
 def same(a, b):
     return np.sum(a != b) == 0
@@ -41,7 +42,6 @@ def check_elementwise_sum_with_shape(shape, n):
         assert same(a.asnumpy(), out_grad.asnumpy())
 
 def test_elementwise_sum():
-    np.random.seed(0)
     nrepeat = 2
     maxdim = 4
     for repeat in range(nrepeat):
@@ -767,9 +767,9 @@ def test_convolution_grouping():
         np.testing.assert_allclose(arr1.asnumpy(), arr2.asnumpy(), rtol=1e-3)
 
 def _gen_broadcast_data():
-    # Generate random data that has ndim between 1-7 and all the shape dims between 1-10
+    # Generate random data that has ndim between 1-7 and all the shape dims between 1-5
     ndim = np.random.randint(1, 8)
-    shape = np.random.randint(1, 11, size=(ndim,))
+    shape = np.random.randint(1, 6, size=(ndim,))
     l_same_dim = np.random.randint(0, 5)
     r_same_dim = np.random.randint(0, 5)
     l_axis_flags = np.random.randint(0, 2, size=ndim)
@@ -976,9 +976,9 @@ def test_reduce():
     sample_num = 200
     def test_reduce_inner(numpy_reduce_func, numpy_reduce_grad_func, mx_reduce_sym):
         for i in range(sample_num):
-            # Generate random data that has ndim between 1-7 and all the shape dims between 1-10
+            # Generate random data that has ndim between 1-7 and all the shape dims between 1-5
             ndim = np.random.randint(1, 8)
-            shape = np.random.randint(1, 11, size=(ndim,))
+            shape = np.random.randint(1, 6, size=(ndim,))
             axis_num = np.random.randint(0, ndim, size=1)
             axis_flags = np.random.randint(0, 2, size=ndim)
             axes = []
@@ -1022,9 +1022,9 @@ def test_reduce():
 def test_broadcast():
     sample_num = 200
     for i in range(sample_num):
-        # Generate random data that has ndim between 1-7 and all the shape dims between 1-10
+        # Generate random data that has ndim between 1-7 and all the shape dims between 1-5
         ndim = np.random.randint(1, 8)
-        target_shape = np.random.randint(1, 11, size=(ndim,))
+        target_shape = np.random.randint(1, 6, size=(ndim,))
         axis = tuple(set(np.random.randint(0, ndim, np.random.randint(1, ndim + 1))))
         shape = target_shape.copy()
         size = tuple([shape[ele] for ele in axis])
@@ -1135,6 +1135,7 @@ def test_flip():
             y = mx.nd.flip(x, axis=axis)
             assert_allclose(x.asnumpy()[idx], y.asnumpy())
 
+
 def test_stn():
     import pdb
     np.set_printoptions(threshold=np.nan)
@@ -1176,6 +1177,57 @@ def test_stn():
                     # check backward
                     reldiff(out_grad.asnumpy(), grad_grad[0].asnumpy()[:, :, h//4:h-h//4, w//4:w-w//4]) < 1e-6
 
+
+def test_dot(ctx=mx.cpu()):
+    for m in range(1, 5):
+        for k in range(1, 5):
+            for n in range(1, 5):
+                a_npy = np.random.normal(0, 1, (m, k))
+                b_npy = np.random.normal(0, 1, (k, n))
+                c_npy = np.empty((m, n))
+                ograd_npy = np.random.normal(0, 1, (m, n))
+                agrad_npy = np.empty((m, k))
+                bgrad_npy = np.empty((k, n))
+                c_npy[:, :] = np.dot(a_npy[:, :], b_npy[:, :])
+                bgrad_npy[:, :] = np.dot(a_npy[:, :].T, ograd_npy[:, :])
+                agrad_npy[:, :] = np.dot(ograd_npy[:, :], b_npy[:, :].T)
+                a = mx.sym.Variable('a')
+                b = mx.sym.Variable('b')
+                c = mx.sym.dot(a, b)
+                exe = c.simple_bind(ctx=ctx, a=a_npy.shape, b=b_npy.shape)
+                outputs = exe.forward(is_train=True, a=a_npy, b=b_npy)
+                assert reldiff(outputs[0].asnumpy(), c_npy) < 1E-5
+                exe.backward(out_grads=[mx.nd.array(ograd_npy, ctx=exe._ctx)])
+                assert reldiff(exe.grad_dict['a'].asnumpy(), agrad_npy) < 1E-5
+                assert reldiff(exe.grad_dict['b'].asnumpy(), bgrad_npy) < 1E-5
+
+
+def test_batch_dot(ctx=mx.cpu()):
+    for batch_size in range(1, 5):
+        for m in range(1, 5):
+            for k in range(1, 5):
+                for n in range(1, 5):
+                    a_npy = np.random.normal(0, 1, (batch_size, m, k))
+                    b_npy = np.random.normal(0, 1, (batch_size, k, n))
+                    c_npy = np.empty((batch_size, m, n))
+                    ograd_npy = np.random.normal(0, 1, (batch_size, m, n))
+                    agrad_npy = np.empty((batch_size, m, k))
+                    bgrad_npy = np.empty((batch_size, k, n))
+                    for i in range(batch_size):
+                        c_npy[i, :, :] = np.dot(a_npy[i, :, :], b_npy[i, :, :])
+                        bgrad_npy[i, :, :] = np.dot(a_npy[i, :, :].T, ograd_npy[i, :, :])
+                        agrad_npy[i, :, :] = np.dot(ograd_npy[i, :, :], b_npy[i, :, :].T)
+                    a = mx.sym.Variable('a')
+                    b = mx.sym.Variable('b')
+                    c = mx.sym.batch_dot(a, b)
+                    exe = c.simple_bind(ctx=ctx, a=a_npy.shape, b=b_npy.shape)
+                    outputs = exe.forward(is_train=True, a=a_npy, b=b_npy)
+                    assert reldiff(outputs[0].asnumpy(), c_npy) < 1E-5
+                    exe.backward(out_grads=[mx.nd.array(ograd_npy, ctx=exe._ctx)])
+                    assert reldiff(exe.grad_dict['a'].asnumpy(), agrad_npy) < 1E-5
+                    assert reldiff(exe.grad_dict['b'].asnumpy(), bgrad_npy) < 1E-5
+
+
 if __name__ == '__main__':
     test_expand_dims()
     test_slice_axis()
@@ -1211,3 +1263,5 @@ if __name__ == '__main__':
     test_reduce()
     test_broadcast()
     test_stn()
+    test_dot()
+    test_batch_dot()
