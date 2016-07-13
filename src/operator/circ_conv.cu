@@ -2,6 +2,7 @@
  *  Copyright (c) 2015 by Contributors
  * \file circ_conv.cu
  * \brief GPU Implementation of circular convolution
+ * \author Xingjian Shi
  */
 // this will be invoked by gcc and compile GPU version
 #include "./circ_conv-inl.h"

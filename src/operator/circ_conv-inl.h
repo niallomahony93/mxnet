@@ -1,7 +1,8 @@
 /*!
  *  Copyright (c) 2015 by Contributors
- * \file broadcast_reduce_op-inl.h
+ * \file circ_conv-inl.h
  * \brief Function defintion of matrix related operators
+ * \author Xingjian Shi
  */
 #ifndef MXNET_OPERATOR_MATRIX_OP_INL_H_
 #define MXNET_OPERATOR_MATRIX_OP_INL_H_

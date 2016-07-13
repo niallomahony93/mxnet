@@ -2,6 +2,7 @@
  *  Copyright (c) 2015 by Contributors
  * \file circ_conv.cc
  * \brief CPU Implementation of matrix operations
+ * \author Xingjian Shi
  */
 // this will be invoked by gcc and compile CPU version
 #include "./circ_conv-inl.h"
