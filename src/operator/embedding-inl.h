@@ -98,9 +98,10 @@ class EmbeddingOp : public Operator {
     if (req[embedding::kWeight] == kWriteTo || req[embedding::kWeight] == kAddTo) {
       if (req[embedding::kWeight] == kWriteTo) {
 #ifdef __CUDACC__
-        cudaMemsetAsync(grad_in.dptr_, 0, grad_in.MSize() * sizeof(DType), Stream<gpu>::GetStream(s));
+        cudaMemsetAsync(grad_in.dptr_, 0, grad_in.MSize() * sizeof(DType),
+                        Stream<gpu>::GetStream(s));
 #else
-        memset(grad_in.dptr_, 0, grad_in.MSize());
+        grad_in = scalar<DType>(0.0f);
 #endif
       }
       if ((grad_out.shape_[0] < grad_out.shape_[1]) && (grad_out.shape_[0] < 512)) {
