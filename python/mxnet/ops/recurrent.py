@@ -1,4 +1,5 @@
-from ..symbol import *
+from .. import symbol as sym
+from .utils import *
 
 class LSTM(object):
     def __init__(self, num_hidden, dropout=0., zoneout=0.,
@@ -66,10 +67,11 @@ class LSTM(object):
             assert len(data) == seq_length,\
                 "Data length error, expected:%d, received:%d" %(len(data), seq_length)
             data = list(data)
-        if 1 == seq_length:
-            data = [data]
         else:
-            data = mx.sym.SliceChannel(data, num_outputs=seq_length, axis=0, squeeze_axis=True)
+            if 1 == seq_length:
+                data = [data]
+            else:
+                data = sym.SliceChannel(data, num_outputs=seq_length, axis=0, squeeze_axis=True)
         for t in range(seq_length):
             data_in = data[t]
             step_h = []
@@ -79,31 +81,30 @@ class LSTM(object):
                 prev_c = out_c[-1]
             for i in range(self.layer_num):
                 if self.dropout[i] > 0.:
-                    data_in = mx.sym.Dropout(data=data_in, p=self.dropout[i])
-                i2h = mx.sym.FullyConnected(data=data_in,
-                                            weight=self.i2h_weight[i],
-                                            bias=self.i2h_bias[i],
-                                            num_hidden=self.num_hidden[i] * 4,
-                                            name=self.name + "->layer%d:i2h_t%d" % (i, t))
-                h2h = mx.sym.FullyConnected(data=prev_h[i],
-                                            weight=self.h2h_weight[i],
-                                            bias=self.h2h_bias[i],
-                                            num_hidden=self.num_hidden[i] * 4,
-                                            name=self.name + "->layer%d:h2h_t%d" % (i, t))
+                    data_in = sym.Dropout(data=data_in, p=self.dropout[i])
+                i2h = sym.FullyConnected(data=data_in,
+                                         weight=self.i2h_weight[i],
+                                         bias=self.i2h_bias[i],
+                                         num_hidden=self.num_hidden[i] * 4,
+                                         name=self.name + "->layer%d:i2h_t%d" % (i, t))
+                h2h = sym.FullyConnected(data=prev_h[i],
+                                         weight=self.h2h_weight[i],
+                                         bias=self.h2h_bias[i],
+                                         num_hidden=self.num_hidden[i] * 4,
+                                         name=self.name + "->layer%d:h2h_t%d" % (i, t))
                 gates = i2h + h2h
-                slice_gates = mx.sym.SliceChannel(gates, num_outputs=4, axis=1)
-                input_gate = mx.sym.Activation(slice_gates[0], act_type="sigmoid",
+                slice_gates = sym.SliceChannel(gates, num_outputs=4, axis=1)
+                input_gate = sym.Activation(slice_gates[0], act_type="sigmoid",
                                        name=self.name + "->layer%d:gi_t%d" % (i,t))
-                info = mx.sym.Activation(slice_gates[1], act_type="tanh",
+                info = sym.Activation(slice_gates[1], act_type="tanh",
                                          name=self.name + "->layer%d:info_t%d" %(i, t))
-                forget_gate = mx.sym.Activation(slice_gates[2], act_type="sigmoid",
+                forget_gate = sym.Activation(slice_gates[2], act_type="sigmoid",
                                                 name=self.name + "->layer%d:gf_t%d" % (i, t))
-                out_gate = mx.sym.Activation(slice_gates[3], act_type="sigmoid",
+                out_gate = sym.Activation(slice_gates[3], act_type="sigmoid",
                                              name=self.name + "->layer%d:go_t%d" % (i, t))
-                c = (forget_gate * prev_c[i]) + (input_gate * info)
-                h = out_gate * mx.sym.Activation(c, act_type="tanh")
-                step_h.append(h)
-                step_c.append(c)
+                step_c.append((forget_gate * prev_c[i]) + (input_gate * info))
+                step_h.append(out_gate * sym.Activation(step_c[-1], act_type="tanh"))
+                data_in = step_h[-1]
             out_h.append(step_h)
             out_c.append(step_c)
         return out_h, out_c
