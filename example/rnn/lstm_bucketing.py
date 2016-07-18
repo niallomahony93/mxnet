@@ -5,7 +5,7 @@ sys.path.insert(0, "../../python")
 import numpy as np
 import mxnet as mx
 
-from lstm import lstm_unroll
+from lstm import lstm_unroll, new_lstm_unroll
 from bucket_io import BucketSentenceIter, default_build_vocab
 
 def Perplexity(label, pred):
@@ -20,7 +20,7 @@ if __name__ == '__main__':
     #buckets = [10, 20, 30, 40, 50, 60]
     #buckets = [32]
     buckets = []
-    num_hidden = 200
+    num_hidden = [200, 200]
     num_embed = 200
     num_lstm_layer = 2
 
@@ -36,12 +36,14 @@ if __name__ == '__main__':
     vocab = default_build_vocab("./data/ptb.train.txt")
 
     def sym_gen(seq_len):
-        return lstm_unroll(num_lstm_layer, seq_len, len(vocab),
+        return new_lstm_unroll(num_lstm_layer, seq_len, len(vocab),
                            num_hidden=num_hidden, num_embed=num_embed,
                            num_label=len(vocab))
 
-    init_c = [('l%d_init_c'%l, (batch_size, num_hidden)) for l in range(num_lstm_layer)]
-    init_h = [('l%d_init_h'%l, (batch_size, num_hidden)) for l in range(num_lstm_layer)]
+    init_c = [('LSTM->layer%d:init_c'%l, (batch_size, num_hidden[l]))
+              for l in range(num_lstm_layer)]
+    init_h = [('LSTM->layer%d:init_h'%l, (batch_size, num_hidden[l]))
+              for l in range(num_lstm_layer)]
     init_states = init_c + init_h
 
     data_train = BucketSentenceIter("./data/ptb.train.txt", vocab,

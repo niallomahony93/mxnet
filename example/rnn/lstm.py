@@ -58,8 +58,8 @@ def lstm_unroll(num_lstm_layer, seq_len, input_size,
                                      i2h_bias=mx.sym.Variable("l%d_i2h_bias" % i),
                                      h2h_weight=mx.sym.Variable("l%d_h2h_weight" % i),
                                      h2h_bias=mx.sym.Variable("l%d_h2h_bias" % i)))
-        state = LSTMState(c=mx.sym.Variable("l%d_init_c" % i),
-                          h=mx.sym.Variable("l%d_init_h" % i))
+        state = LSTMState(c=mx.sym.Variable("LSTM->layer%d:init_c" % i),
+                          h=mx.sym.Variable("LSTM->layer%d:init_h" % i))
         last_states.append(state)
     assert(len(last_states) == num_lstm_layer)
 
@@ -100,7 +100,52 @@ def lstm_unroll(num_lstm_layer, seq_len, input_size,
     # I did not observe big speed difference between the following two ways
 
     label = mx.sym.transpose(data=label)
-    label = mx.sym.Reshape(data=label, target_shape=(0,))
+    label = mx.sym.Reshape(data=label, shape=(-1,))
+
+    #label_slice = mx.sym.SliceChannel(data=label, num_outputs=seq_len)
+    #label = [label_slice[t] for t in range(seq_len)]
+    #label = mx.sym.Concat(*label, dim=0)
+    #label = mx.sym.Reshape(data=label, target_shape=(0,))
+    ################################################################################
+
+    sm = mx.sym.SoftmaxOutput(data=pred, label=label, name='softmax')
+
+    return sm
+
+# we define a new unrolling function here because the original
+# one in lstm.py concats all the labels at the last layer together,
+# making the mini-batch size of the label different from the data.
+# I think the existing data-parallelization code need some modification
+# to allow this situation to work properly
+def new_lstm_unroll(num_lstm_layer, seq_len, input_size,
+                    num_hidden, num_embed, num_label, dropout=0.):
+
+    embed_weight = mx.sym.Variable("embed_weight")
+    cls_weight = mx.sym.Variable("cls_weight")
+    cls_bias = mx.sym.Variable("cls_bias")
+
+    lstm_cells = mx.ops.recurrent.LSTM(num_hidden=num_hidden,
+                                       dropout=[dropout]*num_lstm_layer)
+
+    # embeding layer
+    data = mx.sym.Variable('data')
+    label = mx.sym.Variable('softmax_label')
+    embed = mx.sym.Embedding(data=data, input_dim=input_size,
+                             weight=embed_weight, output_dim=num_embed, name='embed')
+    wordvec = mx.sym.SliceChannel(data=embed, num_outputs=seq_len, squeeze_axis=1)
+
+    h_all, c_all = lstm_cells.step(data=[wordvec[i] for i in range(seq_len)], seq_length=seq_len)
+
+    hidden_concat = mx.sym.Concat(*[h[-1] for h in h_all], dim=0)
+    pred = mx.sym.FullyConnected(data=hidden_concat, num_hidden=num_label,
+                                 weight=cls_weight, bias=cls_bias, name='pred')
+
+    ################################################################################
+    # Make label the same shape as our produced data path
+    # I did not observe big speed difference between the following two ways
+
+    label = mx.sym.transpose(data=label)
+    label = mx.sym.Reshape(data=label, shape=(-1,))
 
     #label_slice = mx.sym.SliceChannel(data=label, num_outputs=seq_len)
     #label = [label_slice[t] for t in range(seq_len)]
