@@ -38,7 +38,7 @@ def get_int_list(values):
 
 
 def get_float_list(values):
-    if isinstance(values, numbers.Number):
+    if not isinstance(values, numbers.Number):
         return [np.float32(values)]
     elif isinstance(values, (list, tuple)):
         try:

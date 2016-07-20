@@ -47,6 +47,4 @@ from . import torch as th
 from . import module
 from . import module as mod
 
-from . import ops
-
 __version__ = base.__version__
