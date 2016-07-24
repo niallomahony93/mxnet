@@ -336,7 +336,8 @@ void BatchDotBackward_(const OutputGrad& out_grad,
     mshadow::Tensor<xpu, 3, real_t> mlhs_grad = lhs_grad->get<xpu, 3, real_t>(s);
     mshadow::Tensor<xpu, 3, real_t> mrhs_grad = rhs_grad->get<xpu, 3, real_t>(s);
     mshadow::Tensor<xpu, 2, real_t*> workspace =
-      env.resource[0].get_space_typed<xpu, 2, real_t*>(mshadow::Shape2(2, 3 * mout_grad.size(0)), NULL);
+      env.resource[0].get_space_typed<xpu, 2, real_t*>(
+        mshadow::Shape2(2, 3 * mout_grad.size(0)), s);
     mshadow::Tensor<xpu, 1, real_t*> rhs_workspace = workspace[0];
     mshadow::Tensor<xpu, 1, real_t*> lhs_workspace = workspace[1];
     if (kNullOp != req_rhs_grad) {
