@@ -34,8 +34,6 @@ void CircularConvolutionForward_(const TBlob& lhs,
       << "Binary function only support input/output with the same type";
   CHECK_EQ(ret->type_flag_, rhs.type_flag_)
       << "Binary function only support input/output with the same type";
-  CHECK_EQ(lhs.shape_.ndim(), 2) << "Circular Convolution only supports lhs has ndim=2";
-  CHECK_EQ(rhs.shape_.ndim(), 2) << "Circular Convolution only supports rhs has ndim=2";
   Tensor<xpu, 2, real_t> out = ret->FlatTo2D<xpu, real_t>(s);
   Tensor<xpu, 2, real_t> dat = lhs.FlatTo2D<xpu, real_t>(s);
   Tensor<xpu, 2, real_t> weight = rhs.FlatTo2D<xpu, real_t>(s);
@@ -61,14 +59,12 @@ void CircularConvolutionBackward_(const OutputGrad& out_grad,
   using namespace mshadow;
   using namespace mshadow::expr;
   Stream<xpu> *s = ctx.get_stream<xpu>();
-  CHECK_EQ(lhs.data.shape_.ndim(), 2) << "Circular Convolution only supports lhs has ndim=2";
-  CHECK_EQ(rhs.data.shape_.ndim(), 2) << "Circular Convolution only supports rhs has ndim=2";
 
-  mshadow::Tensor<xpu, 2, real_t> mout_grad = out_grad.data.get<xpu, 2, real_t>(s);
-  mshadow::Tensor<xpu, 2, real_t> dat = lhs.data.get<xpu, 2, real_t>(s);
-  mshadow::Tensor<xpu, 2, real_t> weight = rhs.data.get<xpu, 2, real_t>(s);
-  mshadow::Tensor<xpu, 2, real_t> dat_grad = lhs_grad->get<xpu, 2, real_t>(s);
-  mshadow::Tensor<xpu, 2, real_t> weight_grad = rhs_grad->get<xpu, 2, real_t>(s);
+  mshadow::Tensor<xpu, 2, real_t> mout_grad = out_grad.data.FlatTo2D<xpu, real_t>(s);
+  mshadow::Tensor<xpu, 2, real_t> dat = lhs.data.FlatTo2D<xpu, real_t>(s);
+  mshadow::Tensor<xpu, 2, real_t> weight = rhs.data.FlatTo2D<xpu, real_t>(s);
+  mshadow::Tensor<xpu, 2, real_t> dat_grad = lhs_grad->FlatTo2D<xpu, real_t>(s);
+  mshadow::Tensor<xpu, 2, real_t> weight_grad = rhs_grad->FlatTo2D<xpu, real_t>(s);
   if (req_lhs_grad != kAddTo) {
     dat_grad = 0.0f;
   }
@@ -82,8 +78,6 @@ void CircularConvolutionBackward_(const OutputGrad& out_grad,
 inline TShape CircularConvolutionShape(const TShape& lshape,
                                        const TShape& rshape,
                                        const EnvArguments& env) {
-  CHECK_EQ(lshape.ndim(), 2) << "Circular Convolution only supports lhs has ndim=2";
-  CHECK_EQ(rshape.ndim(), 2) << "Circular Convolution only supports rhs has ndim=2";
   return lshape;
 }
 
