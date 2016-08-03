@@ -229,7 +229,7 @@ struct abs {
   }
 };
 
-/*! \brief used for generate element of power */
+/*! \brief used for generate element of sign */
 struct sign {
   template<typename DType>
   MSHADOW_XINLINE static DType Map(DType a) {
