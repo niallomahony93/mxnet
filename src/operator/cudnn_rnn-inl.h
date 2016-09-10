@@ -186,7 +186,9 @@ class CuDNNRNNOp : public Operator {
     CHECK_EQ(out_data.size(), out_expected);
     CHECK_EQ(in_grad.size(), in_expected);
     CHECK_EQ(out_grad.size(), out_expected);
-
+    CHECK_EQ(req.size(), in_expected);
+    CHECK_NE(req[rnn_enum::kData], kAddTo) << "AddTo is not supported for data";
+    CHECK_NE(req[rnn_enum::kState], kAddTo) << "AddTo is not supported for state";
     Stream<gpu> *s = ctx.get_stream<gpu>();
     // get input + output tensors
     Tensor<gpu, 3, DType> x = in_data[rnn_enum::kData].get<gpu, 3, DType>(s);
@@ -197,7 +199,9 @@ class CuDNNRNNOp : public Operator {
     Tensor<gpu, 3, DType> dhx = in_grad[rnn_enum::kState].get<gpu, 3, DType>(s);
     Tensor<gpu, 3, DType> y = out_data[rnn_enum::kOut].get<gpu, 3, DType>(s);
     Tensor<gpu, 3, DType> dy = out_grad[rnn_enum::kOut].get<gpu, 3, DType>(s);
-
+    if(req[rnn_enum::kParams] != kAddTo) {
+      dw = mshadow::expr::ScalarExp<DType>(0.0f);
+    }
     // only need kStateOut grad output_states is true
     void * dhy_ptr = NULL;
     if (param_.state_outputs)
@@ -209,6 +213,7 @@ class CuDNNRNNOp : public Operator {
     void * cx_ptr = NULL;
 
     if (param_.mode == rnn_enum::kLstm) {
+      CHECK_NE(req[rnn_enum::kStateCell], kAddTo) << "AddTo is not supported for state cell";
       cx_ptr = (in_data[rnn_enum::kStateCell].get<gpu, 3, DType>(s)).dptr_;
       dcx_ptr = (in_grad[rnn_enum::kStateCell].get<gpu, 3, DType>(s)).dptr_;
     }
@@ -217,8 +222,11 @@ class CuDNNRNNOp : public Operator {
 
     CHECK_EQ(x.CheckContiguous(), true);
     CHECK_EQ(w.CheckContiguous(), true);
+    CHECK_EQ(dw.CheckContiguous(), true);
     CHECK_EQ(hx.CheckContiguous(), true);
+    CHECK_EQ(dhx.CheckContiguous(), true);
     CHECK_EQ(y.CheckContiguous(), true);
+    CHECK_EQ(dy.CheckContiguous(), true);
 
     if (!init_cudnn_) {
       Init(s, in_data, out_data);
