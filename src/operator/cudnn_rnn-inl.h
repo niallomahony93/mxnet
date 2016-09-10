@@ -55,6 +55,7 @@ class CuDNNRNNOp : public Operator {
 
   ~CuDNNRNNOp() {
     if (init_cudnn_) {
+      cudaFree(reserve_space_ptr_);
       for (int i = 0; i < x_desc_vec_.size(); ++i) {
         CHECK_EQ(cudnnDestroyTensorDescriptor(x_desc_vec_[i]), CUDNN_STATUS_SUCCESS);
         CHECK_EQ(cudnnDestroyTensorDescriptor(y_desc_vec_[i]), CUDNN_STATUS_SUCCESS);
@@ -119,7 +120,6 @@ class CuDNNRNNOp : public Operator {
     }
     // Get temp space
     int temp_size = workspace_size_;
-    temp_size += ctx.is_train ? reserve_space_size_ : 0;
     Tensor<gpu, 1, DType> temp_space =
       ctx.requested[rnn_enum::kTempSpace].get_space_typed<gpu, 1, DType>(
                               mshadow::Shape1(temp_size), s);
@@ -143,7 +143,7 @@ class CuDNNRNNOp : public Operator {
                                       cy_ptr,
                                       temp_space.dptr_,
                                       workspace_byte_,
-                                      temp_space.dptr_ + workspace_size_,
+                                      reserve_space_ptr_,
                                       reserve_space_byte_), CUDNN_STATUS_SUCCESS);
     } else {
       // inference mode
@@ -199,7 +199,7 @@ class CuDNNRNNOp : public Operator {
     Tensor<gpu, 3, DType> dhx = in_grad[rnn_enum::kState].get<gpu, 3, DType>(s);
     Tensor<gpu, 3, DType> y = out_data[rnn_enum::kOut].get<gpu, 3, DType>(s);
     Tensor<gpu, 3, DType> dy = out_grad[rnn_enum::kOut].get<gpu, 3, DType>(s);
-    if(req[rnn_enum::kParams] != kAddTo) {
+    if (req[rnn_enum::kParams] != kAddTo) {
       dw = mshadow::expr::ScalarExp<DType>(0.0f);
     }
     // only need kStateOut grad output_states is true
@@ -234,7 +234,6 @@ class CuDNNRNNOp : public Operator {
 
     // Get temp space
     int temp_size = workspace_size_;
-    temp_size += ctx.is_train ? reserve_space_size_ : 0;
     Tensor<gpu, 1, DType> temp_space =
       ctx.requested[rnn_enum::kTempSpace].get_space_typed<gpu, 1, DType>(
                               mshadow::Shape1(temp_size), s);
@@ -263,7 +262,7 @@ class CuDNNRNNOp : public Operator {
                                 dcx_ptr,
                                 temp_space.dptr_,
                                 workspace_byte_,
-                                temp_space.dptr_ + workspace_size_,
+                                reserve_space_ptr_,
                                 reserve_space_byte_), CUDNN_STATUS_SUCCESS);
     CHECK_EQ(cudnnRNNBackwardWeights(s->dnn_handle_,
                                     rnn_desc_,
@@ -278,7 +277,7 @@ class CuDNNRNNOp : public Operator {
                                     workspace_byte_,
                                     dw_desc_,
                                     dw.dptr_,
-                                    temp_space.dptr_ + workspace_size_,
+                                    reserve_space_ptr_,
                                     reserve_space_byte_), CUDNN_STATUS_SUCCESS);
   }
 
@@ -453,9 +452,11 @@ class CuDNNRNNOp : public Operator {
                                         x_desc_vec_.data(),
                                         &reserve_space_byte_), CUDNN_STATUS_SUCCESS);
       workspace_size_ = workspace_byte_ / sizeof(DType);
-      reserve_space_size_ = reserve_space_byte_ / sizeof(DType);
 
-      // check that number of params are correct
+      // Allocate the reserve space
+      cudaMalloc(&reserve_space_ptr_, reserve_space_byte_);
+
+      // Check that number of params are correct
       size_t cudnn_param_size;
       CHECK_EQ(cudnnGetRNNParamsSize(s->dnn_handle_,
                                     rnn_desc_,
@@ -492,8 +493,8 @@ class CuDNNRNNOp : public Operator {
   Storage::Handle dropout_states_;
   uint64_t seed_ = 1337ull;
   size_t workspace_byte_, reserve_space_byte_, dropout_byte_;
-  int workspace_size_, reserve_space_size_, dropout_size_;
-
+  int workspace_size_, dropout_size_;
+  void* reserve_space_ptr_;
   std::vector<cudnnTensorDescriptor_t> x_desc_vec_, y_desc_vec_, dx_desc_vec_, dy_desc_vec_;
   cudnnTensorDescriptor_t hx_desc_, cx_desc_;
   cudnnTensorDescriptor_t hy_desc_, cy_desc_;
