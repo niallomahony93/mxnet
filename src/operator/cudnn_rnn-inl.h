@@ -55,7 +55,6 @@ class CuDNNRNNOp : public Operator {
 
   ~CuDNNRNNOp() {
     if (init_cudnn_) {
-      cudaFree(reserve_space_ptr_);
       for (int i = 0; i < x_desc_vec_.size(); ++i) {
         CHECK_EQ(cudnnDestroyTensorDescriptor(x_desc_vec_[i]), CUDNN_STATUS_SUCCESS);
         CHECK_EQ(cudnnDestroyTensorDescriptor(y_desc_vec_[i]), CUDNN_STATUS_SUCCESS);
@@ -75,6 +74,7 @@ class CuDNNRNNOp : public Operator {
       CHECK_EQ(cudnnDestroyRNNDescriptor(rnn_desc_), CUDNN_STATUS_SUCCESS);
       CHECK_EQ(cudnnDestroyDropoutDescriptor(dropout_desc_), CUDNN_STATUS_SUCCESS);
       Storage::Get()->Free(dropout_states_);
+      Storage::Get()->Free(reserve_space_);
     }
   }
 
@@ -143,7 +143,7 @@ class CuDNNRNNOp : public Operator {
                                       cy_ptr,
                                       temp_space.dptr_,
                                       workspace_byte_,
-                                      reserve_space_ptr_,
+                                      reserve_space_.dptr,
                                       reserve_space_byte_), CUDNN_STATUS_SUCCESS);
     } else {
       // inference mode
@@ -262,7 +262,7 @@ class CuDNNRNNOp : public Operator {
                                 dcx_ptr,
                                 temp_space.dptr_,
                                 workspace_byte_,
-                                reserve_space_ptr_,
+                                reserve_space_.dptr,
                                 reserve_space_byte_), CUDNN_STATUS_SUCCESS);
     CHECK_EQ(cudnnRNNBackwardWeights(s->dnn_handle_,
                                     rnn_desc_,
@@ -277,7 +277,7 @@ class CuDNNRNNOp : public Operator {
                                     workspace_byte_,
                                     dw_desc_,
                                     dw.dptr_,
-                                    reserve_space_ptr_,
+                                    reserve_space_.dptr,
                                     reserve_space_byte_), CUDNN_STATUS_SUCCESS);
   }
 
@@ -452,9 +452,8 @@ class CuDNNRNNOp : public Operator {
                                         x_desc_vec_.data(),
                                         &reserve_space_byte_), CUDNN_STATUS_SUCCESS);
       workspace_size_ = workspace_byte_ / sizeof(DType);
-
       // Allocate the reserve space
-      cudaMalloc(&reserve_space_ptr_, reserve_space_byte_);
+      reserve_space_ = Storage::Get()->Alloc(reserve_space_byte_, Context::GPU());
 
       // Check that number of params are correct
       size_t cudnn_param_size;
@@ -490,11 +489,10 @@ class CuDNNRNNOp : public Operator {
   cudnnDirectionMode_t direction_;
   cudnnRNNInputMode_t input_mode_;
   cudnnDropoutDescriptor_t dropout_desc_;
-  Storage::Handle dropout_states_;
+  Storage::Handle dropout_states_, reserve_space_;
   uint64_t seed_ = 1337ull;
   size_t workspace_byte_, reserve_space_byte_, dropout_byte_;
   int workspace_size_, dropout_size_;
-  void* reserve_space_ptr_;
   std::vector<cudnnTensorDescriptor_t> x_desc_vec_, y_desc_vec_, dx_desc_vec_, dy_desc_vec_;
   cudnnTensorDescriptor_t hx_desc_, cx_desc_;
   cudnnTensorDescriptor_t hy_desc_, cy_desc_;
