@@ -128,8 +128,9 @@ struct ReshapeParam : public dmlc::Parameter<ReshapeParam> {
               "can be -1");
     DMLC_DECLARE_FIELD(reverse)
       .set_default(false)
-      .describe("Whether to match the shapes from the backward. If reverse is true, 0 values in the `shape` argument will "
-      "be searched from the backward. E.g the original shape is (10, 5, 4) and the shape argument is (-1, 0). If reverse is true, "
+      .describe("Whether to match the shapes from the backward. If reverse is true, "
+      "0 values in the `shape` argument will be searched from the backward. E.g the "
+      "original shape is (10, 5, 4) and the shape argument is (-1, 0). If reverse is true, "
       "the new shape should be (50, 4). Otherwise it will be (40, 5).");
   }
 };
