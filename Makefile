@@ -98,9 +98,9 @@ endif
 
 all: lib/libmxnet.a lib/libmxnet.so $(BIN)
 
-SRC = $(wildcard src/*.cc src/*/*.cc src/*/*/*.cc)
+SRC = $(wildcard src/*/*/*.cc src/*/*.cc src/*.cc)
 OBJ = $(patsubst %.cc, build/%.o, $(SRC))
-CUSRC = $(wildcard src/*.cu src/*/*.cu src/*/*/*.cu)
+CUSRC = $(wildcard src/*/*/*.cu src/*/*.cu src/*.cu)
 CUOBJ = $(patsubst %.cu, build/%_gpu.o, $(CUSRC))
 
 # extra operators
@@ -151,14 +151,6 @@ else
 endif
 
 # For quick compile test, used smaller subset
-ALLX_DEP = $(filter-out build/src/operator/%, $(ALL_DEP))
-ALLX_DEP+= build/src/operator/fully_connected.o
-ALLX_DEP+= build/src/operator/fully_connected_gpu.o
-ALLX_DEP+= build/src/operator/operator.o
-ALLX_DEP+= build/src/operator/operator_util.o
-ALLX_DEP+= build/src/operator/elementwise_unary_op.o
-ALLX_DEP+= build/src/operator/custom.o
-
 ALLX_DEP= $(ALL_DEP)
 
 ifeq ($(USE_NVRTC), 1)
@@ -219,7 +211,7 @@ PSLITE:
 $(DMLC_CORE)/libdmlc.a: DMLCCORE
 
 DMLCCORE:
-	+ cd $(DMLC_CORE); make libdmlc.a config=$(ROOTDIR)/$(config); cd $(ROOTDIR)
+	+ cd $(DMLC_CORE); make libdmlc.a USE_SSE=$(USE_SSE) config=$(ROOTDIR)/$(config); cd $(ROOTDIR)
 
 $(NNVM_PATH)/lib/libnnvm.a:
 	+ cd $(NNVM_PATH); make lib/libnnvm.a; cd $(ROOTDIR)
@@ -272,6 +264,7 @@ rpkg:	roxygen
 	mkdir -p R-package/inst/include
 	cp -rf include/* R-package/inst/include
 	cp -rf dmlc-core/include/* R-package/inst/include/
+	cp -rf nnvm/include/* R-package/inst/include
 	R CMD build --no-build-vignettes R-package
 
 scalapkg:

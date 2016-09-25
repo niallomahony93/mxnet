@@ -12,6 +12,12 @@
 namespace mxnet {
 namespace op {
 namespace mshadow_op {
+#ifdef __CUDA_ARCH__
+__constant__ const float PI = 3.14159265358979323846;
+#else
+const float PI = 3.14159265358979323846;
+#endif
+
 /*! \brief identity Operation */
 struct identity {
   template<typename DType>
@@ -154,6 +160,20 @@ struct log_grad {
   }
 };
 
+struct sin {
+  template<typename DType>
+  MSHADOW_XINLINE static DType Map(DType a) {
+    return DType(sinf(a));
+  }
+};
+
+struct sin_grad {
+  template<typename DType>
+  MSHADOW_XINLINE static DType Map(DType a) {
+    return DType(cosf(a));
+  }
+};
+
 struct cos {
   template<typename DType>
   MSHADOW_XINLINE static DType Map(DType a) {
@@ -168,19 +188,181 @@ struct cos_grad {
   }
 };
 
-struct sin {
+struct tan {
   template<typename DType>
   MSHADOW_XINLINE static DType Map(DType a) {
-    return DType(sinf(a));
+    return DType(tanf(a));
   }
 };
 
-struct sin_grad {
+struct tan_grad {
   template<typename DType>
   MSHADOW_XINLINE static DType Map(DType a) {
-    return DType(cosf(a));
+    return DType(powf(a, 2) + 1);
   }
 };
+
+struct arcsin {
+  template<typename DType>
+  MSHADOW_XINLINE static DType Map(DType a) {
+    return DType(asinf(a));
+  }
+};
+
+struct arcsin_grad {
+  template<typename DType>
+  MSHADOW_XINLINE static DType Map(DType a) {
+    return DType(1.0 / (sqrtf(1 - a*a)));
+  }
+};
+
+struct arccos {
+  template<typename DType>
+  MSHADOW_XINLINE static DType Map(DType a) {
+    return DType(acosf(a));
+  }
+};
+
+struct arccos_grad {
+  template<typename DType>
+  MSHADOW_XINLINE static DType Map(DType a) {
+    return DType(-1.0 / (sqrtf(1 - a*a)));
+  }
+};
+
+struct arctan {
+  template<typename DType>
+  MSHADOW_XINLINE static DType Map(DType a) {
+    return DType(atanf(a));
+  }
+};
+
+struct arctan_grad {
+  template<typename DType>
+  MSHADOW_XINLINE static DType Map(DType a) {
+    return DType(1 / (a*a + 1));
+  }
+};
+
+struct hypot {
+  template<typename DType>
+  MSHADOW_XINLINE static DType Map(DType a, DType b) {
+    return DType(sqrtf(a * a + b * b));
+  }
+};
+
+struct hypot_grad_left {
+  template<typename DType>
+  MSHADOW_XINLINE static DType Map(DType a, DType b) {
+    return DType(a/sqrtf(a * a + b * b));
+  }
+};
+
+struct hypot_grad_right {
+  template<typename DType>
+  MSHADOW_XINLINE static DType Map(DType a, DType b) {
+    return DType(b/sqrtf(a * a + b * b));
+  }
+};
+
+struct degrees {
+  template<typename DType>
+  MSHADOW_XINLINE static DType Map(DType a) {
+    return DType(180. / PI * a);
+  }
+};
+
+struct degrees_grad {
+  template<typename DType>
+  MSHADOW_XINLINE static DType Map(DType a) {
+    return DType(180. / PI);
+  }
+};
+
+struct radians {
+  template<typename DType>
+  MSHADOW_XINLINE static DType Map(DType a) {
+    return DType(PI /180. * a);
+  }
+};
+
+struct radians_grad {
+  template<typename DType>
+  MSHADOW_XINLINE static DType Map(DType a) {
+    return DType(PI / 180.);
+  }
+};
+
+struct sinh {
+  template<typename DType>
+  MSHADOW_XINLINE static DType Map(DType a) {
+    return DType(sinhf(a));
+  }
+};
+
+struct sinh_grad {
+  template<typename DType>
+  MSHADOW_XINLINE static DType Map(DType a) {
+    return DType(coshf(a));
+  }
+};
+
+struct cosh {
+  template<typename DType>
+  MSHADOW_XINLINE static DType Map(DType a) {
+    return DType(coshf(a));
+  }
+};
+
+struct cosh_grad {
+  template<typename DType>
+  MSHADOW_XINLINE static DType Map(DType a) {
+    return DType(sinhf(a));
+  }
+};
+
+struct arcsinh {
+  template<typename DType>
+  MSHADOW_XINLINE static DType Map(DType a) {
+    return DType(asinhf(a));
+  }
+};
+
+struct arcsinh_grad {
+  template<typename DType>
+  MSHADOW_XINLINE static DType Map(DType a) {
+    return DType(1.0 / (sqrtf(1 + a*a)));
+  }
+};
+
+struct arccosh {
+  template<typename DType>
+  MSHADOW_XINLINE static DType Map(DType a) {
+    return DType(acoshf(a));
+  }
+};
+
+struct arccosh_grad {
+  template<typename DType>
+  MSHADOW_XINLINE static DType Map(DType a) {
+    return DType(1.0 / (sqrtf(a*a - 1.0)));
+  }
+};
+
+struct arctanh {
+  template<typename DType>
+  MSHADOW_XINLINE static DType Map(DType a) {
+    return DType(atanhf(a));
+  }
+};
+
+struct arctanh_grad {
+  template<typename DType>
+  MSHADOW_XINLINE static DType Map(DType a) {
+    return DType(-1.0 / (a*a - 1.0));
+  }
+};
+
 struct square {
   template<typename DType>
   MSHADOW_XINLINE static DType Map(DType a) {
