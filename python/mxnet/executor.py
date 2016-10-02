@@ -127,7 +127,6 @@ class Executor(object):
         ----------
         out_grads : NDArray or list of NDArray or dict of str to NDArray, optional
             Gradient on the outputs to be propagated back.
-            If out_grads is NDArray or list of NDArray, it
             This parameter is only needed when bind is called
             on outputs that are not a loss function.
         """
