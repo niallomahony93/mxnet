@@ -44,7 +44,8 @@ def demo_net(detector, image_name):
     im_info = np.array([[im_array.shape[2], im_array.shape[3], im_scale]], dtype=np.float32)
 
     scores, boxes = detector.im_detect(im_array, im_info)
-
+    print scores.shape
+    print boxes.shape
     all_boxes = [[] for _ in CLASSES]
     CONF_THRESH = 0.8
     NMS_THRESH = 0.3

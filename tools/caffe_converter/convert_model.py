@@ -89,6 +89,7 @@ def main():
             if weight_name not in arg_shape_dic:
                 print weight_name + ' not found in arg_shape_dic.'
                 continue
+            print(arg_shape_dic[weight_name])
             wmat = wmat.reshape(arg_shape_dic[weight_name])
             arg_params[weight_name] = mx.nd.zeros(wmat.shape)
             arg_params[weight_name][:] = wmat

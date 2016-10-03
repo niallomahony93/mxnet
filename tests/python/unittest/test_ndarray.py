@@ -2,7 +2,7 @@ import os
 import mxnet as mx
 import numpy as np
 import pickle as pkl
-from mxnet.unittest_tools import *
+from mxnet.test_utils import *
 
 
 def check_with_uniform(uf, arg_shapes, dim=None, npuf=None, rmin=-10, type_list=[np.float32]):

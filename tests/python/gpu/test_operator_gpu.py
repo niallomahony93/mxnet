@@ -1,11 +1,11 @@
-﻿import sys
+﻿﻿import sys
 import os
 curr_path = os.path.dirname(os.path.abspath(os.path.expanduser(__file__)))
 sys.path.insert(0, os.path.join(curr_path, '../unittest'))
 from test_operator import *
 import mxnet as mx
 import numpy as np
-from mxnet.unittest_tools import check_consistency
+from mxnet.test_utils import check_consistency
 from numpy.testing import assert_allclose
 import time
 

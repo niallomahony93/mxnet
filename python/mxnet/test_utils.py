@@ -246,7 +246,7 @@ def check_numeric_gradient(sym, location, aux_states=None, numeric_eps=1e-4, che
     out = mx.sym.sum(sym * proj)
     out = mx.sym.MakeLoss(out)
 
-    location = dict(location.items() +
+    location = dict(list(location.items()) +
                     [("__random_proj", mx.nd.array(random_projection(out_shape[0]), ctx=ctx))])
     args_grad_npy = dict([(k, _rng.normal(0, 0.01, size=location[k].shape)) for k in grad_nodes]
                          + [("__random_proj", _rng.normal(0, 0.01, size=out_shape[0]))])
@@ -266,8 +266,6 @@ def check_numeric_gradient(sym, location, aux_states=None, numeric_eps=1e-4, che
     executor.backward()
     symbolic_grads = {k:executor.grad_dict[k].asnumpy() for k in grad_nodes}
 
-    # Refactor forward out of here as this no longer computes correct forward pass.
-    # We need to add aux_states into the argument
     numeric_gradients = numeric_grad(executor, location_npy, aux_states_npy,
                                      eps=numeric_eps, use_forward_train=use_forward_train)
     for name in grad_nodes:

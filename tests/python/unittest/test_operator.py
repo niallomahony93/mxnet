@@ -3,9 +3,8 @@ import numpy as np
 import mxnet as mx
 import random
 from numpy.testing import assert_allclose
-from mxnet.unittest_tools import *
+from mxnet.test_utils import *
 
-np.random.seed(12345)
 
 
 def np_softmax(x):
@@ -39,6 +38,7 @@ def check_elementwise_sum_with_shape(shape, n):
         assert same(a.asnumpy(), out_grad.asnumpy())
 
 def test_elementwise_sum():
+    np.random.seed(0)
     nrepeat = 2
     maxdim = 4
     for repeat in range(nrepeat):
