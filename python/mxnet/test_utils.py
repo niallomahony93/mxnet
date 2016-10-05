@@ -295,26 +295,26 @@ def check_symbolic_forward(sym, location, expected, check_eps=1E-4, aux_states=N
     ---------
     sym : Symbol
         output symbol
-    location : list of np.ndarray of dict
+    location : list of np.ndarray or dict of str to np.ndarray
         The evaluation point
 
-        - if type is list
+        - if type is list of np.ndarray
             contain all the numpy arrays corresponding to `sym.list_arguments()`
-        - if type is dict
+        - if type is dict of str to np.ndarray
             contain the mapping between argument names and their values
     expected : list of np.ndarray or dict of str to np.ndarray
         The expected output value
 
-        - if type is list
+        - if type is list of np.ndarray
             contain arrays corresponding to exe.outputs
-        - if type is dict
+        - if type is dict of str to np.ndarray
             contain mapping between sym.list_output() and exe.outputs
     check_eps : float, optional
         relative error to check to
     aux_states : list of np.ndarray of dict, optional
-        - if type is list
+        - if type is list of np.ndarray
             contain all the numpy arrays corresponding to sym.list_auxiliary_states
-        - if type is dict
+        - if type is dict of str to np.ndarray
             contain the mapping between names of auxiliary states and their values
     ctx : Context, optional
         running context
@@ -357,21 +357,21 @@ def check_symbolic_backward(sym, location, out_grads, expected, check_eps=1e-5,
     location : list of np.ndarray or dict of str to np.ndarray
         The evaluation point
 
-        - if type is list
+        - if type is list of np.ndarray
             contain all the numpy arrays corresponding to mxnet.sym.list_arguments
-        - if type is dict
+        - if type is dict of str to np.ndarray
             contain the mapping between argument names and their values
     out_grads : None or list of np.ndarray or dict of str to np.ndarray
         numpy arrays corresponding to sym.outputs for incomming gradient
 
-        - if type is list
+        - if type is list of np.ndarray
             contains arrays corresponding to exe.outputs
-        - if type is dict
+        - if type is dict of str to np.ndarray
             contains mapping between mxnet.sym.list_output() and Executor.outputs
     expected : list of np.ndarray or dict of str to np.ndarray
         expected gradient values
 
-        - if type is list
+        - if type is list of np.ndarray
             contains arrays corresponding to exe.grad_arrays
         - if type is dict of str to np.ndarray
             contains mapping between sym.list_arguments() and exe.outputs
