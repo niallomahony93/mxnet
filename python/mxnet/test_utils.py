@@ -55,7 +55,7 @@ def same(a, b):
 def reldiff(a, b):
     """Calculate the relative difference between two input arrays
 
-    Calculated by :math:`\\frac{|a-b|^2)}{|a|^2 + |b|^2}`
+    Calculated by :math:`\\frac{|a-b|^2}{|a|^2 + |b|^2}`
 
     Parameters
     ----------
@@ -182,9 +182,9 @@ def check_numeric_gradient(sym, location, aux_states=None, numeric_eps=1e-4, che
     location : list or tuple or dict
         Argument values used as location to compute gradient
 
-        - type: list of numpy.ndarray
+        - if type is list of numpy.ndarray
             inner elements should have the same the same order as mxnet.sym.list_arguments().
-        - type: dict of str -> numpy.ndarray
+        - if type is dict of str -> numpy.ndarray
             maps the name of arguments to the corresponding numpy.ndarray.
         *In either case, value of all the arguments must be provided.*
     aux_states : ist or tuple or dict, optional
@@ -298,23 +298,23 @@ def check_symbolic_forward(sym, location, expected, check_eps=1E-4, aux_states=N
     location : list of np.ndarray of dict
         The evaluation point
 
-        - type: list
+        - if type is list
             contain all the numpy arrays corresponding to `sym.list_arguments()`
-        - type: dict
+        - if type is dict
             contain the mapping between argument names and their values
     expected : list of np.ndarray or dict of str to np.ndarray
         The expected output value
 
-        - type: list
+        - if type is list
             contain arrays corresponding to exe.outputs
-        - type: dict
+        - if type is dict
             contain mapping between sym.list_output() and exe.outputs
     check_eps : float, optional
         relative error to check to
     aux_states : list of np.ndarray of dict, optional
-        - type: list
+        - if type is list
             contain all the numpy arrays corresponding to sym.list_auxiliary_states
-        - type: dict
+        - if type is dict
             contain the mapping between names of auxiliary states and their values
     ctx : Context, optional
         running context
@@ -354,26 +354,26 @@ def check_symbolic_backward(sym, location, out_grads, expected, check_eps=1e-5,
     ---------
     sym : Symbol
         output symbol
-    location : list of np.ndarray
+    location : list of np.ndarray or dict of str to np.ndarray
         The evaluation point
 
-        - type: list
+        - if type is list
             contain all the numpy arrays corresponding to mxnet.sym.list_arguments
-        - type: dict
+        - if type is dict
             contain the mapping between argument names and their values
     out_grads : None or list of np.ndarray or dict of str to np.ndarray
         numpy arrays corresponding to sym.outputs for incomming gradient
 
-        - type: list
+        - if type is list
             contains arrays corresponding to exe.outputs
-        - type: dict
+        - if type is dict
             contains mapping between mxnet.sym.list_output() and Executor.outputs
     expected : list of np.ndarray or dict of str to np.ndarray
         expected gradient values
 
-        - type: list
+        - if type is list
             contains arrays corresponding to exe.grad_arrays
-        - type: dict of str to np.ndarray
+        - if type is dict of str to np.ndarray
             contains mapping between sym.list_arguments() and exe.outputs
     check_eps: float, optional
         relative error to check to
@@ -436,7 +436,7 @@ def check_speed(sym, location=None, ctx=mx.cpu(), N=20, grad_req=None, typ="whol
     ----------
     sym : Symbol
         symbol to run the speed test
-    location : none or dict of np.ndarray
+    location : none or dict of str to np.ndarray
         location to evaluate the inner executor
     ctx : Context
         running context
@@ -521,25 +521,25 @@ def check_consistency(sym, ctx_list, scale=1.0, grad_req='write'):
     >>> # create the symbol
     >>> sym = mx.sym.Convolution(num_filter=3, kernel=(3,3), name='conv')
     >>> # initialize the running context
-    >>> ctx_list = [\
-{'ctx': mx.gpu(0), 'conv_data': (2, 2, 10, 10), 'type_dict': {'conv_data': np.float64}},\
-{'ctx': mx.gpu(0), 'conv_data': (2, 2, 10, 10), 'type_dict': {'conv_data': np.float32}},\
-{'ctx': mx.gpu(0), 'conv_data': (2, 2, 10, 10), 'type_dict': {'conv_data': np.float16}},\
-{'ctx': mx.cpu(0), 'conv_data': (2, 2, 10, 10), 'type_dict': {'conv_data': np.float64}},\
-{'ctx': mx.cpu(0), 'conv_data': (2, 2, 10, 10), 'type_dict': {'conv_data': np.float32}}]
+    >>> ctx_list =\
+[{'ctx': mx.gpu(0), 'conv_data': (2, 2, 10, 10), 'type_dict': {'conv_data': np.float64}},\
+ {'ctx': mx.gpu(0), 'conv_data': (2, 2, 10, 10), 'type_dict': {'conv_data': np.float32}},\
+ {'ctx': mx.gpu(0), 'conv_data': (2, 2, 10, 10), 'type_dict': {'conv_data': np.float16}},\
+ {'ctx': mx.cpu(0), 'conv_data': (2, 2, 10, 10), 'type_dict': {'conv_data': np.float64}},\
+ {'ctx': mx.cpu(0), 'conv_data': (2, 2, 10, 10), 'type_dict': {'conv_data': np.float32}}]
     >>> check_consistency(sym, ctx_list)
     >>> sym = mx.sym.Concat(name='concat', num_args=2)
-    >>> ctx_list = [\
-{'ctx': mx.gpu(0), 'concat_arg1': (2, 10), 'concat_arg0': (2, 10),\
- 'type_dict': {'concat_arg0': np.float64, 'concat_arg1': np.float64}},\
-{'ctx': mx.gpu(0), 'concat_arg1': (2, 10), 'concat_arg0': (2, 10),\
- 'type_dict': {'concat_arg0': np.float32, 'concat_arg1': np.float32}},\
-{'ctx': mx.gpu(0), 'concat_arg1': (2, 10), 'concat_arg0': (2, 10),\
- 'type_dict': {'concat_arg0': np.float16, 'concat_arg1': np.float16}},\
-{'ctx': mx.cpu(0), 'concat_arg1': (2, 10), 'concat_arg0': (2, 10),\
- 'type_dict': {'concat_arg0': np.float64, 'concat_arg1': np.float64}},\
-{'ctx': mx.cpu(0), 'concat_arg1': (2, 10), 'concat_arg0': (2, 10),\
- 'type_dict': {'concat_arg0': np.float32, 'concat_arg1': np.float32}}]
+    >>> ctx_list = \
+[{'ctx': mx.gpu(0), 'concat_arg1': (2, 10), 'concat_arg0': (2, 10),\
+  'type_dict': {'concat_arg0': np.float64, 'concat_arg1': np.float64}},\
+ {'ctx': mx.gpu(0), 'concat_arg1': (2, 10), 'concat_arg0': (2, 10),\
+  'type_dict': {'concat_arg0': np.float32, 'concat_arg1': np.float32}},\
+ {'ctx': mx.gpu(0), 'concat_arg1': (2, 10), 'concat_arg0': (2, 10),\
+  'type_dict': {'concat_arg0': np.float16, 'concat_arg1': np.float16}},\
+ {'ctx': mx.cpu(0), 'concat_arg1': (2, 10), 'concat_arg0': (2, 10),\
+  'type_dict': {'concat_arg0': np.float64, 'concat_arg1': np.float64}},\
+ {'ctx': mx.cpu(0), 'concat_arg1': (2, 10), 'concat_arg0': (2, 10),\
+  'type_dict': {'concat_arg0': np.float32, 'concat_arg1': np.float32}}]
     >>> check_consistency(sym, ctx_list)
     """
     tol = {np.dtype(np.float16): 1e-1,
