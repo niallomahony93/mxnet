@@ -181,6 +181,7 @@ def check_numeric_gradient(sym, location, aux_states=None, numeric_eps=1e-4, che
         Symbol containing op to test
     location : list or tuple or dict
         Argument values used as location to compute gradient
+
         - type: list of numpy.ndarray
             inner elements should have the same the same order as mxnet.sym.list_arguments().
         - type: dict of str -> numpy.ndarray
@@ -296,12 +297,14 @@ def check_symbolic_forward(sym, location, expected, check_eps=1E-4, aux_states=N
         output symbol
     location : list of np.ndarray of dict
         The evaluation point
+
         - type: list
-            contain all the numpy arrays corresponding to mxnet.sym.list_arguments
-        - type: list
+            contain all the numpy arrays corresponding to `sym.list_arguments()`
+        - type: dict
             contain the mapping between argument names and their values
     expected : list of np.ndarray or dict of str to np.ndarray
         The expected output value
+
         - type: list
             contain arrays corresponding to exe.outputs
         - type: dict
@@ -351,20 +354,23 @@ def check_symbolic_backward(sym, location, out_grads, expected, check_eps=1e-5,
     ---------
     sym : Symbol
         output symbol
-    location : list np.ndarray
+    location : list of np.ndarray
         The evaluation point
+
         - type: list
             contain all the numpy arrays corresponding to mxnet.sym.list_arguments
-        - type: list
+        - type: dict
             contain the mapping between argument names and their values
     out_grads : None or list of np.ndarray or dict of str to np.ndarray
         numpy arrays corresponding to sym.outputs for incomming gradient
+
         - type: list
             contains arrays corresponding to exe.outputs
         - type: dict
             contains mapping between mxnet.sym.list_output() and Executor.outputs
     expected : list of np.ndarray or dict of str to np.ndarray
         expected gradient values
+
         - type: list
             contains arrays corresponding to exe.grad_arrays
         - type: dict of str to np.ndarray
@@ -440,6 +446,7 @@ def check_speed(sym, location=None, ctx=mx.cpu(), N=20, grad_req=None, typ="whol
         gradient requirements
     typ : str, optional
         "whole" or "forward"
+
         - "whole"
             test the forward_backward speed
         - "forward"
