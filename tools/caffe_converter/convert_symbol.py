@@ -81,7 +81,7 @@ def proto2script(proto_file):
         input_dim = layer[0].input_param.shape._values[0].dim
         layer.pop(0)
     else:
-        raise Exception('Invalid proto file.')   
+        raise Exception('Invalid proto file.')
 
     # We assume the first bottom blob of first layer is the output from data layer
     input_name = layer[0].bottom[0]
@@ -104,6 +104,7 @@ def proto2script(proto_file):
             type_string = 'mx.symbol.Pooling'
             param = layer[i].pooling_param
             param_string = ''
+            param_string += "pooling_convention='full', "
             if param.global_pooling == True:
                 # there must be a param `kernel` in a pooling layer
                 param_string += "global_pool=True, kernel=(1,1)"
