@@ -23,11 +23,11 @@ class ProposalOperator(mx.operator.CustomOp):
         self._scales = np.fromstring(scales[1:-1], dtype=float, sep=',')
         self._ratios = np.fromstring(ratios[1:-1], dtype=float, sep=',').tolist()
         self._anchors = generate_anchors(base_size=self._feat_stride, scales=self._scales, ratios=self._ratios)
-        print("anchor shape:", self._anchors)
         self._num_anchors = self._anchors.shape[0]
         self._output_score = output_score
 
         if DEBUG:
+            print("anchor shape:", self._anchors)
             print 'feat_stride: {}'.format(self._feat_stride)
             print 'anchors:'
             print self._anchors
