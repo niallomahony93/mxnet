@@ -14,11 +14,17 @@ MXNET_OPERATOR_REGISTER_BINARY_BROADCAST(_plus)
 .set_attr<FCompute>("FCompute<cpu>", BinaryBroadcastCompute<cpu, mshadow::op::plus>)
 .set_attr<nnvm::FGradient>("FGradient", ElemwiseGradUseNone{"_backward_plus"});
 
+// specialized to elementwise plus, currently only used for gradient aggregation
+MXNET_OPERATOR_REGISTER_BINARY(_ewise_plus)
+.set_attr<FCompute>("FCompute<cpu>", BinaryCompute<cpu, mshadow::op::plus>);
+
 NNVM_REGISTER_OP(_backward_plus)
 .set_num_inputs(1)
 .set_num_outputs(2)
 .set_attr<nnvm::FBackwardOutToInIndex>("FBackwardOutToInIndex",
   [](const NodeAttrs& attrs) { return std::vector<uint32_t>{0, 1}; })
+.set_attr<nnvm::FBackwardInGradIndex>("FBackwardInGradIndex",
+  [](const NodeAttrs& attrs) { return std::vector<uint32_t>{0}; })
 .set_attr<nnvm::FInplaceOption>("FInplaceOption",
   [](const NodeAttrs& attrs){
     return std::vector<std::pair<int, int> >{{0, 0}, {0, 1}};
@@ -36,6 +42,8 @@ NNVM_REGISTER_OP(_backward_minus)
 .set_num_outputs(2)
 .set_attr<nnvm::FBackwardOutToInIndex>("FBackwardOutToInIndex",
   [](const NodeAttrs& attrs) { return std::vector<uint32_t>{0, 1}; })
+.set_attr<nnvm::FBackwardInGradIndex>("FBackwardInGradIndex",
+  [](const NodeAttrs& attrs) { return std::vector<uint32_t>{0}; })
 .set_attr<nnvm::FInplaceOption>("FInplaceOption",
   [](const NodeAttrs& attrs){
     return std::vector<std::pair<int, int> >{{0, 0}, {0, 1}};
@@ -53,6 +61,8 @@ NNVM_REGISTER_OP(_backward_mul)
 .set_num_outputs(2)
 .set_attr<nnvm::FBackwardOutToInIndex>("FBackwardOutToInIndex",
   [](const NodeAttrs& attrs) { return std::vector<uint32_t>{0, 1}; })
+.set_attr<nnvm::FBackwardInGradIndex>("FBackwardInGradIndex",
+  [](const NodeAttrs& attrs) { return std::vector<uint32_t>{0}; })
 .set_attr<nnvm::FInplaceOption>("FInplaceOption",
   [](const NodeAttrs& attrs){
     return std::vector<std::pair<int, int> >{{0, 1}};
@@ -70,6 +80,8 @@ NNVM_REGISTER_OP(_backward_div)
 .set_num_outputs(2)
 .set_attr<nnvm::FBackwardOutToInIndex>("FBackwardOutToInIndex",
   [](const NodeAttrs& attrs) { return std::vector<uint32_t>{0, 1}; })
+.set_attr<nnvm::FBackwardInGradIndex>("FBackwardInGradIndex",
+  [](const NodeAttrs& attrs) { return std::vector<uint32_t>{0}; })
 .set_attr<nnvm::FInplaceOption>("FInplaceOption",
   [](const NodeAttrs& attrs){
     return std::vector<std::pair<int, int> >{{0, 1}};
@@ -87,6 +99,8 @@ NNVM_REGISTER_OP(_backward_power)
 .set_num_outputs(2)
 .set_attr<nnvm::FBackwardOutToInIndex>("FBackwardOutToInIndex",
   [](const NodeAttrs& attrs) { return std::vector<uint32_t>{0, 1}; })
+.set_attr<nnvm::FBackwardInGradIndex>("FBackwardInGradIndex",
+  [](const NodeAttrs& attrs) { return std::vector<uint32_t>{0}; })
 .set_attr<nnvm::FInplaceOption>("FInplaceOption",
   [](const NodeAttrs& attrs){
     return std::vector<std::pair<int, int> >{{0, 1}};
@@ -104,6 +118,8 @@ NNVM_REGISTER_OP(_backward_maximum)
 .set_num_outputs(2)
 .set_attr<nnvm::FBackwardOutToInIndex>("FBackwardOutToInIndex",
   [](const NodeAttrs& attrs) { return std::vector<uint32_t>{0, 1}; })
+.set_attr<nnvm::FBackwardInGradIndex>("FBackwardInGradIndex",
+  [](const NodeAttrs& attrs) { return std::vector<uint32_t>{0}; })
 .set_attr<nnvm::FInplaceOption>("FInplaceOption",
   [](const NodeAttrs& attrs){
     return std::vector<std::pair<int, int> >{{0, 1}};
@@ -121,6 +137,8 @@ NNVM_REGISTER_OP(_backward_minimum)
 .set_num_outputs(2)
 .set_attr<nnvm::FBackwardOutToInIndex>("FBackwardOutToInIndex",
   [](const NodeAttrs& attrs) { return std::vector<uint32_t>{0, 1}; })
+.set_attr<nnvm::FBackwardInGradIndex>("FBackwardInGradIndex",
+  [](const NodeAttrs& attrs) { return std::vector<uint32_t>{0}; })
 .set_attr<nnvm::FInplaceOption>("FInplaceOption",
   [](const NodeAttrs& attrs){
     return std::vector<std::pair<int, int> >{{0, 1}};
@@ -137,9 +155,9 @@ NNVM_REGISTER_OP(_backward_hypot)
 .set_num_inputs(3)
 .set_num_outputs(2)
 .set_attr<nnvm::FBackwardOutToInIndex>("FBackwardOutToInIndex",
-[](const NodeAttrs& attrs) {
-  return std::vector<uint32_t> {0, 1};
-})
+[](const NodeAttrs& attrs) { return std::vector<uint32_t> {0, 1}; })
+.set_attr<nnvm::FBackwardInGradIndex>("FBackwardInGradIndex",
+  [](const NodeAttrs& attrs) { return std::vector<uint32_t>{0}; })
 .set_attr<nnvm::FInplaceOption>("FInplaceOption",
 [](const NodeAttrs& attrs) {
   return std::vector<std::pair<int, int> > {{0, 1}};

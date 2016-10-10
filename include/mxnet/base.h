@@ -73,6 +73,19 @@
 #define MXNET_PREDICT_ONLY 0
 #endif
 
+/*!
+ * \brief define operator message for profiler
+ */
+#if MXNET_USE_PROFILER
+#define PROFILER_MESSAGE(msg)     msg
+#else
+#define PROFILER_MESSAGE(msg)     nullptr
+#endif
+
+/*!
+ * \brief define function name as profiler message
+ */
+#define PROFILER_MESSAGE_FUNCNAME PROFILER_MESSAGE(__FUNCTION__)
 
 /*! \brief namespace of mxnet */
 namespace mxnet {
@@ -175,6 +188,12 @@ struct Context {
    * \return Pinned CPU context. -1 for current GPU.
    */
   inline static Context CPUPinned(int32_t dev_id = -1);
+  /*!
+   * Create a context from string of the format [cpu|gpu|cpu_pinned](n)
+   * \param str the string pattern
+   * \return Context
+   */
+  inline static Context FromString(std::string str);
 };
 
 /*!
@@ -233,6 +252,31 @@ inline Context Context::CPUPinned(int32_t dev_id) {
 
 inline Context Context::GPU(int32_t dev_id) {
   return Create(kGPU, dev_id);
+}
+
+inline Context Context::FromString(std::string str) {
+  Context ret;
+  try {
+    std::string::size_type l = str.find('(');
+    CHECK_NE(l, std::string::npos);
+    std::string::size_type r = str.find(')');
+    CHECK_EQ(r, str.length()-1);
+
+    std::string type = str.substr(0, l);
+    int id = std::stoi(str.substr(l+1, r-l-1));
+    if (type == "cpu") {
+      ret = CPU();
+    } else if (type == "gpu") {
+      ret = GPU(id);
+    } else if (type == "cpu_pinned") {
+      ret = CPUPinned(id);
+    } else {
+      LOG(FATAL) << "Invalid context string " << str;
+    }
+  } catch (...) {
+    LOG(FATAL) << "Invalid context string " << str;
+  }
+  return ret;
 }
 }  // namespace mxnet
 

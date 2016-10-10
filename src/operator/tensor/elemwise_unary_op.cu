@@ -10,7 +10,14 @@ namespace mxnet {
 namespace op {
 // copy
 NNVM_REGISTER_OP(_copy)
-.set_attr<FCompute>("FCompute<gpu>", UnaryCompute<gpu, mshadow_op::identity>);
+.set_attr<FCompute>("FCompute<gpu>", IdentityCompute<gpu>);
+
+NNVM_REGISTER_OP(_backward_copy)
+.set_attr<FCompute>("FCompute<gpu>", IdentityCompute<gpu>);
+
+// identity output as first input, but attributes are constrainted to be like rhs
+NNVM_REGISTER_OP(_identity_attr_like_rhs)
+.set_attr<FCompute>("FCompute<gpu>", IdentityCompute<gpu>);
 
 // negative
 NNVM_REGISTER_OP(negative)
@@ -74,6 +81,20 @@ NNVM_REGISTER_OP(log)
 
 NNVM_REGISTER_OP(_backward_log)
 .set_attr<FCompute>("FCompute<gpu>", BinaryCompute<gpu, unary_bwd<mshadow_op::log_grad> >);
+
+// log1p
+NNVM_REGISTER_OP(log1p)
+.set_attr<FCompute>("FCompute<gpu>", UnaryCompute<gpu, mshadow_op::log1p>);
+
+NNVM_REGISTER_OP(_backward_log1p)
+.set_attr<FCompute>("FCompute<gpu>", BinaryCompute<gpu, unary_bwd<mshadow_op::log1p_grad> >);
+
+// expm1
+NNVM_REGISTER_OP(expm1)
+.set_attr<FCompute>("FCompute<gpu>", UnaryCompute<gpu, mshadow_op::expm1>);
+
+NNVM_REGISTER_OP(_backward_expm1)
+.set_attr<FCompute>("FCompute<gpu>", BinaryCompute<gpu, unary_bwd<mshadow_op::exp> >);
 
 // sin
 NNVM_REGISTER_OP(sin)
@@ -165,6 +186,20 @@ NNVM_REGISTER_OP(arctanh)
 
 NNVM_REGISTER_OP(_backward_arctanh)
 .set_attr<FCompute>("FCompute<gpu>", BinaryCompute<gpu, unary_bwd<mshadow_op::arctanh_grad> >);
+
+// gamma
+NNVM_REGISTER_OP(gamma)
+.set_attr<FCompute>("FCompute<gpu>", UnaryCompute<gpu, mshadow_op::gamma>);
+
+NNVM_REGISTER_OP(_backward_gamma)
+.set_attr<FCompute>("FCompute<gpu>", BinaryCompute<gpu, unary_bwd<mshadow_op::gamma_grad> >);
+
+// gammaln
+NNVM_REGISTER_OP(gammaln)
+.set_attr<FCompute>("FCompute<gpu>", UnaryCompute<gpu, mshadow_op::gammaln>);
+
+NNVM_REGISTER_OP(_backward_gammaln)
+.set_attr<FCompute>("FCompute<gpu>", BinaryCompute<gpu, unary_bwd<mshadow_op::gammaln_grad> >);
 
 }  // namespace op
 }  // namespace mxnet
