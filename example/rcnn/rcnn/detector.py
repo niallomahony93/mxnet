@@ -76,7 +76,9 @@ class Detector(object):
                                                           rois=roi_array.shape)
                     executor = self.executor
                 else:
-                    executor = self.executor.reshape(allow_up_sizing=False, data=im_array.shape)
+                    executor = self.executor.reshape(allow_up_sizing=False,
+                                                     data=im_array.shape,
+                                                     rois=roi_array.shape)
                 # fill in data
                 executor.arg_dict["data"][:] = im_array
                 executor.arg_dict["rois"][:] = roi_array
