@@ -57,17 +57,24 @@ class Detector(object):
                                              grad_req='null', aux_states=self.aux_params)
             executor = self.executor
         else:
-            # Test whether we need to upsizing
-            if np.prod(im_array.shape) > np.prod(self.executor.arg_dict['data'].shape):
-                self.executor = self.executor.reshape(allow_up_sizing=True, data=im_array.shape)
-                executor = self.executor
-            else:
-                executor = self.executor.reshape(allow_up_sizing=False, data=im_array.shape)
-            # fill in data
             if config.TEST.HAS_RPN:
+                # Test whether we need upsizing
+                if np.prod(im_array.shape) > np.prod(self.executor.arg_dict['data'].shape):
+                    self.executor = self.executor.reshape(allow_up_sizing=True, data=im_array.shape)
+                    executor = self.executor
+                else:
+                    executor = self.executor.reshape(allow_up_sizing=False, data=im_array.shape)
+                # fill in data
                 executor.arg_dict["data"][:] = im_array
                 executor.arg_dict["im_info"][:] = im_info
             else:
+                if np.prod(im_array.shape) > np.prod(self.executor.arg_dict['data'].shape) or\
+                   np.prod(roi_array.shape) > np.prod(self.executor.arg_dict['rois'].shape):
+                    self.executor = self.executor.reshape(allow_up_sizing=True, data=im_array.shape)
+                    executor = self.executor
+                else:
+                    executor = self.executor.reshape(allow_up_sizing=False, data=im_array.shape)
+                # fill in data
                 executor.arg_dict["data"][:] = im_array
                 executor.arg_dict["rois"][:] = roi_array
         executor.forward(is_train=False)
