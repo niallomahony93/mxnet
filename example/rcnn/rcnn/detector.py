@@ -70,7 +70,9 @@ class Detector(object):
             else:
                 if np.prod(im_array.shape) > np.prod(self.executor.arg_dict['data'].shape) or\
                    np.prod(roi_array.shape) > np.prod(self.executor.arg_dict['rois'].shape):
-                    self.executor = self.executor.reshape(allow_up_sizing=True, data=im_array.shape)
+                    self.executor = self.executor.reshape(allow_up_sizing=True,
+                                                          data=im_array.shape,
+                                                          rois=roi_array.shape)
                     executor = self.executor
                 else:
                     executor = self.executor.reshape(allow_up_sizing=False, data=im_array.shape)
