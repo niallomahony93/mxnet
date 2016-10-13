@@ -80,7 +80,7 @@ public:
     CHECK_EQ(data.CheckContiguous(), true);
     CHECK_EQ(bbox.CheckContiguous(), true);
     CHECK_EQ(out.CheckContiguous(), true);
-    if (req != kNullOp) {
+    if (req[roiwrap_enum::kOut] != kNullOp) {
       if (param_.interp_type == roiwrap_enum::kBilinear) {
         BilinearPoolForward(out, data, bbox, param_.spatial_scale, param_.explicit_batch);
       } else {

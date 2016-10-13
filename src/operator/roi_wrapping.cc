@@ -105,8 +105,8 @@ inline void BilinearPoolBackwardAccData(const Tensor<cpu, 4, float> &in_data_gra
 
 inline void BilinearPoolBackwardAccROI(const Tensor<cpu, 2, float> &in_roi_grad,
                                        const Tensor<cpu, 4, float> &out_grad,
-                                       const Tensor<cpu, 2, float> &bbox,
                                        const Tensor<cpu, 4, float> &data,
+                                       const Tensor<cpu, 2, float> &bbox,
                                        float spatial_scale,
                                        bool explicit_batch) {
   LOG(FATAL) << "Not Implemented!";
