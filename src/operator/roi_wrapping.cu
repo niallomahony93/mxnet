@@ -1,8 +1,8 @@
 /*!
- * Copyright (c) 2015 by Contributors
- * \file roi_pooling.cu
- * \brief roi pooling operator
- * \author Ross Girshick, Kye-Hyeon Kim, Jian Guo
+ * Copyright (c) 2016 by Contributors
+ * \file roi_wrapping.cu
+ * \brief roi wrapping operator
+ * \author Xingjian Shi
 */
 #include "./roi_wrapping-inl.h"
 #include <mshadow/tensor.h>
@@ -14,8 +14,9 @@
 namespace mshadow {
 namespace cuda {
 
-__device__ bool between(int value, int lowerBound, int upperBound) {
-  return (value >= lowerBound && value <= upperBound);
+template<typename DType>
+__device__ bool between(DType value, DType lowerBound, DType upperBound) {
+  return (value >= lowerBound && value < upperBound);
 }
 
 __device__ int get_address_BCHW(int b, int c, int h, int w,
@@ -23,12 +24,26 @@ __device__ int get_address_BCHW(int b, int c, int h, int w,
   return ((b * channel_num + c) * height + h) * width + w;
 }
 
-template<bool explicit_batch, typename DType>
-__device__ void parse_roi_coords(int n, const DType * rois, DType spatial_scale,
+template<bool anti_aliasing, typename DType>
+__device__ void get_kernel_begin_end(DType x, int kernel_size, DType scale_x, int width,
+                                     int &begin_x, int &end_x) {
+  if (anti_aliasing && scale_x > 1) {
+    begin_x = static_cast<int>(floor(x - kernel_size * scale_x)) + 1;
+    end_x = static_cast<int>(ceil(x + kernel_size * scale_x)) - 1;
+  } else {
+    begin_x = static_cast<int>(floor(x)) - kernel_size + 1;
+    end_x = static_cast<int>(ceil(x)) + kernel_size - 1;
+  }
+  begin_x = max(begin_x, 0);
+  end_x = min(end_x, width - 1);
+}
+
+template<typename DType>
+__device__ void parse_roi_coords(int n, const DType * rois, float spatial_scale, bool explicit_batch,
                                  int &batch_ind, DType &x1, DType &y1, DType &x2, DType &y2) {
   if (explicit_batch) {
     int shift = 5 * n;
-    batch_ind = rois[shift];
+    batch_ind = static_cast<int>(rois[shift]);
     x1 = rois[shift + 1] * spatial_scale;
     y1 = rois[shift + 2] * spatial_scale;
     x2 = rois[shift + 3] * spatial_scale;
@@ -36,19 +51,22 @@ __device__ void parse_roi_coords(int n, const DType * rois, DType spatial_scale,
   }
   else {
     int shift = 4 * n;
+    batch_ind = n;
     x1 = rois[shift] * spatial_scale;
     y1 = rois[shift + 1] * spatial_scale;
     x2 = rois[shift + 2] * spatial_scale;
     y2 = rois[shift + 3] * spatial_scale;
   }
 }
-template<bool explicit_batch, typename DType>
-__global__ void BilinearPoolForwardKernel(const int count, const DType* bottom_data,
-                                          const DType spatial_scale,
-                                          const int batch_num, const int channels,
-                                          const int height, const int width,
-                                          const int pooled_height, const int pooled_width,
-                                          const DType* bottom_rois, DType* top_data) {
+template<typename InterpOp, bool anti_aliasing, typename DType>
+__global__ void ROIWrapForwardKernel(const int count, DType* top_data,
+                                     const DType* bottom_data, const DType* bottom_rois,
+                                     const int batch_num, const int channels,
+                                     const int height, const int width,
+                                     const int pooled_height, const int pooled_width,
+                                     const float spatial_scale,
+                                     const bool explicit_batch,
+                                     const int interp_kernel_size) {
   for (int index = (blockIdx.x + blockIdx.y * gridDim.x) * blockDim.x + threadIdx.x;
        index < count;
        index += blockDim.x * gridDim.x * gridDim.y) {
@@ -60,50 +78,53 @@ __global__ void BilinearPoolForwardKernel(const int count, const DType* bottom_d
     // parse rois
     int batch_ind;
     DType roi_x1, roi_y1, roi_x2, roi_y2;
-    parse_roi_coords<explicit_batch>(n, bottom_rois, spatial_scale,
-                                     batch_ind, roi_x1, roi_y1, roi_x2, roi_y2);
+    parse_roi_coords(n, bottom_rois, spatial_scale, explicit_batch,
+                     batch_ind, roi_x1, roi_y1, roi_x2, roi_y2);
     // output zero for negative batch inds
     if (batch_ind < 0) {
       top_data[index] = 0;
       continue;
     }
     // Force malformed ROIs to be 1x1
-    DType roi_width = max(roi_x2 - roi_x1 + 1.0, 1.0);
-    DType roi_height = max(roi_y2 - roi_y1 + 1.0, 1.0);
-    DType bottom_x = static_cast<DType>(px) * roi_width / static_cast<DType>(pooled_width) + roi_x1;
-    DType bottom_y = static_cast<DType>(py)* roi_height / static_cast<DType>(pooled_height) + roi_y1;
-    // Get the topleft coordinates and the corresponding deltas, x - floor(x) and y - floor(y)
-    int topleft_x, topleft_y;
-    float topleft_dx, topleft_dy;
-    topleft_x = floor(bottom_x);
-    topleft_y = floor(bottom_y);
-    topleft_dx = bottom_x - static_cast<DType>(topleft_x);
-    topleft_dy = bottom_y - static_cast<DType>(topleft_y);
-    int topleft_ind = get_address_BCHW(batch_ind, c, topleft_y, topleft_x,
-                                       channels, height, width);
-    int topright_ind = get_address_BCHW(batch_ind, c, topleft_y, topleft_x + 1,
-                                        channels, height, width);
-    int bottomleft_ind = get_address_BCHW(batch_ind, c, topleft_y + 1, topleft_x,
-                                          channels, height, width);
-    int bottomright_ind = get_address_BCHW(batch_ind, c, topleft_y + 1, topleft_x + 1,
-                                           channels, height, width);
-    DType topleft_v = topleft_ind < bottom_count ? bottom_data[topleft_ind] : 0;
-    DType topright_v = topright_ind < bottom_count ? bottom_data[topright_ind] : 0;
-    DType bottomleft_v = bottomleft_ind < bottom_count ? bottom_data[bottomleft] : 0;
-    DType bottomright_v = bottomright_ind < bottom_count ? bottom_data[bottomright_ind] : 0;
-    top_data[index] = (1 - topleft_dx) * (1 - topleft_dy) * topleft_v
-                      + (1 - topleft_dx) * topleft_dy * topright_v
-                      + topleft_dx * (1 - topleft_dy) * bottomleft_v
-                      + topleft_dx * topleft_dy * bottomright_v;
+    DType roi_width = max(roi_x2 - roi_x1 + DType(1.0), DType(1.0));
+    DType roi_height = max(roi_y2 - roi_y1 + DType(1.0), DType(1.0));
+    DType bottom_x = static_cast<DType>(2 * px - pooled_width + 1) * roi_width / static_cast<DType>(2 * pooled_width)
+                     + (roi_x1 + roi_x2) / DType(2.0);
+    DType bottom_y = static_cast<DType>(2 * py - pooled_height + 1) * roi_height / static_cast<DType>(2 * pooled_height)
+                     + (roi_y1 + roi_y2) / DType(2.0);
+    DType scale_x = roi_width / static_cast<DType>(pooled_width);
+    DType scale_y = roi_height / static_cast<DType>(pooled_height);
+    // Get the begin and end indices of the interpolation kernel
+    int begin_x, begin_y, end_x, end_y;
+    DType acc_weight = 0;
+    get_kernel_begin_end<anti_aliasing>(bottom_x, interp_kernel_size, scale_x, width, begin_x, end_x);
+    get_kernel_begin_end<anti_aliasing>(bottom_y, interp_kernel_size, scale_y, height, begin_y, end_y);
+
+    for (int kx = begin_x; kx <= end_x; ++kx) {
+      DType dx = bottom_x - static_cast<DType>(kx);
+      for (int ky = begin_y; ky <= end_y; ++ky) {
+        int ind = get_address_BCHW(batch_ind, c, ky, kx, channels, height, width);
+        DType dy = bottom_y - static_cast<DType>(ky);
+        DType weight = InterpOp::Val(dx, scale_x) * InterpOp::Val(dy, scale_y);
+        acc_weight += weight;
+        top_data[index] += weight * bottom_data[ind];
+      }
+    }
+    if (0 != acc_weight) {
+      top_data[index] /= acc_weight;
+    } else {
+      top_data[index] = 0;
+    }
   }
 }
 
-template<typename DType>
-inline void BilinearPoolForward(const Tensor<gpu, 4, DType> &out,
+template<typename InterpOp, bool anti_aliasing, typename DType>
+inline void ROIWrapForward(const Tensor<gpu, 4, DType> &out,
                                 const Tensor<gpu, 4, DType> &data,
                                 const Tensor<gpu, 2, DType> &bbox,
-                                DType spatial_scale,
-                                bool explicit_batch) {
+                                float spatial_scale,
+                                bool explicit_batch,
+                                int interp_kernel_size) {
   const DType *bottom_data = data.dptr_;
   const DType *bottom_rois = bbox.dptr_;
   DType *top_data = out.dptr_;
@@ -119,27 +140,24 @@ inline void BilinearPoolForward(const Tensor<gpu, 4, DType> &out,
   const int grid_dim_y = (gridSize > kMaxGridNum) ? (gridSize + kMaxGridNum - 1) / kMaxGridNum : 1;
   dim3 dimGrid(grid_dim_x, grid_dim_y);
   dim3 dimBlock(kMaxThreadsPerBlock);
-  CheckLaunchParam(dimGrid, dimBlock, "BilinearPooling Forward");
+  CheckLaunchParam(dimGrid, dimBlock, "ROIWrapping Forward");
   cudaStream_t stream = Stream<gpu>::GetStream(out.stream_);
-  if (explicit_batch) {
-    BilinearPoolForwardKernel<true, DType> <<<dimGrid, dimBlock, 0, stream>>>(
-      count, bottom_data, spatial_scale, batch_num, channels, height, width,
-      pooled_height, pooled_width, bottom_rois, top_data);
-  }
-  else {
-    BilinearPoolForwardKernel<false, Dtype> <<<dimGrid, dimBlock, 0, stream>>>(
-      count, bottom_data, spatial_scale, batch_num, channels, height, width,
-      pooled_height, pooled_width, bottom_rois, top_data);
-  }
+  ROIWrapForwardKernel<InterpOp, anti_aliasing, DType> << <dimGrid, dimBlock, 0, stream >> >(
+    count, top_data, bottom_data, bottom_rois, batch_num, channels, height, width,
+    pooled_height, pooled_width, spatial_scale, explicit_batch, interp_kernel_size);
+  cudaError err = cudaPeekAtLastError();
+  CHECK_EQ(err, cudaSuccess) << cudaGetErrorString(err);
 }
 
-template<bool explicit_batch, typename DType>
-__global__ void BilinearPoolBackwardAccDataKernel(const int count, const DType* top_diff,
-                                                  const int num_rois, const DType spatial_scale,
-                                                  const int channels,
-                                                  const int height, const int width,
-                                                  const int pooled_height, const int pooled_width,
-                                                  DType* bottom_data_diff, const DType* bottom_rois) {
+template<typename InterpOp, bool anti_aliasing, typename DType>
+__global__ void ROIWrapBackwardAccDataKernel(const int count, DType* bottom_data_diff,
+                                             const DType* bottom_rois, const DType* top_diff,
+                                             const int batch_num, const int channels,
+                                             const int height, const int width,
+                                             const int pooled_height, const int pooled_width,
+                                             const float spatial_scale,
+                                             const bool explicit_batch,
+                                             const int interp_kernel_size) {
   for (int index = (blockIdx.x + blockIdx.y * gridDim.x) * blockDim.x + threadIdx.x;
        index < count;
        index += blockDim.x * gridDim.x * gridDim.y) {
@@ -151,57 +169,65 @@ __global__ void BilinearPoolBackwardAccDataKernel(const int count, const DType* 
     // parse rois
     int batch_ind;
     DType roi_x1, roi_y1, roi_x2, roi_y2;
-    parse_roi_coords<explicit_batch>(n, bottom_rois, spatial_scale, explicit_batch,
-                                     batch_ind, roi_x1, roi_y1, roi_x2, roi_y2);
+    parse_roi_coords(n, bottom_rois, spatial_scale, explicit_batch,
+                     batch_ind, roi_x1, roi_y1, roi_x2, roi_y2);
     // do not accumulate gradient for negative batch inds
     if (batch_ind < 0) {
       continue;
     }
     // Force malformed ROIs to be 1x1
-    DType roi_width = max(roi_x2 - roi_x1 + 1.0, 1.0);
-    DType roi_height = max(roi_y2 - roi_y1 + 1.0, 1.0);
-    DType bottom_x = static_cast<DType>(px)* roi_width / static_cast<DType>(pooled_width) + roi_x1;
-    DType bottom_y = static_cast<DType>(py)* roi_height / static_cast<DType>(pooled_height) + roi_y1;
-    // Get the topleft coordinates and the corresponding deltas, x - floor(x) and y - floor(y)
-    int topleft_x, topleft_y;
-    DType topleft_dx, topleft_dy;
-    topleft_x = floor(bottom_x);
-    topleft_y = floor(bottom_y);
-    topleft_dx = bottom_x - static_cast<DType>(topleft_x);
-    topleft_dy = bottom_y - static_cast<DType>(topleft_y);
-    int topleft_ind = get_address_BCHW(batch_ind, c, topleft_y, topleft_x,
-                                       channels, height, width);
-    int topright_ind = get_address_BCHW(batch_ind, c, topleft_y, topleft_x + 1,
-                                        channels, height, width);
-    int bottomleft_ind = get_address_BCHW(batch_ind, c, topleft_y + 1, topleft_x,
-                                          channels, height, width);
-    int bottomright_ind = get_address_BCHW(batch_ind, c, topleft_y + 1, topleft_x + 1,
-                                           channels, height, width);
-    // Calculate data_grad, use atomic_add to backpropagate the out_grad
-    DType ograd = top_diff[index];
-    if (topleft_ind < count) {
-      atomicAdd(bottom_data_diff + topleft_ind, (1 - topleft_dx) * (1 - topleft_dy) * ograd);
+    DType roi_width = max(roi_x2 - roi_x1 + DType(1.0), DType(1.0));
+    DType roi_height = max(roi_y2 - roi_y1 + DType(1.0), DType(1.0));
+    DType bottom_x = static_cast<DType>(2 * px - pooled_width + 1) * roi_width / static_cast<DType>(2 * pooled_width)
+                     + (roi_x1 + roi_x2) / DType(2.0);
+    DType bottom_y = static_cast<DType>(2 * py - pooled_height + 1) * roi_height / static_cast<DType>(2 * pooled_height)
+                     + (roi_y1 + roi_y2) / DType(2.0);
+    DType scale_x = roi_width / static_cast<DType>(pooled_width);
+    DType scale_y = roi_height / static_cast<DType>(pooled_height);
+    // Get the begin and end indices of the interpolation kernel
+    int begin_x, begin_y, end_x, end_y;
+    DType acc_weight_x = 0;
+    DType acc_weight_y = 0;
+    DType acc_weight = 0;
+    get_kernel_begin_end<anti_aliasing>(bottom_x, interp_kernel_size, scale_x, width, begin_x, end_x);
+    get_kernel_begin_end<anti_aliasing>(bottom_y, interp_kernel_size, scale_y, height, begin_y, end_y);
+    // first calculate the accumulate weight
+    for (int kx = begin_x; kx <= end_x; ++kx) {
+      DType dx = bottom_x - static_cast<DType>(kx);
+      acc_weight_x += InterpOp::Val(dx, scale_x);
     }
-    if (topright_ind < count) {
-      atomicAdd(bottom_data_diff + topright_ind, (1 - topleft_dx) * topleft_dy * ograd);
+    for (int ky = begin_y; ky <= end_y; ++ky) {
+      DType dy = bottom_y - static_cast<DType>(ky);
+      acc_weight_y += InterpOp::Val(dy, scale_y);
     }
-    if (bottomleft_ind < count) {
-      atomicAdd(bottom_data_diff + bottomleft_ind, topleft_dx * (1 - topleft_dy) * ograd);
+    if (0 == acc_weight_x || 0 == acc_weight_y) {
+      continue;
     }
-    if (bottomright_ind < count) {
-      atomicAdd(bottom_data_diff + bottomright_ind, topleft_dx * topleft_dy * ograd);
+    acc_weight = acc_weight_x * acc_weight_y;
+    // use atomicadd to backpropage gradient
+    for (int kx = begin_x; kx <= end_x; ++kx) {
+      DType dx = bottom_x - static_cast<DType>(kx);
+      for (int ky = begin_y; ky <= end_y; ++ky) {
+        int ind = get_address_BCHW(batch_ind, c, ky, kx, channels, height, width);
+        DType dy = bottom_y - static_cast<DType>(ky);
+        atomicAdd(&bottom_data_diff[ind],
+          InterpOp::Val(dx, scale_x) * InterpOp::Val(dy, scale_y)
+          / acc_weight * top_diff[index]);
+      }
     }
   }
 }
 
-template<int warp_bits, bool explicit_batch, typename DType>
-__global__ void BilinearPoolBackwardAccROIKernel(const int count, const DType* top_diff,
-                                                 const int num_rois, const DType spatial_scale,
-                                                 const int channels,
-                                                 const int height, const int width,
-                                                 const int pooled_height, const int pooled_width,
-                                                 DType* bottom_roi_diff, const DType* bottom_rois,
-                                                 const DType* bottom_data) {
+template<int warp_bits, typename InterpOp, bool anti_aliasing, typename DType>
+__global__ void ROIWrapBackwardAccROIKernel(const int count, DType* bottom_roi_diff,
+                                            const DType* bottom_data, const DType* bottom_rois, 
+                                            const DType* top_diff,
+                                            const int batch_num, const int channels,
+                                            const int height, const int width,
+                                            const int pooled_height, const int pooled_width,
+                                            const float spatial_scale,
+                                            const bool explicit_batch,
+                                            const int interp_kernel_size) {
   const int warp_size = 1 << warp_bits;
   // We use the y-threads to traverse the grids and use x-threads to traverse the channels.
   for (int index = (blockIdx.x + blockIdx.y * gridDim.x) * blockDim.y + threadIdx.y;
@@ -214,108 +240,150 @@ __global__ void BilinearPoolBackwardAccROIKernel(const int count, const DType* t
     // parse rois
     int batch_ind;
     DType roi_x1, roi_y1, roi_x2, roi_y2;
-    parse_roi_coords<explicit_batch>(n, bottom_rois, spatial_scale,
-                                     batch_ind, roi_x1, roi_y1, roi_x2, roi_y2);
+    parse_roi_coords(n, bottom_rois, spatial_scale, explicit_batch,
+                     batch_ind, roi_x1, roi_y1, roi_x2, roi_y2);
     // Do not accumulate gradient for negative batch inds
     if (batch_ind < 0) {
       continue;
     }
     // Do not backpropage gradient for malformed ROIs
-    if ((roi_x1 < roi_x2) || (roi_y1 < roi_y2)) {
+    if ((roi_x1 > roi_x2) || (roi_y1 > roi_y2)) {
       continue;
     }
     DType roi_width = roi_x2 - roi_x1 + 1.0;
     DType roi_height = roi_y2 - roi_y1 + 1.0;
-    DType x_ratio = static_cast<DType>(px) / static_cast<DType>(pooled_width);
-    DType y_ratio = static_cast<DType>(py) / static_cast<DType>(pooled_height);
-    DType bottom_x = x_ratio * roi_width + roi_x1;
-    DType bottom_y = y_ratio * roi_height + roi_y1;
-    // Get the topleft coordinates and the corresponding deltas, x - floor(x) and y - floor(y)
-    int topleft_x, topleft_y;
-    DType topleft_dx, topleft_dy;
-    topleft_x = floor(bottom_x);
-    topleft_y = floor(bottom_y);
-    topleft_dx = bottom_x - static_cast<DType>topleft_x;
-    topleft_dy = bottom_y - static_cast<DType>topleft_y;
-    DType grad_dx = 0;
-    DType grad_dy = 0;
+    DType x_relative = static_cast<DType>(2 * px - pooled_width + 1) / static_cast<DType>(2 * pooled_width);
+    DType y_relative = static_cast<DType>(2 * py - pooled_height + 1) / static_cast<DType>(2 * pooled_height);
+    DType bottom_x = x_relative * roi_width + DType(0.5) * (roi_x1 + roi_x2);
+    DType bottom_y = y_relative * roi_height + DType(0.5) * (roi_y1 + roi_y2);
+    DType scale_x = roi_width / static_cast<DType>(pooled_width);
+    DType scale_y = roi_height / static_cast<DType>(pooled_height);
+    // Get the begin and end indices of the interpolation kernel
+    int begin_x, begin_y, end_x, end_y;
+    get_kernel_begin_end<anti_aliasing>(bottom_x, interp_kernel_size, scale_x, width, begin_x, end_x);
+    get_kernel_begin_end<anti_aliasing>(bottom_y, interp_kernel_size, scale_y, height, begin_y, end_y);
+    // Initialize the aggregation weights and gradients.
+    // We will compute the gradient w.r.t the corresponding bottom coordinates and w.r.t the scale separately.
+    // Since we are using 
+    DType acc_weight_x = 0;
+    DType acc_weight_y = 0;
+    DType acc_grad_bottom_x = 0;
+    DType acc_grad_bottom_y = 0;
+    DType acc_grad_scale_x = 0;
+    DType acc_grad_scale_y = 0;
+    DType grad_bottom_x = 0;
+    DType grad_bottom_y = 0;
+    DType grad_scale_x = 0;
+    DType grad_scale_y = 0;
+    for (int kx = begin_x; kx <= end_x; ++kx) {
+      DType dx = bottom_x - static_cast<DType>(kx);
+      acc_weight_x += InterpOp::Val(dx, scale_x);
+      DType dx_grad = InterpOp::Grad(dx, scale_x);
+      acc_grad_bottom_x += dx_grad;
+      acc_grad_scale_x += InterpOp::GradS(dx, scale_x, dx_grad);
+    }
+    for (int ky = begin_y; ky <= end_y; ++ky) {
+      DType dy = bottom_y - static_cast<DType>(ky);
+      acc_weight_y += InterpOp::Val(dy, scale_y);
+      DType dy_grad = InterpOp::Grad(dy, scale_y);
+      acc_grad_bottom_y += dy_grad;
+      acc_grad_scale_y += InterpOp::GradS(dy, scale_y, dy_grad);
+    }
+    if (0 == acc_weight_x || 0 == acc_weight_y) {
+      continue;
+    }
     // Use the x-threads to traverse the channels
     for (int c = threadIdx.x; c < channels; c += blockDim.x) {
-      int topleft_ind = get_address_BCHW(batch_ind, c, topleft_y, topleft_x,
-                                         channels, height, width);
-      int topright_ind = get_address_BCHW(batch_ind, c, topleft_y, topleft_x + 1,
-                                          channels, height, width);
-      int bottomleft_ind = get_address_BCHW(batch_ind, c, topleft_y + 1, topleft_x,
-                                            channels, height, width);
-      int bottomright_ind = get_address_BCHW(batch_ind, c, topleft_y + 1, topleft_x + 1,
-                                             channels, height, width);
-      int outgrad_index = get_address_BCHW(n, c, py, px,
-                                           channels, pooled_height, pooled_width);
-      DType ograd = top_diff[outgrad_index];
-      DType topleft_v = 0;
-      DType topright_v = 0;
-      DType bottomleft_v = 0;
-      DType bottomright_v = 0;
-      if (topleft_ind < count) {
-        topleft_v = bottom_data[topleft_ind];
+      DType ograd = top_diff[get_address_BCHW(n, c, py, px,
+                                       channels, pooled_height, pooled_width)];
+      DType window_grad_bottom_x = 0;
+      DType window_grad_bottom_y = 0;
+      DType window_grad_scale_x = 0;
+      DType window_grad_scale_y = 0;
+      // Get the window gradient, which is the gradient w.r.t data * kx/acc_x * ky/acc_y
+      for (int kx = begin_x; kx <= end_x; ++kx) {
+        DType dx = bottom_x - static_cast<DType>(kx);
+        DType kx_val = InterpOp::Val(dx, scale_x);
+        DType kx_grad = InterpOp::Grad(dx, scale_x);
+        DType kx_scale_grad = InterpOp::GradS(dx, scale_x, kx_grad);
+        for (int ky = begin_y; ky <= end_y; ++ky) {
+          int ind = get_address_BCHW(batch_ind, c, ky, kx, channels, height, width);
+          DType dy = bottom_y - static_cast<DType>(ky);
+          DType data_val = bottom_data[ind];
+          DType ky_val = InterpOp::Val(dy, scale_y);
+          DType ky_grad = InterpOp::Grad(dy, scale_y);
+          DType ky_scale_grad = InterpOp::GradS(dy, scale_y, ky_grad);
+          window_grad_bottom_x += data_val * ky_val * (kx_grad * acc_weight_x - kx_val * acc_grad_bottom_x);
+          window_grad_bottom_y += data_val * kx_val * (ky_grad * acc_weight_y - ky_val * acc_grad_bottom_y);
+          window_grad_scale_x += data_val * ky_val * (kx_scale_grad * acc_weight_x - kx_val * acc_grad_scale_x);
+          window_grad_scale_y += data_val * kx_val * (ky_scale_grad * acc_weight_y - ky_val * acc_grad_scale_y);
+        }
       }
-      if (topright_ind < count) {
-        topright_v = bottom_data[topright_ind];
-      }
-      if (bottomleft_ind < count) {
-        bottomleft_v = bottom_data[bottomleft_ind];
-      }
-      if (bottomright_ind < count) {
-        bottomright_v = bottom_data[bottomright_ind];
-      }
-      grad_dx += ((1 - topleft_dy) * (bottomleft_v - topleft_v) +
-                 topleft_dy * (bottomright_v - topright_v));
-      grad_dy += ((1 - topleft_dx) * (topright_v - topleft_v) +
-                 topleft_dx * (bottomright_v - topright_v));
-      grad_dx *= ograd;
-      grad_dy *= ograd;
+      DType mult_x = ograd / (acc_weight_y * acc_weight_x * acc_weight_x);
+      DType mult_y = ograd / (acc_weight_x * acc_weight_y * acc_weight_y);
+      grad_bottom_x += mult_x * window_grad_bottom_x;
+      grad_bottom_y += mult_y * window_grad_bottom_y;
+      grad_scale_x += mult_x * window_grad_scale_x;
+      grad_scale_y += mult_y * window_grad_scale_y;
     }
-    __shared__ volatile DType __shmem[warp_size][warp_size];
-    __shmem[threadIdx.y][threadIdx.x] = grad_dx;
+    __shared__ volatile DType __shmem[warp_size/2][warp_size];
+    __shmem[threadIdx.y][threadIdx.x] = grad_bottom_x;
     __syncthreads();
     Reduce1D<mshadow::red::sum, warp_bits>(__shmem[threadIdx.y]);
     __syncthreads();
-    grad_dx = __shmem[threadIdx.y][0];
-    __shmem[threadIdx.y][threadIdx.x] = grad_dy;
+    grad_bottom_x = __shmem[threadIdx.y][0];
+    __shmem[threadIdx.y][threadIdx.x] = grad_bottom_y;
     __syncthreads();
     Reduce1D<mshadow::red::sum, warp_bits>(__shmem[threadIdx.y]);
     __syncthreads();
-    grad_dy = __shmem[threadIdx.y][0];
-    DType grad_x1 = (1 - x_ratio) * grad_dx;
-    DType grad_y1 = (1 - y_ratio) * grad_dy;
-    DType grad_x2 = x_ratio * grad_dx;
-    DType grad_y2 = y_ratio * grad_dy;
+    grad_bottom_y = __shmem[threadIdx.y][0];
+    if (anti_aliasing && scale_x > 1) {
+      __shmem[threadIdx.y][threadIdx.x] = grad_scale_x;
+      __syncthreads();
+      Reduce1D<mshadow::red::sum, warp_bits>(__shmem[threadIdx.y]);
+      __syncthreads();
+      grad_scale_x = __shmem[threadIdx.y][0];
+    }
+    if (anti_aliasing && scale_y > 1) {
+      __shmem[threadIdx.y][threadIdx.x] = grad_scale_y;
+      __syncthreads();
+      Reduce1D<mshadow::red::sum, warp_bits>(__shmem[threadIdx.y]);
+      __syncthreads();
+      grad_scale_y = __shmem[threadIdx.y][0];
+    }
+    DType grad_x1 = ((0.5 - x_relative) * grad_bottom_x - grad_scale_x / pooled_width) * spatial_scale;
+    DType grad_y1 = ((0.5 - y_relative) * grad_bottom_y - grad_scale_y / pooled_height) * spatial_scale;
+    DType grad_x2 = ((0.5 + x_relative) * grad_bottom_x + grad_scale_x / pooled_width)  * spatial_scale;
+    DType grad_y2 = ((0.5 + y_relative) * grad_bottom_y + grad_scale_y / pooled_height) * spatial_scale;
     if (threadIdx.x == 0) {
       if (explicit_batch) {
-        bottom_roi_diff[5 * n + 1] += grad_x1;
-        bottom_roi_diff[5 * n + 2] += grad_y1;
-        bottom_roi_diff[5 * n + 3] += grad_x2;
-        bottom_roi_diff[5 * n + 4] += grad_y2;
+        atomicAdd(&bottom_roi_diff[5 * n + 1], grad_x1);
+        atomicAdd(&bottom_roi_diff[5 * n + 2], grad_y1);
+        atomicAdd(&bottom_roi_diff[5 * n + 3], grad_x2);
+        atomicAdd(&bottom_roi_diff[5 * n + 4], grad_y2);
       } else {
-        bottom_roi_diff[4 * n + 0] += grad_x1;
-        bottom_roi_diff[4 * n + 1] += grad_y1;
-        bottom_roi_diff[4 * n + 2] += grad_x2;
-        bottom_roi_diff[4 * n + 3] += grad_y2;
+        atomicAdd(&bottom_roi_diff[4 * n], grad_x1);
+        atomicAdd(&bottom_roi_diff[4 * n + 1], grad_y1);
+        atomicAdd(&bottom_roi_diff[4 * n + 2], grad_x2);
+        atomicAdd(&bottom_roi_diff[4 * n + 3], grad_y2);
       }
     }
   }
 }
 
-inline void BilinearPoolBackwardAccData(const Tensor<gpu, 4, float> &in_data_grad,
-                                        const Tensor<gpu, 4, float> &out_grad,
-                                        const Tensor<gpu, 2, float> &bbox,
-                                        float spatial_scale,
-                                        bool explicit_batch) {
+template<typename InterpOp, bool anti_aliasing>
+inline void ROIWrapBackwardAccData(const Tensor<gpu, 4, float> &in_data_grad,
+                                   const Tensor<gpu, 4, float> &out_grad,
+                                   const Tensor<gpu, 2, float> &bbox,
+                                   float spatial_scale,
+                                   bool explicit_batch,
+                                   int interp_kernel_size) {
   const float *top_diff = out_grad.dptr_;
   const float *bottom_rois = bbox.dptr_;
   float *bottom_data_diff = in_data_grad.dptr_;
   const int count = out_grad.shape_.Size();
   const int num_rois = bbox.size(0);
+  const int batch_num = in_data_grad.size(0);
   const int channels = in_data_grad.size(1);
   const int height = in_data_grad.size(2);
   const int width = in_data_grad.size(3);
@@ -326,82 +394,86 @@ inline void BilinearPoolBackwardAccData(const Tensor<gpu, 4, float> &in_data_gra
   const int grid_dim_y = (gridSize > kMaxGridNum) ? (gridSize + kMaxGridNum - 1) / kMaxGridNum : 1;
   dim3 dimGrid(grid_dim_x, grid_dim_y);
   dim3 dimBlock(kMaxThreadsPerBlock);
-  CheckLaunchParam(dimGrid, dimBlock, "BilinearPooling Backward Data");
+  CheckLaunchParam(dimGrid, dimBlock, "ROIWrapping Backward Data");
   cudaStream_t stream = Stream<gpu>::GetStream(in_data_grad.stream_);
-  if (explicit_batch) {
-    BilinearPoolBackwardAccDataKernel<true, float> <<<dimGrid, dimBlock, 0, stream >> >(
-      count, top_diff, num_rois, spatial_scale, channels, height, width,
-      pooled_height, pooled_width, bottom_data_diff, bottom_rois);
-  } else {
-    BilinearPoolBackwardAccDataKernel<false, float> <<<dimGrid, dimBlock, 0, stream >> >(
-      count, top_diff, num_rois, spatial_scale, channels, height, width,
-      pooled_height, pooled_width, bottom_data_diff, bottom_rois);
-  }
-  
+  ROIWrapBackwardAccDataKernel<InterpOp, anti_aliasing, float> <<<dimGrid, dimBlock, 0, stream >> >(
+    count, bottom_data_diff, bottom_rois, top_diff, batch_num, channels, height, width,
+    pooled_height, pooled_width, spatial_scale, explicit_batch, interp_kernel_size);
+  cudaError err = cudaPeekAtLastError();
+  CHECK_EQ(err, cudaSuccess) << cudaGetErrorString(err);
 }
 
-inline void BilinearPoolBackwardAccROI(const Tensor<gpu, 2, float> &in_roi_grad,
-                                       const Tensor<gpu, 4, float> &out_grad,
-                                       const Tensor<gpu, 2, float> &bbox,
-                                       const Tensor<gpu, 4, float> &data,
-                                       float spatial_scale,
-                                       bool explicit_batch) {
+template<typename InterpOp, bool anti_aliasing>
+inline void ROIWrapBackwardAccROI(const Tensor<gpu, 2, float> &in_roi_grad,
+                                  const Tensor<gpu, 4, float> &out_grad,
+                                  const Tensor<gpu, 4, float> &data,
+                                  const Tensor<gpu, 2, float> &bbox,
+                                  float spatial_scale,
+                                  bool explicit_batch,
+                                  int interp_kernel_size) {
   const float *top_diff = out_grad.dptr_;
   const float *bottom_rois = bbox.dptr_;
   const float *bottom_data = data.dptr_;
   float *bottom_rois_diff = in_roi_grad.dptr_;
   const int count = out_grad.size(0) * out_grad.size(2) * out_grad.size(3);
   const int num_rois = bbox.size(0);
+  const int batch_num = data.size(0);
   const int channels = out_grad.size(1);
   const int height = data.size(2);
   const int width = data.size(3);
   const int pooled_height = out_grad.size(2);
   const int pooled_width = out_grad.size(3);
-  const int gridSize = (count + kMaxThreadsPerBlock - 1) / kMemUnit;
+  // For kernel launching, we use the y_threads to traverse all the n*h*w grids and use x_threads to traverse the channels.
+  const int gridSize = (count + kMaxThreadsPerBlock - 1) / (kMemUnit / 2);
   const int grid_dim_x = (gridSize > kMaxGridNum) ? kMaxGridNum : gridSize;
   const int grid_dim_y = (gridSize > kMaxGridNum) ? (gridSize + kMaxGridNum - 1) / kMaxGridNum : 1;
   dim3 dimGrid(grid_dim_x, grid_dim_y);
-  dim3 dimBlock(kMemUnit, kMemUnit);
-  CheckLaunchParam(dimGrid, dimBlock, "BilinearPooling Data Backward");
+  dim3 dimBlock(kMemUnit, kMemUnit / 2);
+  CheckLaunchParam(dimGrid, dimBlock, "ROIWrapping Data Backward");
   cudaStream_t stream = Stream<gpu>::GetStream(in_roi_grad.stream_);
-  if (explicit_batch) {
-    BilinearPoolBackwardAccROIKernel<true, float> <<<dimGrid, dimBlock, 0, stream>>>(
-      count, top_diff, num_rois, spatial_scale, channels, height, width,
-      pooled_height, pooled_width, bottom_rois_diff, bottom_rois, bottom_data);
-  } else {
-    BilinearPoolBackwardAccROIKernel<false, float> <<<dimGrid, dimBlock, 0, stream>>>(
-      count, top_diff, num_rois, spatial_scale, channels, height, width,
-      pooled_height, pooled_width, bottom_rois_diff, bottom_rois, bottom_data);
-  }
+  ROIWrapBackwardAccROIKernel<kMemUnitBits, InterpOp, anti_aliasing>
+    <<<dimGrid, dimBlock, 0, stream>>>(
+    count, bottom_rois_diff, bottom_data, bottom_rois, top_diff,
+    batch_num, channels, height, width,
+    pooled_height, pooled_width, spatial_scale, explicit_batch, interp_kernel_size);
+  cudaError err = cudaPeekAtLastError();
+  CHECK_EQ(err, cudaSuccess) << cudaGetErrorString(err);
 }
 
 }  // namespace cuda
 
-template<typename DType>
-inline void BilinearPoolForward(const Tensor<gpu, 4, DType> &out,
-                                const Tensor<gpu, 4, DType> &data,
-                                const Tensor<gpu, 2, DType> &bbox,
-                                DType spatial_scale,
-                                bool explicit_batch) {
-  cuda::BilinearPoolForward(out, data, bbox, spatial_scale, explicit_batch);
+template<typename InterpOp, bool anti_aliasing, typename DType>
+void ROIWrapForward(const Tensor<gpu, 4, DType> &out,
+                           const Tensor<gpu, 4, DType> &data,
+                           const Tensor<gpu, 2, DType> &bbox,
+                           float spatial_scale,
+                           bool explicit_batch,
+                           int interp_kernel_size) {
+  cuda::ROIWrapForward<InterpOp, anti_aliasing>(out, data, bbox, spatial_scale,
+    explicit_batch, interp_kernel_size);
 }
 
-inline void BilinearPoolBackwardAccData(const Tensor<gpu, 4, float> &in_data_grad,
-                                        const Tensor<gpu, 4, float> &out_grad,
-                                        const Tensor<gpu, 2, float> &bbox,
-                                        float spatial_scale,
-                                        bool explicit_batch) {
-  cuda::BilinearPoolBackwardAccData(in_data_grad, out_grad, bbox, spatial_scale);
+template<typename InterpOp, bool anti_aliasing>
+void ROIWrapBackwardAccData(const Tensor<gpu, 4, float> &in_data_grad,
+                                   const Tensor<gpu, 4, float> &out_grad,
+                                   const Tensor<gpu, 2, float> &bbox,
+                                   float spatial_scale,
+                                   bool explicit_batch,
+                                   int interp_kernel_size) {
+  cuda::ROIWrapBackwardAccData<InterpOp, anti_aliasing>(in_data_grad, out_grad, bbox,
+    spatial_scale, explicit_batch, interp_kernel_size);
 }
 
-inline void BilinearPoolBackwardAccROI(const Tensor<gpu, 2, float> &in_roi_grad,
-                                       const Tensor<gpu, 4, float> &out_grad,
-                                       const Tensor<gpu, 2, float> &bbox,
-                                       const Tensor<gpu, 4, float> &data,
-                                       float spatial_scale,
-                                       bool explicit_batch) {
-  cuda::BilinearPoolBackwardAccROI(in_roi_grad, out_grad, bbox, data,
-                                   spatial_scale, explicit_batch);
+template<typename InterpOp, bool anti_aliasing>
+void ROIWrapBackwardAccROI(const Tensor<gpu, 2, float> &in_roi_grad,
+                                  const Tensor<gpu, 4, float> &out_grad,
+                                  const Tensor<gpu, 4, float> &data,
+                                  const Tensor<gpu, 2, float> &bbox,
+                                  float spatial_scale,
+                                  bool explicit_batch,
+                                  int interp_kernel_size) {
+  cuda::ROIWrapBackwardAccROI<InterpOp, anti_aliasing>
+    (in_roi_grad, out_grad, data, bbox, spatial_scale, explicit_batch, interp_kernel_size);
 }
 }  // namespace mshadow
 

@@ -21,23 +21,150 @@
 #define XPU gpu
 #else
 #define XPU cpu
+using std::abs;
+using std::max;
+using std::min;
+using std::floor;
+using std::ceil;
 #endif
+
+namespace mshadow {
+template<typename InterpOp, bool anti_aliasing, typename DType, typename xpu>
+void ROIWrapForward(const Tensor<xpu, 4, DType> &out,
+                           const Tensor<xpu, 4, DType> &data,
+                           const Tensor<xpu, 2, DType> &bbox,
+                           float spatial_scale,
+                           bool explicit_batch,
+                           int interp_kernel_size);
+
+template<typename InterpOp, bool anti_aliasing, typename DType, typename xpu>
+void ROIWrapBackwardAccData(const Tensor<xpu, 4, DType> &in_data_grad,
+                                   const Tensor<xpu, 4, DType> &out_grad,
+                                   const Tensor<xpu, 2, DType> &bbox,
+                                   float spatial_scale,
+                                   bool explicit_batch,
+                                   int interp_kernel_size);
+
+template<typename InterpOp, bool anti_aliasing, typename DType, typename xpu>
+void ROIWrapBackwardAccROI(const Tensor<xpu, 2, DType> &in_roi_grad,
+                                  const Tensor<xpu, 4, DType> &out_grad,
+                                  const Tensor<xpu, 4, DType> &data,
+                                  const Tensor<xpu, 2, DType> &bbox,
+                                  float spatial_scale,
+                                  bool explicit_batch,
+                                  int interp_kernel_size);
+} // namespace mshadow
 
 namespace mxnet {
 namespace op {
-
+namespace interp_op {
+template<bool anti_aliasing>
+struct triangle_kernel {
+  // Compute the forward value
+  template<typename DType>
+  MSHADOW_XINLINE static DType Val(DType a, DType s) {
+    if (anti_aliasing && s > 1) {
+      return max(DType(0), DType(1) - abs(a / s));
+    } else {
+      return max(DType(0), DType(1) - abs(a));
+    }
+  }
+  // Compute the gradient w.r.t a
+  template<typename DType>
+  MSHADOW_XINLINE static DType Grad(DType a, DType s) {
+    if (anti_aliasing && s > 1) {
+      if (abs(a) > s) {
+        return DType(0);
+      } else {
+        return a > DType(0) ? DType(-1.0) / s : (a < DType(0) ? DType(1.0) / s : DType(0));
+      }
+    } else {
+      if (abs(a) > 1) {
+        return DType(0);
+      } else {
+        return a > DType(0) ? DType(-1.0) : (a < DType(0) ? DType(1.0) : DType(0));
+      }
+    }
+  }
+  // Compute the gradient w.r.t s
+  template<typename DType>
+  MSHADOW_XINLINE static DType GradS(DType a, DType s, DType a_grad) {
+    if (anti_aliasing && s > 1) {
+      return -a_grad * a / s;
+    } else {
+      return DType(0);
+    }
+  }
+};
+template<bool anti_aliasing>
+struct cubic_kernel {
+  // Compute the forward value
+  template<typename DType>
+  MSHADOW_XINLINE static DType Val(DType a, DType s) {
+    DType v = 0;
+    if (anti_aliasing && s > 1) {
+      v = abs(a / s);
+    } else {
+      v = abs(a);
+    }
+    if (v <= 1) {
+      // We can use either a=-0.5 or a=-0.75, we use a=-0.5 in the code. For a=-0.75, we can
+      // use `return DType(1) + v * v * (DType(1.25) * v - DType(2.25));`
+      return DType(1) + v * v * (DType(1.5) * v - DType(2.5));
+    } else if (v < 2) {
+      // We can use either a=-0.5 or a=-0.75, we use a=-0.5 in the code. For a=-0.75, we can
+      // use `return v * (v * (DType(3.75) - DType(0.75) * v) - DType(6)) + DType(3)`
+      return v * (v * (DType(2.5) - DType(0.5) * v) - DType(4)) + DType(2);
+    } else {
+      return DType(0);
+    }
+  }
+  // Compute the gradient w.r.t a
+  template<typename DType>
+  MSHADOW_XINLINE static DType Grad(DType a, DType s) {
+    DType v, ret;
+    if (anti_aliasing && s > 1) {
+      v = abs(a / s);
+    } else {
+      v = abs(a);
+    }
+    if (v <= 1) {
+      ret = v * (DType(4.5) * v - DType(5));
+    } else if (v < 2) {
+      ret = v * (DType(5) - DType(1.5) * v) - DType(4);
+    } else {
+      ret = DType(0);
+    }
+    if (anti_aliasing && s > 1) {
+      return a > 0 ? ret / s : -ret / s;
+    } else {
+      return a > 0 ? ret : -ret;
+    }
+  }
+  // Compute the gradient w.r.t s
+  template<typename DType>
+  MSHADOW_XINLINE static DType GradS(DType a, DType s, DType a_grad) {
+    if (anti_aliasing && s > 1) {
+      return -a_grad * a / s;
+    } else {
+      return DType(0);
+    }
+  }
+};
+} // mshadow_op
 // Declare enumeration of input order to make code more intuitive.
 // These enums are only visible within this header
 namespace roiwrap_enum {
 enum ROIWrappingOpInputs {kData, kBox};
 enum ROIWrappingOpOutputs {kOut};
-enum ROIWrappingInterpType {kBilinear};
+enum ROIWrappingInterpType {kBilinear, kBicubic};
 }  // roiwrap_enum
 
 struct ROIWrappingParam : public dmlc::Parameter<ROIWrappingParam> {
   TShape pooled_size;
   float spatial_scale;
   bool explicit_batch;
+  bool anti_aliasing;
   int interp_type;
   DMLC_DECLARE_PARAMETER(ROIWrappingParam) {
     DMLC_DECLARE_FIELD(pooled_size)
@@ -48,7 +175,11 @@ struct ROIWrappingParam : public dmlc::Parameter<ROIWrappingParam> {
     "Equals the reciprocal of total stride in convolutional layers");
     DMLC_DECLARE_FIELD(interp_type)
     .add_enum("bilinear", roiwrap_enum::kBilinear)
-    .describe("The interpolation kernel to use. \"bilinear\" means the bilinear kernel");
+    .add_enum("bicubic", roiwrap_enum::kBicubic)
+    .describe("The interpolation kernel to use."
+              " \"bilinear\" means the bilinear kernel, \"bicubic\" means the bicubic kernel");
+    DMLC_DECLARE_FIELD(anti_aliasing).set_default(false)
+    .describe("Whether to use the antialiasing version of the interpolation kernel.");
     DMLC_DECLARE_FIELD(explicit_batch).set_default(false)
     .describe("If set to True, the rois should be of shape (n, 5) and each roi should be "
               "[batch_ind, x1, y1, x2, y2]. If set to False, the rois should be of shape (n, 4) "
@@ -81,8 +212,23 @@ public:
     CHECK_EQ(bbox.CheckContiguous(), true);
     CHECK_EQ(out.CheckContiguous(), true);
     if (req[roiwrap_enum::kOut] != kNullOp) {
+      out = expr::scalar<DType>(0.0f);
       if (param_.interp_type == roiwrap_enum::kBilinear) {
-        BilinearPoolForward(out, data, bbox, param_.spatial_scale, param_.explicit_batch);
+        if (param_.anti_aliasing) {
+          ROIWrapForward<interp_op::triangle_kernel<true>, true>(
+            out, data, bbox, param_.spatial_scale, param_.explicit_batch, 1);
+        } else {
+          ROIWrapForward<interp_op::triangle_kernel<false>, false>(
+            out, data, bbox, param_.spatial_scale, param_.explicit_batch, 1);
+        }
+      } else if (param_.interp_type == roiwrap_enum::kBicubic) {
+        if (param_.anti_aliasing) {
+          ROIWrapForward<interp_op::cubic_kernel<true>, true>(
+            out, data, bbox, param_.spatial_scale, param_.explicit_batch, 2);
+        } else {
+          ROIWrapForward<interp_op::cubic_kernel<false>, false>(
+            out, data, bbox, param_.spatial_scale, param_.explicit_batch, 2);
+        }
       } else {
         LOG(FATAL) << "ROIWrapping: interp_type=" << param_.interp_type << " is not supported!";
       }
@@ -107,33 +253,65 @@ public:
     Stream<xpu> *s = ctx.get_stream<xpu>();
 
     Tensor<xpu, 4, real_t> grad_out = out_grad[roiwrap_enum::kOut].get<xpu, 4, real_t>(s);
+    Tensor<xpu, 4, real_t> data = in_data[roiwrap_enum::kData].get<xpu, 4, real_t>(s);
     Tensor<xpu, 2, real_t> bbox = in_data[roiwrap_enum::kBox].get<xpu, 2, real_t>(s);
     Tensor<xpu, 4, real_t> grad_in = in_grad[roiwrap_enum::kData].get<xpu, 4, real_t>(s);
     Tensor<xpu, 2, real_t> grad_roi = in_grad[roiwrap_enum::kBox].get<xpu, 2, real_t>(s);
     CHECK_EQ(grad_out.CheckContiguous(), true);
+    CHECK_EQ(data.CheckContiguous(), true);
     CHECK_EQ(bbox.CheckContiguous(), true);
     CHECK_EQ(grad_in.CheckContiguous(), true);
     CHECK_EQ(grad_roi.CheckContiguous(), true);
-    if (kAddTo == req[roiwrap_enum::kData] || kWriteTo == req[roiwrap_enum::kData]) {
-      if (kWriteTo == req[roiwrap_enum::kData]) {
-        grad_in = 0.0f;
-      }
-      if (param_.interp_type == roiwrap_enum::kBilinear) {
-        BilinearPoolBackwardAccData(grad_in, grad_out, bbox, param_.spatial_scale, param_.explicit_batch);
-      } else {
-        LOG(FATAL) << "ROIWrapping: interp_type=" << param_.interp_type << " is not supported!";
-      }
+    bool backprop_data = (kAddTo == req[roiwrap_enum::kData] || kWriteTo == req[roiwrap_enum::kData]);
+    bool backprop_rois = (kAddTo == req[roiwrap_enum::kBox] || kWriteTo == req[roiwrap_enum::kBox]);
+    if (backprop_data && kWriteTo == req[roiwrap_enum::kData]) {
+      grad_in = expr::scalar<real_t>(0.0f);
     }
-    if (kAddTo == req[roiwrap_enum::kBox] || kWriteTo == req[roiwrap_enum::kBox]) {
-      Tensor<xpu, 4, real_t> data = in_data[roiwrap_enum::kData].get<xpu, 4, real_t>(s);
-      if (kWriteTo == req[roiwrap_enum::kBox]) {
-        grad_roi = 0.0f;
-      }
-      if (param_.interp_type == roiwrap_enum::kBilinear) {
-        BilinearPoolBackwardAccROI(grad_roi, grad_out, bbox, data, param_.spatial_scale, param_.explicit_batch);
+    if (backprop_rois && kWriteTo == req[roiwrap_enum::kBox]) {
+      grad_roi = expr::scalar<real_t>(0.0f);
+    }
+    if (param_.interp_type == roiwrap_enum::kBilinear) {
+      if (param_.anti_aliasing) {
+        if (backprop_data) {
+          ROIWrapBackwardAccData<interp_op::triangle_kernel<true>, true>(
+            grad_in, grad_out, bbox, param_.spatial_scale, param_.explicit_batch, 1);
+        }
+        if (backprop_rois) {
+          ROIWrapBackwardAccROI<interp_op::triangle_kernel<true>, true>(
+            grad_roi, grad_out, data, bbox, param_.spatial_scale, param_.explicit_batch, 1);
+        }
       } else {
-        LOG(FATAL) << "ROIWrapping: interp_type=" << param_.interp_type << " is not supported!";
+        if (backprop_data) {
+          ROIWrapBackwardAccData<interp_op::triangle_kernel<false>, false>(
+            grad_in, grad_out, bbox, param_.spatial_scale, param_.explicit_batch, 1);
+        }
+        if (backprop_rois) {
+          ROIWrapBackwardAccROI<interp_op::triangle_kernel<false>, false>(
+            grad_roi, grad_out, data, bbox, param_.spatial_scale, param_.explicit_batch, 1);
+        }
       }
+    } else if (param_.interp_type == roiwrap_enum::kBicubic) {
+      if (param_.anti_aliasing) {
+        if (backprop_data) {
+          ROIWrapBackwardAccData<interp_op::cubic_kernel<true>, true>(
+            grad_in, grad_out, bbox, param_.spatial_scale, param_.explicit_batch, 2);
+        }
+        if (backprop_rois) {
+          ROIWrapBackwardAccROI<interp_op::cubic_kernel<true>, true>(
+            grad_roi, grad_out, data, bbox, param_.spatial_scale, param_.explicit_batch, 2);
+        }
+      } else {
+        if (backprop_data) {
+          ROIWrapBackwardAccData<interp_op::cubic_kernel<false>, false>(
+            grad_in, grad_out, bbox, param_.spatial_scale, param_.explicit_batch, 2);
+        }
+        if (backprop_rois) {
+          ROIWrapBackwardAccROI<interp_op::cubic_kernel<false>, false>(
+            grad_roi, grad_out, data, bbox, param_.spatial_scale, param_.explicit_batch, 2);
+        }
+      }
+    } else {
+      LOG(FATAL) << "ROIWrapping: interp_type=" << param_.interp_type << " is not supported!";
     }
   }
 
