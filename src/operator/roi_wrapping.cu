@@ -28,8 +28,8 @@ template<bool anti_aliasing, typename DType>
 __device__ void get_kernel_begin_end(DType x, int kernel_size, DType scale_x, int width,
                                      int &begin_x, int &end_x) {
   if (anti_aliasing && scale_x > 1) {
-    begin_x = static_cast<int>(floor(x - kernel_size * scale_x)) + 1;
-    end_x = static_cast<int>(ceil(x + kernel_size * scale_x)) - 1;
+    begin_x = static_cast<int>(floor(x - static_cast<DType>(kernel_size) * scale_x)) + 1;
+    end_x = static_cast<int>(ceil(x + static_cast<DType>(kernel_size) * scale_x)) - 1;
   } else {
     begin_x = static_cast<int>(floor(x)) - kernel_size + 1;
     end_x = static_cast<int>(ceil(x)) + kernel_size - 1;
@@ -88,33 +88,31 @@ __global__ void ROIWrapForwardKernel(const int count, DType* top_data,
     // Force malformed ROIs to be 1x1
     DType roi_width = max(roi_x2 - roi_x1 + DType(1.0), DType(1.0));
     DType roi_height = max(roi_y2 - roi_y1 + DType(1.0), DType(1.0));
-    DType bottom_x = static_cast<DType>(2 * px - pooled_width + 1) * roi_width / static_cast<DType>(2 * pooled_width)
-                     + (roi_x1 + roi_x2) / DType(2.0);
-    DType bottom_y = static_cast<DType>(2 * py - pooled_height + 1) * roi_height / static_cast<DType>(2 * pooled_height)
-                     + (roi_y1 + roi_y2) / DType(2.0);
     DType scale_x = roi_width / static_cast<DType>(pooled_width);
     DType scale_y = roi_height / static_cast<DType>(pooled_height);
+    DType bottom_x = static_cast<DType>(2 * px - pooled_width + 1) * scale_x / DType(2.0)
+      + (roi_x1 + roi_x2) / DType(2.0);
+    DType bottom_y = static_cast<DType>(2 * py - pooled_height + 1) * scale_y / DType(2.0)
+      + (roi_y1 + roi_y2) / DType(2.0);
     // Get the begin and end indices of the interpolation kernel
     int begin_x, begin_y, end_x, end_y;
     DType acc_weight = 0;
     get_kernel_begin_end<anti_aliasing>(bottom_x, interp_kernel_size, scale_x, width, begin_x, end_x);
     get_kernel_begin_end<anti_aliasing>(bottom_y, interp_kernel_size, scale_y, height, begin_y, end_y);
-
+    DType val = 0;
     for (int kx = begin_x; kx <= end_x; ++kx) {
       DType dx = bottom_x - static_cast<DType>(kx);
+      DType val_x = InterpOp::Val(dx, scale_x);
       for (int ky = begin_y; ky <= end_y; ++ky) {
         int ind = get_address_BCHW(batch_ind, c, ky, kx, channels, height, width);
         DType dy = bottom_y - static_cast<DType>(ky);
-        DType weight = InterpOp::Val(dx, scale_x) * InterpOp::Val(dy, scale_y);
+        DType val_y = InterpOp::Val(dy, scale_y);
+        DType weight = val_x * val_y;
         acc_weight += weight;
-        top_data[index] += weight * bottom_data[ind];
+        val += weight * bottom_data[ind];
       }
     }
-    if (0 != acc_weight) {
-      top_data[index] /= acc_weight;
-    } else {
-      top_data[index] = 0;
-    }
+    top_data[index] = (acc_weight != 0) ? val / acc_weight : DType(0);
   }
 }
 
@@ -306,6 +304,8 @@ __global__ void ROIWrapBackwardAccROIKernel(const int count, DType* bottom_roi_d
         DType kx_val = InterpOp::Val(dx, scale_x);
         DType kx_grad = InterpOp::Grad(dx, scale_x);
         DType kx_scale_grad = InterpOp::GradS(dx, scale_x, kx_grad);
+        DType kx_grad_mult = kx_grad * acc_weight_x - kx_val * acc_grad_bottom_x;
+        DType kx_scale_grad_mult = kx_scale_grad * acc_weight_x - kx_val * acc_grad_scale_x;
         for (int ky = begin_y; ky <= end_y; ++ky) {
           int ind = get_address_BCHW(batch_ind, c, ky, kx, channels, height, width);
           DType dy = bottom_y - static_cast<DType>(ky);
@@ -313,9 +313,9 @@ __global__ void ROIWrapBackwardAccROIKernel(const int count, DType* bottom_roi_d
           DType ky_val = InterpOp::Val(dy, scale_y);
           DType ky_grad = InterpOp::Grad(dy, scale_y);
           DType ky_scale_grad = InterpOp::GradS(dy, scale_y, ky_grad);
-          window_grad_bottom_x += data_val * ky_val * (kx_grad * acc_weight_x - kx_val * acc_grad_bottom_x);
+          window_grad_bottom_x += data_val * ky_val * kx_grad_mult;
           window_grad_bottom_y += data_val * kx_val * (ky_grad * acc_weight_y - ky_val * acc_grad_bottom_y);
-          window_grad_scale_x += data_val * ky_val * (kx_scale_grad * acc_weight_x - kx_val * acc_grad_scale_x);
+          window_grad_scale_x += data_val * ky_val * kx_scale_grad_mult;
           window_grad_scale_y += data_val * kx_val * (ky_scale_grad * acc_weight_y - ky_val * acc_grad_scale_y);
         }
       }

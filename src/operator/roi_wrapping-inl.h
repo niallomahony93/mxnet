@@ -63,8 +63,8 @@ struct triangle_kernel {
   // Compute the forward value
   template<typename DType>
   MSHADOW_XINLINE static DType Val(DType a, DType s) {
-    if (anti_aliasing && s > 1) {
-      return max(DType(0), DType(1) - abs(a / s));
+    if (anti_aliasing) {
+      return max(DType(0), DType(1) - abs(a / max(s, DType(1))));
     } else {
       return max(DType(0), DType(1) - abs(a));
     }
@@ -72,14 +72,15 @@ struct triangle_kernel {
   // Compute the gradient w.r.t a
   template<typename DType>
   MSHADOW_XINLINE static DType Grad(DType a, DType s) {
-    if (anti_aliasing && s > 1) {
-      if (abs(a) > s) {
+    if (anti_aliasing) {
+      DType real_s = max(s, DType(1));
+      if (a > real_s || a < -real_s) {
         return DType(0);
       } else {
-        return a > DType(0) ? DType(-1.0) / s : (a < DType(0) ? DType(1.0) / s : DType(0));
+        return a > DType(0) ? DType(-1.0) / real_s : (a < DType(0) ? DType(1.0) / real_s : DType(0));
       }
     } else {
-      if (abs(a) > 1) {
+      if (a > 1 || a < -1) {
         return DType(0);
       } else {
         return a > DType(0) ? DType(-1.0) : (a < DType(0) ? DType(1.0) : DType(0));
@@ -90,7 +91,7 @@ struct triangle_kernel {
   template<typename DType>
   MSHADOW_XINLINE static DType GradS(DType a, DType s, DType a_grad) {
     if (anti_aliasing && s > 1) {
-      return -a_grad * a / s;
+      return - a_grad * a / s;
     } else {
       return DType(0);
     }
@@ -102,19 +103,22 @@ struct cubic_kernel {
   template<typename DType>
   MSHADOW_XINLINE static DType Val(DType a, DType s) {
     DType v = 0;
-    if (anti_aliasing && s > 1) {
-      v = abs(a / s);
+    if (anti_aliasing) {
+      v = abs(a / max(s, DType(1)));
     } else {
       v = abs(a);
     }
+    DType v2, v3;
+    v2 = v * v;
+    v3 = v * v2;
     if (v <= 1) {
       // We can use either a=-0.5 or a=-0.75, we use a=-0.5 in the code. For a=-0.75, we can
-      // use `return DType(1) + v * v * (DType(1.25) * v - DType(2.25));`
-      return DType(1) + v * v * (DType(1.5) * v - DType(2.5));
+      // use `return DType(1) + DType(1.25) * v3 - DType(2.25)*v2;`
+      return DType(1.0) + DType(1.5) * v3 - DType(2.5) * v2;
     } else if (v < 2) {
       // We can use either a=-0.5 or a=-0.75, we use a=-0.5 in the code. For a=-0.75, we can
-      // use `return v * (v * (DType(3.75) - DType(0.75) * v) - DType(6)) + DType(3)`
-      return v * (v * (DType(2.5) - DType(0.5) * v) - DType(4)) + DType(2);
+      // use `return DType(3) - DType(0.75) * v3 + DType(3.75) * v2 - DType(6) * v;`
+      return DType(2.0) - DType(0.5) * v3 + DType(2.5) * v2 - DType(4) * v;
     } else {
       return DType(0);
     }
@@ -145,7 +149,7 @@ struct cubic_kernel {
   template<typename DType>
   MSHADOW_XINLINE static DType GradS(DType a, DType s, DType a_grad) {
     if (anti_aliasing && s > 1) {
-      return -a_grad * a / s;
+      return - a_grad * a / s;
     } else {
       return DType(0);
     }

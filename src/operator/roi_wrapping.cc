@@ -300,6 +300,8 @@ void ROIWrapBackwardAccROI(const Tensor<cpu, 2, DType> &in_roi_grad,
           grad_bottom_y += mult_y * window_grad_bottom_y;
           grad_scale_x += mult_x * window_grad_scale_x;
           grad_scale_y += mult_y * window_grad_scale_y;
+          //printf("n=%d, c=%d, py=%d, px=%d, acc_weight:(%f, %f), ograd=%f, bottom:(%f, %f), begin=(%d, %d), end=(%d, %d), window_grad_bottom_x:(%f, %f), window_grad_scale_x:(%f, %f)\n",
+          //  n, c, py, px, acc_weight_x, acc_weight_y, ograd, bottom_x, bottom_y, begin_x, begin_y, end_x, end_y, window_grad_bottom_x, window_grad_bottom_y, window_grad_scale_x, window_grad_scale_y);
         }
         DType grad_x1 = ((0.5 - x_relative) * grad_bottom_x - grad_scale_x / pooled_width) * spatial_scale;
         DType grad_y1 = ((0.5 - y_relative) * grad_bottom_y - grad_scale_y / pooled_height) * spatial_scale;
