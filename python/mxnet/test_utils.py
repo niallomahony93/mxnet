@@ -9,7 +9,7 @@ import mxnet as mx
 
 from .context import cpu, gpu
 from .ndarray import array
-
+np.random.seed(12345)
 _rng = np.random.RandomState(1234)
 
 def default_context():
