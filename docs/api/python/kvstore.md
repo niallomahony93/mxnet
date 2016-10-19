@@ -135,3 +135,6 @@ update on key: 9
 
     <script>auto_index("mxnet.kvstore");</script>
 ```
+
+# Recommended Next Steps
+* [Python Tutorials](http://mxnet.io/tutorials/index.html#Python-Tutorials)

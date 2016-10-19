@@ -21,7 +21,20 @@ def _load_general(data, targets, major_axis):
         else:
             for slice_idx, d_dst in d_targets:
                 if axis >= 0:
-                    d_src.copy_slice_to(axis, slice_idx.start, slice_idx.stop, d_dst)
+                    # copy slice
+                    shape = d_src.shape
+                    begin = np.zeros(len(shape), dtype=int)
+                    end = np.array(shape)
+                    begin[axis] = slice_idx.start
+                    end[axis] = slice_idx.stop
+                    # pylint: disable=no-member,protected-access
+                    if d_src.context == d_dst.context:
+                        nd.crop(d_src, begin=tuple(begin), end=tuple(end), out=d_dst)
+                    else:
+                        # on different device, crop and then do cross device copy
+                        d_dst_copy = nd.crop(d_src, begin=tuple(begin), end=tuple(end))
+                        d_dst_copy.copyto(d_dst)
+                    # pylint: enable=no-member,protected-access
                 else:
                     d_src.copyto(d_dst)
 
@@ -351,8 +364,11 @@ class DataParallelExecutorGroup(object):
             out_grads_slice = []
             for grad, axis in zip(out_grads, self.output_layouts):
                 if axis >= 0:
-                    out_grads_slice.append(grad.copy_slice_to(axis, islice.start, islice.stop,
-                                                              self.contexts[i]))
+                    # pylint: disable=no-member
+                    og_my_slice = nd.slice_axis(grad, axis=axis, begin=islice.start,
+                                                end=islice.stop)
+                    # pylint: enable=no-member
+                    out_grads_slice.append(og_my_slice.as_in_context(self.contexts[i]))
                 else:
                     out_grads_slice.append(grad.copyto(self.contexts[i]))
 
@@ -375,8 +391,11 @@ class DataParallelExecutorGroup(object):
                     # slicing NDArray along axis 0 can avoid copying
                     labels_slice.append(label[islice])
                 elif axis > 0:
-                    labels_slice.append(label.copy_slice_to(axis, islice.start,
-                                                            islice.stop, label.context))
+                    # pylint: disable=no-member
+                    label_my_slice = nd.slice_axis(label, axis=axis, begin=islice.start,
+                                                   end=islice.stop).as_in_context(label.context)
+                    # pylint: enable=no-member
+                    labels_slice.append(label_my_slice)
                 else:
                     labels_slice.append(label)
 
