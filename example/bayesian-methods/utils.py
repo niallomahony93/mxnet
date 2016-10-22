@@ -5,9 +5,13 @@ import logging
 
 
 class BiasXavier(mx.initializer.Xavier):
-    def _init_bias(self, _, arr):
-        scale = numpy.sqrt(self.magnitude / arr.shape[0])
-        mx.random.uniform(-scale, scale, out=arr)
+    def _init_bias(self, name, arr):
+        if 'var' in name:
+            arr[:] = numpy.zeros(arr.shape, dtype=numpy.float32)
+            print "Find var", name
+        else:
+            scale = numpy.sqrt(self.magnitude / arr.shape[0])
+            mx.random.uniform(-scale, scale, out=arr)
 
 class SGLDScheduler(mx.lr_scheduler.LRScheduler):
     def __init__(self, begin_rate, end_rate, total_iter_num, factor):
@@ -100,7 +104,8 @@ def sample_test_acc(exe, X, Y, sample_pool=None, label_num=None, minibatch_size=
     return correct, total, acc
 
 
-def sample_test_regression(exe, X, Y, sample_pool=None, minibatch_size=100, save_path="regression.txt"):
+def sample_test_regression(exe, X, Y, sample_pool=None, minibatch_size=100, save_path="regression.txt",
+                           has_var=True, X_mean=None, Y_mean=None, X_std=None, Y_std=None):
     old_param = copy_param(exe)
     if sample_pool is not None:
         pred = numpy.zeros(Y.shape + (len(sample_pool),))
@@ -111,7 +116,13 @@ def sample_test_regression(exe, X, Y, sample_pool=None, minibatch_size=100, save
                 ratio[i] = sample[0]/float(denominator)
         else:
             ratio[:] = 1.0/ Y.shape[0]
-        iterator = mx.io.NDArrayIter(data=X, label=Y, batch_size=minibatch_size, shuffle=False)
+        if X_mean is not None:
+            iterator = mx.io.NDArrayIter(data=(X - X_mean)/X_std,
+                                         label=(Y - Y_mean)/Y_std, batch_size=minibatch_size, shuffle=False)
+        else:
+            iterator = mx.io.NDArrayIter(data=X,
+                                         label=Y, batch_size=minibatch_size,
+                                         shuffle=False)
         for i, sample in enumerate(sample_pool):
             if type(sample) is list:
                 sample_param = sample[1]
@@ -124,27 +135,43 @@ def sample_test_regression(exe, X, Y, sample_pool=None, minibatch_size=100, save
                 exe.arg_dict['data'][:] = batch.data[0]
                 exe.forward(is_train=False)
                 batch_len = minibatch_size - batch.pad
-                pred[curr_instance:curr_instance + minibatch_size - batch.pad, :, i] = \
-                    exe.outputs[0].asnumpy()[:batch_len]
+                if X_mean is not None:
+                    pred[curr_instance:curr_instance + minibatch_size - batch.pad, :, i] = \
+                        Y_mean + Y_std * exe.outputs[0].asnumpy()[:batch_len]
+                else:
+                    pred[curr_instance:curr_instance + minibatch_size - batch.pad, :, i] = \
+                        exe.outputs[0].asnumpy()[:batch_len]
                 curr_instance += batch_len
         mean = pred.mean(axis=2)
         var = pred.std(axis=2)**2
         #print numpy.concatenate((Y, mean), axis=1)
         mse = numpy.square(Y.reshape((Y.shape[0], )) - mean.reshape((mean.shape[0], ))).mean()
-        numpy.savetxt(save_path, numpy.concatenate((mean, var), axis=1))
+        numpy.savetxt(save_path, numpy.concatenate((mean, var, Y), axis=1))
     else:
         mean_var = numpy.zeros((Y.shape[0], 2))
-        iterator = mx.io.NDArrayIter(data=X, label=Y, batch_size=minibatch_size, shuffle=False)
+        if X_mean is not None:
+            iterator = mx.io.NDArrayIter(data=(X - X_mean)/X_std,
+                                         label=(Y - Y_mean)/Y_std, batch_size=minibatch_size,
+                                         shuffle=False)
+        else:
+            iterator = mx.io.NDArrayIter(data=X,
+                                         label=Y, batch_size=minibatch_size,
+                                         shuffle=False)
         iterator.reset()
         curr_instance = 0
         for batch in iterator:
             exe.arg_dict['data'][:] = batch.data[0]
             exe.forward(is_train=False)
+
             mean_var[curr_instance:curr_instance + minibatch_size - batch.pad, 0] = exe.outputs[0].asnumpy()[:minibatch_size - batch.pad].flatten()
-            mean_var[curr_instance:curr_instance + minibatch_size - batch.pad, 1] = numpy.exp(exe.outputs[1].asnumpy())[:minibatch_size - batch.pad].flatten()
+            if Y_mean is not None:
+                mean_var[curr_instance:curr_instance + minibatch_size - batch.pad, 0] =\
+                    Y_std * mean_var[curr_instance:curr_instance + minibatch_size - batch.pad, 0] + Y_mean
+            if has_var:
+                mean_var[curr_instance:curr_instance + minibatch_size - batch.pad, 1] = numpy.exp(exe.outputs[1].asnumpy())[:minibatch_size - batch.pad].flatten()
             curr_instance += minibatch_size - batch.pad
         mse = numpy.square(Y.reshape((Y.shape[0],)) - mean_var[:, 0]).mean()
-        numpy.savetxt(save_path, mean_var)
+        numpy.savetxt(save_path, numpy.hstack([mean_var, Y]))
     exe.copy_params_from(old_param)
     return mse
 

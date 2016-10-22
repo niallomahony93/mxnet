@@ -77,13 +77,15 @@ struct triangle_kernel {
       if (a > real_s || a < -real_s) {
         return DType(0);
       } else {
-        return a > DType(0) ? DType(-1.0) / real_s : (a < DType(0) ? DType(1.0) / real_s : DType(0));
+        //return a > DType(0) ? DType(-1.0) / real_s : (a < DType(0) ? DType(1.0) / real_s : DType(0));
+        return a > DType(0) ? DType(-1.0) / real_s : DType(1.0) / real_s;
       }
     } else {
       if (a > 1 || a < -1) {
         return DType(0);
       } else {
-        return a > DType(0) ? DType(-1.0) : (a < DType(0) ? DType(1.0) : DType(0));
+        //return a > DType(0) ? DType(-1.0) : (a < DType(0) ? DType(1.0) : DType(0));
+        return a > DType(0) ? DType(-1.0) : DType(1.0);
       }
     }
   }

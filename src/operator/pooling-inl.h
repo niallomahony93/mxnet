@@ -176,8 +176,9 @@ class PoolingOp : public Operator {
 };  // class PoolingOp
 
 template<typename xpu>
-Operator* CreateOp(PoolingParam param, int dtype);
-
+Operator* CreateOp(PoolingParam param, int dtype,
+                   std::vector<TShape> *in_shape,
+                   std::vector<TShape> *out_shape);
 
 #if DMLC_USE_CXX11
 class PoolingProp : public OperatorProperty {
@@ -209,11 +210,17 @@ class PoolingProp : public OperatorProperty {
               && param_.kernel[1] <= dshape[3] + 2 * param_.pad[1])
             << "kernel size exceed input";
         if (param_.pooling_convention == pool_enum::kValid) {
-          oshape[2] = 1 + (dshape[2] + 2 * param_.pad[0] - param_.kernel[0]) / param_.stride[0];
-          oshape[3] = 1 + (dshape[3] + 2 * param_.pad[1] - param_.kernel[1]) / param_.stride[1];
+          oshape[2] = 1 + (dshape[2] + 2 * param_.pad[0] - param_.kernel[0]) /
+                              param_.stride[0];
+          oshape[3] = 1 + (dshape[3] + 2 * param_.pad[1] - param_.kernel[1]) /
+                              param_.stride[1];
         } else {
-          oshape[2] = 1 + static_cast<int>(ceil(static_cast<float>(dshape[2] + 2 * param_.pad[0] - param_.kernel[0]) / param_.stride[0]));
-          oshape[3] = 1 + static_cast<int>(ceil(static_cast<float>(dshape[3] + 2 * param_.pad[1] - param_.kernel[1]) / param_.stride[1]));
+          oshape[2] = 1 + static_cast<int>(ceil(static_cast<float>(
+                              dshape[2] + 2 * param_.pad[0] -
+                              param_.kernel[0]) / param_.stride[0]));
+          oshape[3] = 1 + static_cast<int>(ceil(static_cast<float>(
+                              dshape[3] + 2 * param_.pad[1] -
+                              param_.kernel[1]) / param_.stride[1]));
         }
       }
       out_shape->clear();
@@ -230,13 +237,22 @@ class PoolingProp : public OperatorProperty {
         oshape[4] = 1;
       } else {
         if (param_.pool_type == pool_enum::kValid) {
-          oshape[2] = 1 + (dshape[2] + 2 * param_.pad[0] - param_.kernel[0]) / param_.stride[0];
-          oshape[3] = 1 + (dshape[3] + 2 * param_.pad[1] - param_.kernel[1]) / param_.stride[1];
-          oshape[4] = 1 + (dshape[4] + 2 * param_.pad[2] - param_.kernel[2]) / param_.stride[2];
+          oshape[2] = 1 + (dshape[2] + 2 * param_.pad[0] - param_.kernel[0]) /
+                              param_.stride[0];
+          oshape[3] = 1 + (dshape[3] + 2 * param_.pad[1] - param_.kernel[1]) /
+                              param_.stride[1];
+          oshape[4] = 1 + (dshape[4] + 2 * param_.pad[2] - param_.kernel[2]) /
+                              param_.stride[2];
         } else {
-          oshape[2] = 1 + static_cast<int>(ceil(static_cast<float>(dshape[2] + 2 * param_.pad[0] - param_.kernel[0]) / param_.stride[0]));
-          oshape[3] = 1 + static_cast<int>(ceil(static_cast<float>(dshape[3] + 2 * param_.pad[1] - param_.kernel[1]) / param_.stride[1]));
-          oshape[4] = 1 + static_cast<int>(ceil(static_cast<float>(dshape[4] + 2 * param_.pad[2] - param_.kernel[2]) / param_.stride[2]));
+          oshape[2] = 1 + static_cast<int>(ceil(static_cast<float>(
+                              dshape[2] + 2 * param_.pad[0] -
+                              param_.kernel[0]) / param_.stride[0]));
+          oshape[3] = 1 + static_cast<int>(ceil(static_cast<float>(
+                              dshape[3] + 2 * param_.pad[1] -
+                              param_.kernel[1]) / param_.stride[1]));
+          oshape[4] = 1 + static_cast<int>(ceil(static_cast<float>(
+                              dshape[4] + 2 * param_.pad[2] -
+                              param_.kernel[2]) / param_.stride[2]));
         }
       }
 

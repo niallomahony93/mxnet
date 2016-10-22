@@ -34,6 +34,35 @@ def load_toy():
     return X, Y, X_test, Y_test
 
 
+def load_boston_housing():
+    from sklearn.datasets import load_boston
+    boston = load_boston()
+    indices = range(506)
+    # indices = numpy.random.permutation(indices)
+    # indices = numpy.random.permutation(indices)
+    # indices = numpy.random.permutation(indices)
+    # indices = numpy.random.permutation(indices)
+    # indices = numpy.random.permutation(indices)
+    # indices = numpy.random.permutation(indices)
+    # indices = numpy.random.permutation(indices)
+
+
+    training_num = 456
+    testing_num = 50
+    X = boston['data'][indices[:training_num], :]
+    Y = boston['target'][indices[:training_num]].reshape((training_num, 1))
+    X_test = boston['data'][indices[training_num:(training_num + testing_num)], :]
+    Y_test = boston['target'][indices[training_num:(training_num + testing_num)]].reshape((testing_num, 1))
+    X_mean = X.mean(axis=0)
+    Y_mean = Y.mean(axis=0)
+    X_std = X.std(axis=0)
+    Y_std = Y.std(axis=0)
+    print X_mean, X_std
+    print Y_mean, Y_std
+    return X, Y, X_test, Y_test, X_mean, X_std, Y_mean, Y_std
+    #return X, Y, X_test, Y_test, None, None, None, None
+
+
 def load_synthetic(theta1, theta2, sigmax, num=20):
     flag = numpy.random.randint(0, 2, (num,))
     X = flag * numpy.random.normal(theta1, sigmax, (num,)) \

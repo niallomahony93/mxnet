@@ -115,21 +115,29 @@ def SGD(sym, data_inputs, X, Y, X_test, Y_test, total_iter_num,
         lr_scheduler=None, prior_precision=1,
         out_grad_f=None,
         initializer=None,
-        minibatch_size=100, dev=mx.gpu()):
+        minibatch_size=100,
+        task="classification",
+        dev=mx.gpu(),
+        X_mean=None,
+        X_std=None,
+        Y_mean=None,
+        Y_std=None):
     if out_grad_f is None:
         label_key = list(set(data_inputs.keys()) - set(['data']))[0]
     exe, params, params_grad, _ = get_executor(sym, dev, data_inputs, initializer)
     optimizer = mx.optimizer.create('sgd', learning_rate=lr,
                                     rescale_grad=X.shape[0] / minibatch_size,
                                     lr_scheduler=lr_scheduler,
-                                    wd=prior_precision,
-                                    arg_names=params.keys())
+                                    wd=prior_precision)
     updater = mx.optimizer.get_updater(optimizer)
     start = time.time()
     for i in xrange(total_iter_num):
         indices = numpy.random.randint(X.shape[0], size=minibatch_size)
         X_batch = X[indices]
         Y_batch = Y[indices]
+        if X_mean is not None:
+            X_batch = (X_batch - X_mean) / X_std
+            Y_batch = (Y_batch - Y_mean) / Y_std
         exe.arg_dict['data'][:] = X_batch
         if out_grad_f is None:
             exe.arg_dict[label_key][:] = Y_batch
@@ -140,10 +148,27 @@ def SGD(sym, data_inputs, X, Y, X_test, Y_test, total_iter_num,
             exe.backward(out_grad_f(exe.outputs, nd.array(Y_batch, ctx=dev)))
         for k in params:
             updater(k, params_grad[k], params[k])
-        if (i + 1) % 500 == 0:
+        #     print k, nd.norm(params_grad[k]).asnumpy()
+        # ch = raw_input()
+        if (i + 1) % 10000 == 0:
             end = time.time()
-            print "Current Iter Num: %d" % (i + 1), "Time Spent: %f" % (end - start)
-            sample_test_acc(exe, X=X_test, Y=Y_test, label_num=10, minibatch_size=100)
+            if task == 'classification':
+                print "Current Iter Num: %d" % (i + 1), "Time Spent: %f" % (end - start)
+                sample_test_acc(exe, X=X_test, Y=Y_test, label_num=10, minibatch_size=100)
+            else:
+                print "Current Iter Num: %d" % (i + 1), "Time Spent: %f" % (end - start), "Test MSE:",
+                print sample_test_regression(exe=exe, X=X_test, Y=Y_test,
+                                             X_mean=X_mean, X_std=X_std,
+                                             Y_mean=Y_mean, Y_std=Y_std,
+                                             minibatch_size=minibatch_size,
+                                             save_path='regression_SGD.txt',
+                                             has_var=False), "Train MSE:",
+                print sample_test_regression(exe=exe, X=X, Y=Y,
+                                             X_mean=X_mean, X_std=X_std,
+                                             Y_mean=Y_mean, Y_std=Y_std,
+                                             minibatch_size=minibatch_size,
+                                             save_path='regression_SGD.txt',
+                                             has_var=False)
             start = time.time()
     return exe, params, params_grad
 
@@ -180,6 +205,7 @@ def SGLD(sym, X, Y, X_test, Y_test, total_iter_num,
             exe.backward(out_grad_f(exe.outputs, nd.array(Y_batch, ctx=dev)))
         for k in params:
             updater(k, params_grad[k], params[k])
+            print k, nd.norm(params_grad[k]).asnumpy()
         if i < burn_in_iter_num:
             continue
         else:
@@ -220,7 +246,8 @@ def DistilledSGLD(teacher_sym, student_sym,
                   teacher_initializer=None,
                   minibatch_size=100,
                   task='classification',
-                  dev=mx.gpu()):
+                  dev=mx.gpu(),
+                  X_mean=None, X_std=None, Y_mean=None, Y_std=None):
     teacher_exe, teacher_params, teacher_params_grad, _ = \
         get_executor(teacher_sym, dev, teacher_data_inputs, teacher_initializer)
     student_exe, student_params, student_params_grad, _ = \
@@ -247,7 +274,9 @@ def DistilledSGLD(teacher_sym, student_sym,
         indices = numpy.random.randint(X.shape[0], size=minibatch_size)
         X_batch = X[indices]
         Y_batch = Y[indices]
-
+        if X_mean is not None:
+            X_batch = (X_batch - X_mean)/X_std
+            Y_batch = (Y_batch - Y_mean)/Y_std
         # 1.2 Update teacher
         teacher_exe.arg_dict['data'][:] = X_batch
         if teacher_grad_f is None:
@@ -261,15 +290,23 @@ def DistilledSGLD(teacher_sym, student_sym,
 
         for k in teacher_params:
             teacher_updater(k, teacher_params_grad[k], teacher_params[k])
+        #     print k, nd.norm(teacher_params_grad[k]).asnumpy()
+        # ch = raw_input()
 
         # 2.1 Draw random minibatch and do random perturbation
-        if task == 'classification':
+        if task == 'classification' or task == 'boston':
             indices = numpy.random.randint(X.shape[0], size=minibatch_size)
-            X_student_batch = X[indices] + numpy.random.normal(0,
-                                                               perturb_deviation,
-                                                               X_batch.shape).astype('float32')
+            if X_mean is not None:
+                X_student_batch = (X[indices]-X_mean)/X_std + numpy.random.normal(0,
+                                                                   perturb_deviation,
+                                                                   X_batch.shape).astype('float32')
+            else:
+                X_student_batch = X[indices] + numpy.random.normal(0,
+                                                                   perturb_deviation,
+                                                                   X_batch.shape).astype('float32')
         else:
             X_student_batch = mx.random.uniform(-6, 6, X_batch.shape, mx.cpu())
+
 
         # 2.2 Get teacher predictions
         teacher_exe.arg_dict['data'][:] = X_student_batch
@@ -288,8 +325,9 @@ def DistilledSGLD(teacher_sym, student_sym,
             student_exe.backward(student_grad_f(student_exe.outputs, teacher_pred))
         for k in student_params:
             student_updater(k, student_params_grad[k], student_params[k])
-
-        if (i + 1) % 2000 == 0:
+        #     print k, nd.norm(student_params_grad[k]).asnumpy()
+        # ch = raw_input()
+        if (i + 1) % 10000 == 0:
             end = time.time()
             if task == 'classification':
                 print "Current Iter Num: %d" % (i + 1), "Time Spent: %f" % (end - start)
@@ -311,10 +349,17 @@ def DistilledSGLD(teacher_sym, student_sym,
                       % (teacher_test_correct, teacher_test_total, teacher_test_acc,
                          teacher_train_correct, teacher_train_total, teacher_train_acc)
             else:
-                print "Current Iter Num: %d" % (i + 1), "Time Spent: %f" % (end - start), "MSE:",
+                print "Current Iter Num: %d" % (i + 1), "Time Spent: %f" % (end - start), "Test MSE:",
                 print sample_test_regression(exe=student_exe, X=X_test, Y=Y_test,
+                                             X_mean=X_mean, X_std=X_std,
+                                             Y_mean=Y_mean, Y_std=Y_std,
                                              minibatch_size=minibatch_size,
-                                             save_path='regression_DSGLD.txt')
+                                             save_path='regression_DSGLD.txt'), "Train MSE:",
+                print sample_test_regression(exe=student_exe, X=X, Y=Y,
+                                             X_mean=X_mean, X_std=X_std,
+                                             Y_mean=Y_mean, Y_std=Y_std,
+                                             minibatch_size=minibatch_size,
+                                             save_path='regression_train_DSGLD.txt')
             start = time.time()
 
     return student_exe, student_params, student_params_grad
