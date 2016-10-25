@@ -53,7 +53,7 @@ class ProposalTargetOperator(mx.operator.CustomOp):
 
         # Sample rois with classification labels and bounding box regression
         # targets
-        labels, rois, bbox_targets, bbox_inside_weights = _sample_rois(
+        labels, rois, bbox_targets, bbox_inside_weights, keep_inds = _sample_rois(
             all_rois, gt_boxes, fg_rois_per_image,
             rois_per_image, self._num_classes, self.cfg_key)
 
@@ -74,8 +74,10 @@ class ProposalTargetOperator(mx.operator.CustomOp):
         self.assign(out_data[2], req[2], bbox_targets)
         self.assign(out_data[3], req[3], bbox_inside_weights)
         self.assign(out_data[4], req[4], np.array(bbox_inside_weights > 0).astype(np.float32) ) # no normalization
+        self.assign(out_data[5], req[5], keep_inds.astype(np.float32))
 
     def backward(self, req, out_grad, in_data, out_data, in_grad, aux):
+        print in_grad[0].shape
         self.assign(in_grad[0], req[0], 0)
         self.assign(in_grad[1], req[1], 0)
 
@@ -95,7 +97,7 @@ class ProposalTargetProp(mx.operator.CustomOpProp):
         return ['rpn_roi', 'gt_boxes']
 
     def list_outputs(self):
-        return ['roi', 'label', 'bbox_target', 'bbox_inside_weight', 'bbox_outside_weight']
+        return ['roi', 'label', 'bbox_target', 'bbox_inside_weight', 'bbox_outside_weight', 'keep_inds']
 
     def infer_shape(self, in_shape):
         rpn_roi_shape = in_shape[0]
@@ -108,8 +110,10 @@ class ProposalTargetProp(mx.operator.CustomOpProp):
         bbox_target_shape = (batch_size, self._num_classes * 4)
         bbox_inside_weight_shape = (batch_size, self._num_classes * 4)
         bbox_outside_weight_shape = (batch_size, self._num_classes * 4)
+        keep_inds_shape = (batch_size,)
 
-        return [rpn_roi_shape, gt_boxes_shape], [roi_shape, label_shape, bbox_target_shape, bbox_inside_weight_shape, bbox_outside_weight_shape]
+        return [rpn_roi_shape, gt_boxes_shape],\
+               [roi_shape, label_shape, bbox_target_shape, bbox_inside_weight_shape, bbox_outside_weight_shape, keep_inds_shape]
 
     def create_operator(self, ctx, shapes, dtypes):
         return ProposalTargetOperator(self._num_classes, self._is_train)
@@ -193,4 +197,4 @@ def _sample_rois(all_rois, gt_boxes, fg_rois_per_image, rois_per_image, num_clas
     bbox_targets, bbox_inside_weights = \
         expand_bbox_regression_targets(bbox_target_data, num_classes)
 
-    return labels, rois, bbox_targets, bbox_inside_weights
+    return labels, rois, bbox_targets, bbox_inside_weights, keep_inds

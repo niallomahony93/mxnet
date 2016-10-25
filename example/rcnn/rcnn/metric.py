@@ -118,7 +118,7 @@ class SmoothL1LossMetric(mx.metric.EvalMetric):
                     bbox_loss = preds[2].asnumpy()
                     bbox_loss = bbox_loss.reshape((bbox_loss.shape[0], -1))
                 else:
-                    bbox_loss = preds[-1].asnumpy()
+                    bbox_loss = preds[-2].asnumpy()
                     first_dim = bbox_loss.shape[0] * bbox_loss.shape[1]
                     bbox_loss = bbox_loss.reshape(first_dim, -1)
         self.num_inst += bbox_loss.shape[0]
