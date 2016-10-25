@@ -1,16 +1,17 @@
-cmake -G "Visual Studio 12 2013 Win64" ^
+cmake -G "Visual Studio 14 2015 Win64" ^
 -DCMAKE_BUILD_TYPE=Release ^
 -DCMAKE_CONFIGURATION_TYPES="Release" ^
--DMKL_INCLUDE_DIR="C:\\Program Files (x86)\\IntelSWTools\\compilers_and_libraries_2016\\windows\\mkl\\include" ^
--DMKL_RT_LIBRARY="C:\\Program Files (x86)\\IntelSWTools\\compilers_and_libraries_2016\\windows\\mkl\\lib\\intel64\\mkl_rt.lib" ^
--DOpenCV_DIR="E:\ThirdParty\opencv-3.1\opencv\build\x64\vc12\lib" ^
--DZMQ_LIBRARY="D:\HKUST\libzmq\bin\x64\Release\v120\dynamic" ^
--DZMQ_INCLUDE_DIR="D:\HKUST\libzmq\include" ^
--DPROTOBUF_LIBRARY="D:\\HKUST\\protobuf\\cmake\\build\\release" ^
--DPROTOBUF_INCLUDE_DIR="D:\\HKUST\\protobuf\\src" ^
+-DMKL_INCLUDE_DIR="C:\\Program Files (x86)\\IntelSWTools\\compilers_and_libraries_2017\\windows\\mkl\\include" ^
+-DMKL_RT_LIBRARY="C:\\Program Files (x86)\\IntelSWTools\\compilers_and_libraries_2017\\windows\\mkl\\lib\\intel64\\mkl_rt.lib" ^
+-DOpenCV_DIR="E:\ThirdParty\opencv-3.1\opencv\build\x64\vc14\lib" ^
 -DCUDNN_INCLUDE="C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v8.0\\include" ^
 -DCUDNN_ROOT="C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v8.0\\lib\\x64" ^
 -DBLAS=MKL ..
 
+
+-DZMQ_LIBRARY="D:\HKUST\libzmq\bin\x64\Release\v120\dynamic" ^
+-DZMQ_INCLUDE_DIR="D:\HKUST\libzmq\include" ^
+-DPROTOBUF_LIBRARY="D:\\HKUST\\protobuf\\cmake\\build\\release" ^
+-DPROTOBUF_INCLUDE_DIR="D:\\HKUST\\protobuf\\src" ^
 
 -DEXTRA_OPERATORS=D:\\HKUST\\2-2\\dist_train\\mxnet-extension ^
