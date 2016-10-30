@@ -216,15 +216,18 @@ def numeric_grad(executor, location, aux_states=None, eps=1e-4, use_forward_trai
     """
     for k, v in location.items():
         executor.arg_dict[k][:] = v
-    approx_grads = {k:np.zeros(v.shape, dtype=np.float32) for k, v in location.items()}
+    approx_grads = {k: np.ascontiguousarray(np.zeros(v.shape, dtype=np.float32))
+                    for k, v in location.items()}
 
     executor.forward(is_train=use_forward_train)
     f_x = executor.outputs[0].asnumpy()[0]
+    for k in location:
+        location[k] = np.ascontiguousarray(location[k])
     for k, v in location.items():
         old_value = v.copy()
         for i in range(np.prod(v.shape)):
             # inplace update
-            v.reshape((np.prod(v.shape), 1))[i] += eps
+            v.ravel()[i] += eps
             # set initial states. Need to set all due to inplace operations
             for key, val in location.items():
                 executor.arg_dict[key][:] = val
@@ -234,7 +237,7 @@ def numeric_grad(executor, location, aux_states=None, eps=1e-4, use_forward_trai
             executor.forward(is_train=use_forward_train)
             f_eps = executor.outputs[0].asnumpy()[0]
             approx_grads[k].ravel()[i] = (f_eps - f_x) / eps
-            v.reshape((np.prod(v.shape), 1))[i] = old_value.reshape((np.prod(v.shape), 1))[i]
+            v.ravel()[i] = old_value.ravel()[i]
 
     return approx_grads
 
