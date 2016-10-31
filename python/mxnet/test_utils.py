@@ -203,20 +203,21 @@ def numeric_grad(executor, location, aux_states=None, eps=1e-4, use_forward_trai
         Argument values used as location to compute gradient
         Maps the name of arguments to the corresponding numpy.ndarray.
         Value of all the arguments must be provided.
-    aux_states : None or list of numpy.ndarray or dict of str to numpy.ndarray
+    aux_states : None or list of numpy.ndarray or dict of str to numpy.ndarray, optional
         Auxiliary states values used as location to compute gradient
         Maps the name of aux_states to the corresponding numpy.ndarray.
         Value of all the auxiliary arguments must be provided.
     eps : float, optional
         epsilon for the finite-difference method
-
+    use_forward_train : bool, optional
+        Whether to use `is_train=True` in testing.
     References
     ---------
     ..[1] https://github.com/Theano/Theano/blob/master/theano/gradient.py
     """
     for k, v in location.items():
         executor.arg_dict[k][:] = v
-    approx_grads = {k: np.ascontiguousarray(np.zeros(v.shape, dtype=np.float32))
+    approx_grads = {k: np.zeros(v.shape, dtype=np.float32)
                     for k, v in location.items()}
 
     executor.forward(is_train=use_forward_train)
@@ -228,9 +229,7 @@ def numeric_grad(executor, location, aux_states=None, eps=1e-4, use_forward_trai
         for i in range(np.prod(v.shape)):
             # inplace update
             v.ravel()[i] += eps
-            # set initial states. Need to set all due to inplace operations
-            for key, val in location.items():
-                executor.arg_dict[key][:] = val
+            executor.arg_dict[k][:] = v
             if aux_states is not None:
                 for key, val in aux_states.items():
                     executor.aux_dict[key][:] = val
@@ -238,7 +237,8 @@ def numeric_grad(executor, location, aux_states=None, eps=1e-4, use_forward_trai
             f_eps = executor.outputs[0].asnumpy()[0]
             approx_grads[k].ravel()[i] = (f_eps - f_x) / eps
             v.ravel()[i] = old_value.ravel()[i]
-
+        # copy back the original value
+        executor.arg_dict[k][:] = old_value
     return approx_grads
 
 
