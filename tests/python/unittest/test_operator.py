@@ -160,7 +160,7 @@ def test_slice_channel():
         outputs = exe.forward(is_train=True, data=data_npy)
         for i in range(num_outputs):
             gt = data_npy.take(np.arange(i * shape[axis]/num_outputs,
-                                         (i+1) * shape[axis]/num_outputs), axis=axis)
+                                         (i+1) * shape[axis]/num_outputs).astype(np.int), axis=axis)
             if squeeze_axis:
 
                 assert reldiff(outputs[i].asnumpy(), gt.reshape(outputs[i].shape)) < 1e-5
@@ -821,7 +821,7 @@ def _check_broadcast_op_backward(symbol, baseline):
         err = lambda x, y: np.sum(np.abs(x-y)) / np.sum(np.abs(x))
         err_1 = err(x_1, y_1.asnumpy())
         err_2 = err(x_2, y_2.asnumpy())
-        assert err_1 < 1e-5 and err_2 < 1e-5, 'lhs error %f, rhs error %f, shapes are %s %s' % (
+        assert err_1 < 1e-3 and err_2 < 1e-3, 'lhs error %f, rhs error %f, shapes are %s %s' % (
             err_1, err_2, d[0].shape, d[1].shape)
 
 def test_broadcast_binary_op():

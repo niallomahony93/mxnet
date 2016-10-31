@@ -9,7 +9,7 @@ import mxnet as mx
 
 from .context import cpu, gpu, Context
 from .ndarray import array
-np.random.seed(12345)
+
 _rng = np.random.RandomState(1234)
 
 def default_context():
@@ -127,8 +127,7 @@ def assert_almost_equal(a, b, threshold=None):
     if np.isnan(rel) or rel > threshold:
         np.set_printoptions(threshold=4, suppress=True)
         msg = npt.build_err_msg([a, b],
-                                err_msg="Rel Err=%f, Expected <=%f"
-                                        % (rel, threshold),
+                                err_msg="Rel Err=%f, Expected <=%f" % (rel, threshold),
                                 names=["a", "b"])
         raise Exception(msg)
     return rel
