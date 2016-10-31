@@ -90,7 +90,7 @@ def same(a, b):
 def reldiff(a, b):
     """Calculate the relative difference between two input arrays
 
-    Calculated by :math:`\\frac{|a-b|^2}{|a|^2 + |b|^2}`
+    Calculated by :math:`\\frac{|a-b|_1}{|a|_1 + |b|_1}`
 
     Parameters
     ----------
@@ -108,7 +108,30 @@ def reldiff(a, b):
 def almost_equal(a, b, threshold=None):
     """Test if two numpy arrays are almost equal."""
     threshold = threshold or default_numerical_threshold()
-    return reldiff(a, b) <= threshold
+    rel = reldiff(a, b)
+    return not np.isnan(rel) and rel <= threshold
+
+
+def assert_almost_equal(a, b, threshold=None):
+    """Test that two numpy arrays are almost equal. Raise exception message if not.
+
+    Parameters
+    ----------
+    a : np.ndarray
+    b : np.ndarray
+    threshold : None or float
+        The checking threshold. Default threshold will be used if set to None
+    """
+    threshold = threshold or default_numerical_threshold()
+    rel = reldiff(a, b)
+    if np.isnan(rel) or rel > threshold:
+        np.set_printoptions(threshold=4, suppress=True)
+        msg = npt.build_err_msg([a, b],
+                                err_msg="Rel Err=%f, Expected <=%f"
+                                        % (rel, threshold),
+                                names=["a", "b"])
+        raise Exception(msg)
+    return rel
 
 
 def simple_forward(sym, ctx=None, is_train=False, **inputs):
