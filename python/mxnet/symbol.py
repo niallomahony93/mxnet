@@ -42,6 +42,11 @@ class Symbol(SymbolBase):
     # pylint: disable=no-member
     __slots__ = []
 
+    def __repr__(self):
+        """Get a string representation of the symbol."""
+        return '<%s %s>' % (self.__class__.__name__,
+                            self.name)
+
     def __add__(self, other):
         if isinstance(other, Symbol):
             return _internal._Plus(self, other)
@@ -768,7 +773,7 @@ class Symbol(SymbolBase):
 
         Returns
         -------
-        executor : mxnet.Executor
+        executor : Executor
             The generated Executor
 
         Notes

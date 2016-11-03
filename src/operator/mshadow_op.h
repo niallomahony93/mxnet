@@ -161,6 +161,20 @@ struct log {
   }
 };
 
+struct log10 {
+  template<typename DType>
+  MSHADOW_XINLINE static DType Map(DType a) {
+    return DType(log10f(a));
+  }
+};
+
+struct log2 {
+  template<typename DType>
+  MSHADOW_XINLINE static DType Map(DType a) {
+    return DType(log2f(a));
+  }
+};
+
 struct log_grad {
   template<typename DType>
   MSHADOW_XINLINE static DType Map(DType a) {
@@ -571,6 +585,26 @@ struct floor {
   }
 };
 
+/*! \brief used to round number to nearest integer */
+struct rint {
+  template<typename DType>
+  MSHADOW_XINLINE static DType Map(DType a) {
+    float floor = floorf(a);
+    float ceil = ceilf(a);
+    return DType((floor - a) < (ceil - a) ? floor : ceil);
+  }
+};
+
+/*! \brief used to round number to integer nearest to 0 */
+struct fix {
+  template<typename DType>
+  MSHADOW_XINLINE static DType Map(DType a) {
+    float floor = floorf(a);
+    float ceil = ceilf(a);
+    return DType((floor - 0) < (ceil - 0) ? floor : ceil);
+  }
+};
+
 /*! \brief used for generate gradient of MAE loss*/
 struct minus_sign {
   template<typename DType>
@@ -682,6 +716,49 @@ template<>
 MSHADOW_XINLINE double gammaln_grad::Map<double>(double a) {
   return special_functions::cephes::psi<double>(a);
 }
+
+/* Smooth L1 Loss is a loss specific for R-CNN franchise training
+ * Smooth L1 Loss function
+ * f(x) = 0.5 * (sigma * x) ^ 2,     x < 1 / sigma^2
+ *      = |x| - 0.5 / sigma / sigma, otherwise
+ * When sigma = 1, it is equivalent to Huber Loss evaluated at
+ * delta = 1.
+ * smooth_l1_loss = w_out * f(w_in * x)
+ * with w_in, w_out provided by input_data.
+ */
+struct smooth_l1_loss {
+  // a is x, b is sigma2
+  template<typename DType>
+  MSHADOW_XINLINE static DType Map(DType a, DType b) {
+    b *= b;
+    if (a > 1.0f / b) {
+      return a - 0.5f / b;
+    } else if (a < -1.0f / b) {
+      return -a - 0.5f / b;
+    } else {
+      return 0.5f * a * a * b;
+    }
+  }
+};  // struct smooth_l1_loss
+
+/* The derivative of smooth l1 loss is
+ * f'(x) = sigma^2 * x, x < 1 / sigma^2
+ *       = sign(x),     otherwise
+ */
+struct smooth_l1_gradient {
+  // a is x, b is sigma2
+  template<typename DType>
+  MSHADOW_XINLINE static DType Map(DType a, DType b) {
+    b *= b;
+    if (a > 1.0f / b) {
+      return 1.0f;
+    } else if (a < -1.0f / b) {
+      return -1.0f;
+    } else {
+      return b * a;
+    }
+  }
+};  // struct smooth_l1_derivative
 
 }  // namespace mshadow_op
 }  // namespace op

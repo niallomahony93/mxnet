@@ -18,6 +18,12 @@ NNVM_REGISTER_OP(expand_dims)
 NNVM_REGISTER_OP(crop)
 .set_attr<FCompute>("FCompute<gpu>", Crop<gpu>);
 
+NNVM_REGISTER_OP(_crop_assign)
+.set_attr<FCompute>("FCompute<gpu>", CropAssign<gpu>);
+
+NNVM_REGISTER_OP(_crop_assign_scalar)
+.set_attr<FCompute>("FCompute<gpu>", CropAssignScalar<gpu>);
+
 NNVM_REGISTER_OP(slice_axis)
 .set_attr<FCompute>("FCompute<gpu>", Slice<gpu>);
 

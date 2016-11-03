@@ -12,11 +12,12 @@ namespace op {
 DMLC_REGISTER_PARAMETER(TransposeParam);
 DMLC_REGISTER_PARAMETER(ExpandDimParam);
 DMLC_REGISTER_PARAMETER(SimpleCropParam);
+DMLC_REGISTER_PARAMETER(SimpleCropAssignScalarParam);
 DMLC_REGISTER_PARAMETER(SliceParam);
 DMLC_REGISTER_PARAMETER(FlipParam);
 
 NNVM_REGISTER_OP(transpose)
-.MXNET_DESCRIBE("Transpose the input matrix and return a new one")
+.MXNET_DESCRIBE("Transpose the input tensor and return a new one")
 .set_num_inputs(1)
 .set_num_outputs(1)
 .set_attr_parser(ParamParser<TransposeParam>)
@@ -60,7 +61,12 @@ NNVM_REGISTER_OP(expand_dims)
 .add_arguments(ExpandDimParam::__FIELDS__());
 
 NNVM_REGISTER_OP(crop)
-.MXNET_DESCRIBE("Slice the input matrix and return a new one.")
+.MXNET_DESCRIBE("(Crop the input tensor and return a new one.\n\n"
+"Requirements\n"
+"------------\n"
+"- the input and output (if explicitly given) are of the same data type,\n"
+"  and on the same device.\n"
+")")
 .set_num_inputs(1)
 .set_num_outputs(1)
 .set_attr_parser(ParamParser<SimpleCropParam>)
@@ -69,6 +75,46 @@ NNVM_REGISTER_OP(crop)
 .set_attr<FCompute>("FCompute<cpu>", Crop<cpu>)
 .add_argument("src", "NDArray", "Source input")
 .add_arguments(SimpleCropParam::__FIELDS__());
+
+NNVM_REGISTER_OP(_crop_assign)
+.MXNET_DESCRIBE("(Assign the rhs to a cropped subset of lhs.\n\n"
+"Requirements\n"
+"------------\n"
+"- output should be explicitly given and be the same as lhs.\n"
+"- lhs and rhs are of the same data type, and on the same device.\n"
+")")
+.set_num_inputs(2)
+.set_num_outputs(1)
+.set_attr_parser(ParamParser<SimpleCropParam>)
+.set_attr<nnvm::FInferShape>("FInferShape", CropAssignShape)
+.set_attr<nnvm::FInferType>("FInferType", ElemwiseType<2, 1>)
+.set_attr<nnvm::FInplaceOption>("FInplaceOption",
+  [](const NodeAttrs& attrs){
+    return std::vector<std::pair<int, int> >{{0, 0}};
+  })
+.set_attr<FCompute>("FCompute<cpu>", CropAssign<cpu>)
+.add_argument("src", "NDArray", "Source input")
+.add_argument("val", "NDArray", "value to assign")
+.add_arguments(SimpleCropParam::__FIELDS__());
+
+NNVM_REGISTER_OP(_crop_assign_scalar)
+.MXNET_DESCRIBE("(Assign the scalar to a cropped subset of the input.\n\n"
+"Requirements\n"
+"------------\n"
+"- output should be explicitly given and be the same as input\n"
+")")
+.set_num_inputs(1)
+.set_num_outputs(1)
+.set_attr_parser(ParamParser<SimpleCropAssignScalarParam>)
+.set_attr<nnvm::FInferShape>("FInferShape", CropAssignScalarShape)
+.set_attr<nnvm::FInferType>("FInferType", ElemwiseType<1, 1>)
+.set_attr<nnvm::FInplaceOption>("FInplaceOption",
+  [](const NodeAttrs& attrs){
+    return std::vector<std::pair<int, int> >{{0, 0}};
+  })
+.set_attr<FCompute>("FCompute<cpu>", CropAssignScalar<cpu>)
+.add_argument("src", "NDArray", "Source input")
+.add_arguments(SimpleCropAssignScalarParam::__FIELDS__());
 
 NNVM_REGISTER_OP(slice_axis)
 .MXNET_DESCRIBE("Slice the input along certain axis and return a sliced array.")

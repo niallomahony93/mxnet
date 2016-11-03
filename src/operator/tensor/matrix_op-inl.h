@@ -382,7 +382,7 @@ inline bool CropShape(const nnvm::NodeAttrs& attrs,
   CHECK_EQ(shp.ndim(), param.end.ndim());
   TShape ret(shp.ndim());
   for (index_t i = 0; i < shp.ndim(); ++i) {
-    CHECK(param.begin[i] <= shp[i]
+    CHECK(param.begin[i] < shp[i]
           && param.end[i] <= shp[i]
           && param.begin[i] < param.end[i]);
     ret[i] = param.end[i] - param.begin[i];
@@ -391,6 +391,179 @@ inline bool CropShape(const nnvm::NodeAttrs& attrs,
   return true;
 }
 
+
+template<typename xpu>
+void CropAssign(const nnvm::NodeAttrs& attrs,
+                const OpContext& ctx,
+                const std::vector<TBlob>& inputs,
+                const std::vector<OpReqType>& req,
+                const std::vector<TBlob>& outputs) {
+  using namespace mshadow;
+  using namespace mshadow::expr;
+
+  const SimpleCropParam& param = nnvm::get<SimpleCropParam>(attrs.parsed);
+  Stream<xpu> *s = ctx.get_stream<xpu>();
+
+  if (req[0] == kWriteTo) {
+    MSHADOW_TYPE_SWITCH(outputs[0].type_flag_, DType, {
+      Tensor<xpu, 1, DType> in = inputs[0].FlatTo1D<xpu, DType>(s);
+      Tensor<xpu, 1, DType> out = outputs[0].FlatTo1D<xpu, DType>(s);
+      Copy(out, in, s);
+    });
+  } else if (req[0] != kWriteInplace) {
+    LOG(FATAL) << "CropAssignScalar only supports kWriteTo and kWriteInplace";
+  }
+
+  MSHADOW_TYPE_SWITCH(inputs[0].type_flag_, DType, {
+    switch (outputs[0].shape_.ndim()) {
+      case 0:
+        break;
+      case 1: {
+        Tensor<xpu, 1, DType> out = outputs[0].get<xpu, 1, DType>(s);
+        Tensor<xpu, 1, DType> in = inputs[1].get<xpu, 1, DType>(s);
+        slice(out, param.begin.get<1>(), param.end.get<1>()) = in;
+        break;
+      }
+      case 2: {
+        Tensor<xpu, 2, DType> out = outputs[0].get<xpu, 2, DType>(s);
+        Tensor<xpu, 2, DType> in = inputs[1].get<xpu, 2, DType>(s);
+        slice(out, param.begin.get<2>(), param.end.get<2>()) = in;
+        break;
+      }
+      case 3: {
+        Tensor<xpu, 3, DType> out = outputs[0].get<xpu, 3, DType>(s);
+        Tensor<xpu, 3, DType> in = inputs[1].get<xpu, 3, DType>(s);
+        slice(out, param.begin.get<3>(), param.end.get<3>()) = in;
+        break;
+      }
+      case 4: {
+        Tensor<xpu, 4, DType> out = outputs[0].get<xpu, 4, DType>(s);
+        Tensor<xpu, 4, DType> in = inputs[1].get<xpu, 4, DType>(s);
+        slice(out, param.begin.get<4>(), param.end.get<4>()) = in;
+        break;
+      }
+      case 5: {
+        Tensor<xpu, 5, DType> out = outputs[0].get<xpu, 5, DType>(s);
+        Tensor<xpu, 5, DType> in = inputs[1].get<xpu, 5, DType>(s);
+        slice(out, param.begin.get<5>(), param.end.get<5>()) = in;
+        break;
+      }
+      default:
+        LOG(FATAL) << "CropAssign supports at most 5 dimensions";
+        break;
+    }
+  });
+}
+
+inline bool CropAssignShape(const nnvm::NodeAttrs& attrs,
+                            std::vector<TShape> *in_attrs,
+                            std::vector<TShape> *out_attrs) {
+  const SimpleCropParam& param = nnvm::get<SimpleCropParam>(attrs.parsed);
+  TShape& lshape = (*in_attrs)[0];
+  TShape& rshape = (*in_attrs)[1];
+  CHECK_EQ(lshape.ndim(), rshape.ndim());
+  CHECK_EQ(lshape.ndim(), param.begin.ndim());
+  CHECK_EQ(lshape.ndim(), param.end.ndim());
+  for (index_t i = 0; i < rshape.ndim(); ++i) {
+    CHECK_LT(param.begin[i], param.end[i]);
+    CHECK_LE(param.end[i], lshape[i]);
+    CHECK_EQ(param.end[i] - param.begin[i], rshape[i]);
+  }
+  SHAPE_ASSIGN_CHECK(*out_attrs, 0, lshape);
+  return true;
+}
+
+
+struct SimpleCropAssignScalarParam : public dmlc::Parameter<SimpleCropAssignScalarParam> {
+  real_t scalar;
+  TShape begin, end;
+  DMLC_DECLARE_PARAMETER(SimpleCropAssignScalarParam) {
+    DMLC_DECLARE_FIELD(scalar)
+    .set_default(0)
+    .describe("The scalar value for assignment.");
+    DMLC_DECLARE_FIELD(begin)
+    .describe("starting coordinates");
+    DMLC_DECLARE_FIELD(end)
+    .describe("ending coordinates");
+  }
+};
+
+template<typename xpu>
+void CropAssignScalar(const nnvm::NodeAttrs& attrs,
+                      const OpContext& ctx,
+                      const std::vector<TBlob>& inputs,
+                      const std::vector<OpReqType>& req,
+                      const std::vector<TBlob>& outputs) {
+  using namespace mshadow;
+  using namespace mshadow::expr;
+  const SimpleCropAssignScalarParam& param = nnvm::get<SimpleCropAssignScalarParam>(attrs.parsed);
+  Stream<xpu> *s = ctx.get_stream<xpu>();
+
+  if (req[0] == kWriteTo) {
+    MSHADOW_TYPE_SWITCH(outputs[0].type_flag_, DType, {
+      Tensor<xpu, 1, DType> in = inputs[0].FlatTo1D<xpu, DType>(s);
+      Tensor<xpu, 1, DType> out = outputs[0].FlatTo1D<xpu, DType>(s);
+      Copy(out, in, s);
+    });
+  } else if (req[0] != kWriteInplace) {
+    LOG(FATAL) << "CropAssignScalar only supports kWriteTo and kWriteInplace";
+  }
+
+  MSHADOW_TYPE_SWITCH(outputs[0].type_flag_, DType, {
+    switch (outputs[0].shape_.ndim()) {
+      case 0:
+        break;
+      case 1: {
+        Tensor<xpu, 1, DType> out = outputs[0].get<xpu, 1, DType>(s);
+        slice(out, param.begin.get<1>(), param.end.get<1>()) = \
+            static_cast<DType>(param.scalar);
+        break;
+      }
+      case 2: {
+        Tensor<xpu, 2, DType> out = outputs[0].get<xpu, 2, DType>(s);
+        slice(out, param.begin.get<2>(), param.end.get<2>()) = \
+            static_cast<DType>(param.scalar);
+        break;
+      }
+      case 3: {
+        Tensor<xpu, 3, DType> out = outputs[0].get<xpu, 3, DType>(s);
+        slice(out, param.begin.get<3>(), param.end.get<3>()) = \
+            static_cast<DType>(param.scalar);
+        break;
+      }
+      case 4: {
+        Tensor<xpu, 4, DType> out = outputs[0].get<xpu, 4, DType>(s);
+        slice(out, param.begin.get<4>(), param.end.get<4>()) = \
+            static_cast<DType>(param.scalar);
+        break;
+      }
+      case 5: {
+        Tensor<xpu, 5, DType> out = outputs[0].get<xpu, 5, DType>(s);
+        slice(out, param.begin.get<5>(), param.end.get<5>()) = \
+            static_cast<DType>(param.scalar);
+        break;
+      }
+      default:
+        LOG(FATAL) << "CropAssign supports at most 5 dimensions";
+        break;
+    }
+  });
+}
+
+inline bool CropAssignScalarShape(const nnvm::NodeAttrs& attrs,
+                                  std::vector<TShape> *in_attrs,
+                                  std::vector<TShape> *out_attrs) {
+  const SimpleCropAssignScalarParam& param = nnvm::get<SimpleCropAssignScalarParam>(attrs.parsed);
+  TShape& lshape = (*in_attrs)[0];
+  CHECK_EQ(lshape.ndim(), param.begin.ndim());
+  CHECK_EQ(lshape.ndim(), param.end.ndim());
+  for (index_t i = 0; i < lshape.ndim(); ++i) {
+    CHECK_LT(param.begin[i], param.end[i]);
+    CHECK_LE(param.end[i], lshape[i]);
+  }
+  SHAPE_ASSIGN_CHECK(*out_attrs, 0, lshape);
+  return true;
+}
 
 struct SliceParam : public dmlc::Parameter<SliceParam> {
   int axis;
