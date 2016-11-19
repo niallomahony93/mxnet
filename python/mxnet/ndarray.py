@@ -998,6 +998,22 @@ def concatenate(arrays, axis=0, always_copy=True):
 
     return ret
 
+def arange(start=None, stop=None, step=None, repeat=1, ctx=None, dtype=mx_real_t):
+    if stop is None:
+        if start is None:
+            raise ValueError("Required argument \"start\"")
+        stop = start
+        start = 0
+    if step is None:
+        step = 1
+    if start is None:
+        start = 0
+    if ctx is None:
+        ctx = Context.default_ctx
+    return _internal._arange(start=start, stop=stop, step=step, repeat=repeat,
+                             dtype=_DTYPE_NP_TO_MX[np.dtype(dtype).type], ctx=py_str(ctx))
+
+
 def load(fname):
     """Load ndarray from binary file.
 

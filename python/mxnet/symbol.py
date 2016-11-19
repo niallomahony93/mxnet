@@ -1099,3 +1099,16 @@ def hypot(left, right):
         return _numpy.hypot(left, right)
     else:
         raise TypeError('types (%s, %s) not supported' % (str(type(left)), str(type(right))))
+
+
+def arange(start=None, stop=None, step=None, repeat=1):
+    if stop is None:
+        if start is None:
+            raise ValueError("Required argument \"start\"")
+        stop = start
+        start = 0
+    if step is None:
+        step = 1
+    if start is None:
+        start = 0
+    return _internal._arange(start=start, stop=stop, step=step, repeat=repeat)

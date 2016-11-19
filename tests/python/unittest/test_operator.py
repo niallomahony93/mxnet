@@ -1777,6 +1777,19 @@ def test_init():
     exec1 = x.bind(default_context(), args=[], args_grad=[])
     exec1.forward()
     assert_allclose(exec1.outputs[0].asnumpy(), np.zeros((3,4)))
+    def test_arange():
+        for i in range(5):
+            start = np.random.rand() * 10
+            stop = start + np.random.rand() * 100
+            step = np.random.rand() * 4
+            repeat = int(np.random.rand() * 5) + 1
+            gt = np.arange(start=start, stop=stop, step=step)
+            gt = np.broadcast_to(gt.reshape((gt.shape[0], 1)), shape=(gt.shape[0], repeat)).ravel()
+            x = mx.sym.arange(start=start, stop=stop, step=step, repeat=repeat)
+            exe = x.simple_bind(ctx=default_context())
+            pred = exe.forward(is_train=False)[0].asnumpy()
+            assert_almost_equal(pred, gt, default_numerical_threshold())
+    test_arange()
 
 
 if __name__ == '__main__':

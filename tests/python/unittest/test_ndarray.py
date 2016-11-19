@@ -338,6 +338,18 @@ def test_broadcast():
             assert err < 1E-8
     test_broadcast_to()
 
+
+def test_arange():
+    for i in range(5):
+        start = np.random.rand() * 10
+        stop = start + np.random.rand() * 100
+        step = np.random.rand() * 4
+        repeat = int(np.random.rand() * 5) + 1
+        gt = np.arange(start=start, stop=stop, step=step)
+        gt = np.broadcast_to(gt.reshape((gt.shape[0], 1)), shape=(gt.shape[0], repeat)).ravel()
+        pred = mx.nd.arange(start=start, stop=stop, step=step, repeat=repeat).asnumpy()
+        assert_almost_equal(pred, gt, default_numerical_threshold())
+
 if __name__ == '__main__':
     test_ndarray_setitem()
     test_ndarray_crop()
@@ -356,3 +368,4 @@ if __name__ == '__main__':
     test_ndarray_onehot()
     test_ndarray_fill()
     test_reduce()
+    test_arange()
