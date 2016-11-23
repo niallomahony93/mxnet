@@ -13,7 +13,8 @@
 
 namespace mshadow {
 template<typename xpu, int src_dim, typename DType, int dst_dim>
-inline Tensor<xpu, dst_dim, DType> inplace_reshape(Tensor<xpu, src_dim, DType> src, Shape<dst_dim> target_shape) {
+inline Tensor<xpu, dst_dim, DType> inplace_reshape(Tensor<xpu, src_dim, DType> src,
+                                                   Shape<dst_dim> target_shape) {
   CHECK_EQ(src.CheckContiguous(), true);
   return Tensor<xpu, dst_dim, DType>(src.dptr_, target_shape, src.stream_);
 }
@@ -28,14 +29,14 @@ enum TopKReturnType {kReturnValue, kReturnIndices, kReturnMask, kReturnBoth};
 }  // topk_enum
 
 struct TopKParam : public dmlc::Parameter<TopKParam> {
-  //TODO(sxjscience) Use Tuple<int> instead
-  TShape axis;
+  TShape axis;  // TODO(sxjscience) Use Tuple<int> instead
   int k;
   int ret_typ;
   bool is_ascend;
   DMLC_DECLARE_PARAMETER(TopKParam) {
     DMLC_DECLARE_FIELD(axis).set_default(TShape())
-    .describe("Axis along which to choose the top k indices. If None, the flattened array is used.");
+    .describe("Axis along which to choose the top k indices."
+              " If None, the flattened array is used.");
     DMLC_DECLARE_FIELD(k).set_default(1)
     .describe("number of top elements to select,"
               " should be always smaller than or equal to the element number in the given axis."
@@ -51,12 +52,14 @@ struct TopKParam : public dmlc::Parameter<TopKParam> {
         " \"mask\" means to return a mask array containing 0 and 1. 1 means the top k values."
         " \"both\" means to return both value and indices.");
     DMLC_DECLARE_FIELD(is_ascend).set_default(false)
-      .describe("Whether to choose k largest or k smallest. Top K largest elements will be chosen if set to false.");
+      .describe("Whether to choose k largest or k smallest."
+                " Top K largest elements will be chosen if set to false.");
   }
 };
 
 inline void ParseTopKParam(const TShape& src_shape, const TopKParam& param, TShape *target_shape,
-                           int *batch_size, int *element_num, int *axis, int *k, bool *do_transpose, bool *is_ascend) {
+                           int *batch_size, int *element_num, int *axis, int *k,
+                           bool *do_transpose, bool *is_ascend) {
   CHECK(param.axis.ndim() == 0 || param.axis.ndim() == 1)
     << "axis must be empty or contains a single integer, get axis=";
   *axis = 0;
@@ -73,7 +76,7 @@ inline void ParseTopKParam(const TShape& src_shape, const TopKParam& param, TSha
       *axis += src_shape.ndim();
     }
     CHECK(*axis >= 0 && *axis < src_shape.ndim()) << "Invalid axis! axis should be between 0 and "
-                                                  << src_shape.ndim() << ", found axis=" << *axis ;
+                                                  << src_shape.ndim() << ", found axis=" << *axis;
     *batch_size = src_shape.Size() / src_shape[*axis];
     *element_num = src_shape[*axis];
     if (*axis != src_shape.ndim() - 1) {
@@ -131,7 +134,7 @@ void TopKImpl(RunContext ctx,
   Tensor<xpu, 1, real_t> workspace;
   Tensor<xpu, 1, real_t> sorted_dat, indices, batch_id, sel_indices;
   Tensor<xpu, 2, real_t> mask_val;
-  int batch_size, element_num; // number of batches + the size of each batch
+  int batch_size, element_num;  // number of batches + the size of each batch
   int axis = 0;
   bool do_transpose = false;
   bool is_ascend = false;
@@ -141,16 +144,17 @@ void TopKImpl(RunContext ctx,
                  &target_shape, &batch_size, &element_num, &axis, &k, &do_transpose, &is_ascend);
   Tensor<xpu, 3, real_t> dat = src.FlatTo3D<xpu, real_t>(axis, axis, s);
   if (param.ret_typ == topk_enum::kReturnMask) {
-    workspace = resource.get_space_typed<xpu, 1, real_t>(Shape1(src.Size() * 3 + 2 * batch_size * k), s);
+    workspace =
+      resource.get_space_typed<xpu, 1, real_t>(Shape1(src.Size() * 3 + 2 * batch_size * k), s);
   } else {
     workspace = resource.get_space_typed<xpu, 1, real_t>(mshadow::Shape1(src.Size() * 3), s);
   }
   sorted_dat = Tensor<xpu, 1, real_t>(workspace.dptr_,
-                                      Shape1(src.Size()), s); // contain sorted dat
+                                      Shape1(src.Size()), s);  // contain sorted dat
   indices = Tensor<xpu, 1, real_t>(workspace.dptr_ + src.Size(),
-                                   Shape1(src.Size()), s); // indices in the original matrix
+                                   Shape1(src.Size()), s);  // indices in the original matrix
   batch_id = Tensor<xpu, 1, real_t>(workspace.dptr_ + 2 * src.Size(),
-                                    Shape1(src.Size()), s); // batch id in the original matrix
+                                    Shape1(src.Size()), s);  // batch id in the original matrix
   if (do_transpose) {
     sorted_dat = reshape(transpose(dat, Shape3(0, 2, 1)), Shape1(src.Size()));
   } else {
@@ -160,8 +164,10 @@ void TopKImpl(RunContext ctx,
   CHECK_EQ(sorted_dat.CheckContiguous(), true);
   CHECK_EQ(indices.CheckContiguous(), true);
   if (param.ret_typ == topk_enum::kReturnMask) {
-    sel_indices = Tensor<xpu, 1, real_t>(workspace.dptr_ + 3 * src.Size(), Shape1(batch_size * k), s);
-    mask_val = Tensor<xpu, 2, real_t>(workspace.dptr_ + 3 * src.Size() + batch_size * k, Shape2(batch_size * k, 1), s);
+    sel_indices = Tensor<xpu, 1, real_t>(workspace.dptr_ + 3 * src.Size(),
+                                         Shape1(batch_size * k), s);
+    mask_val = Tensor<xpu, 2, real_t>(workspace.dptr_ + 3 * src.Size() + batch_size * k,
+                                      Shape2(batch_size * k, 1), s);
     mask_val = scalar<real_t>(1);
     CHECK_EQ(sel_indices.CheckContiguous(), true);
     CHECK_EQ(mask_val.CheckContiguous(), true);
@@ -183,7 +189,8 @@ void TopKImpl(RunContext ctx,
 
   // 3. Assign results to the ret blob
   if (param.ret_typ == topk_enum::kReturnMask) {
-    Tensor<xpu, 2, real_t> ret_mask = ret[0].get_with_shape<xpu, 2, real_t>(Shape2(ret[0].Size(), 1), s);
+    Tensor<xpu, 2, real_t> ret_mask =
+      ret[0].get_with_shape<xpu, 2, real_t>(Shape2(ret[0].Size(), 1), s);
     ret_mask = scalar<real_t>(0);
     sel_indices = reshape(slice<1>(
                               inplace_reshape(indices,
@@ -202,12 +209,15 @@ void TopKImpl(RunContext ctx,
     if (do_transpose) {
       Tensor<xpu, 3, real_t> ret_indices = ret[0].FlatTo3D<xpu, real_t>(axis, axis, s);
       ret_indices = transpose(
-                   slice<2>(inplace_reshape(indices,
-                                    Shape3(ret_indices.shape_[0], ret_indices.shape_[2], element_num)),
-                            0, k),
-                   Shape3(0, 2, 1));
+                      slice<2>(inplace_reshape(indices,
+                                               Shape3(ret_indices.shape_[0],
+                                                      ret_indices.shape_[2],
+                                                      element_num)),
+                               0, k),
+                      Shape3(0, 2, 1));
     } else {
-      Tensor<xpu, 2, real_t> ret_indices = ret[0].get_with_shape<xpu, 2, real_t>(Shape2(batch_size, k), s);
+      Tensor<xpu, 2, real_t> ret_indices =
+        ret[0].get_with_shape<xpu, 2, real_t>(Shape2(batch_size, k), s);
       ret_indices = slice<1>(inplace_reshape(indices, Shape2(batch_size, element_num)), 0, k);
     }
   } else {
@@ -221,13 +231,17 @@ void TopKImpl(RunContext ctx,
                             0, k),
                    Shape3(0, 2, 1));
       ret_indices = transpose(
-                   slice<2>(inplace_reshape(indices,
-                                    Shape3(ret_indices.shape_[0], ret_indices.shape_[2], element_num)),
-                            0, k),
-                   Shape3(0, 2, 1));
+                      slice<2>(inplace_reshape(indices,
+                                               Shape3(ret_indices.shape_[0],
+                                                      ret_indices.shape_[2],
+                                                      element_num)),
+                               0, k),
+                      Shape3(0, 2, 1));
     } else {
-      Tensor<xpu, 2, real_t> ret_value = ret[0].get_with_shape<xpu, 2, real_t>(Shape2(batch_size, k), s);
-      Tensor<xpu, 2, real_t> ret_indices = ret[1].get_with_shape<xpu, 2, real_t>(Shape2(batch_size, k), s);
+      Tensor<xpu, 2, real_t> ret_value =
+        ret[0].get_with_shape<xpu, 2, real_t>(Shape2(batch_size, k), s);
+      Tensor<xpu, 2, real_t> ret_indices =
+        ret[1].get_with_shape<xpu, 2, real_t>(Shape2(batch_size, k), s);
       ret_value = slice<1>(inplace_reshape(sorted_dat, Shape2(batch_size, element_num)), 0, k);
       ret_indices = slice<1>(inplace_reshape(indices, Shape2(batch_size, element_num)), 0, k);
     }
@@ -241,7 +255,7 @@ void TopK(const nnvm::NodeAttrs& attrs,
           const std::vector<OpReqType>& req,
           const std::vector<TBlob>& outputs) {
   const TopKParam& param = nnvm::get<TopKParam>(attrs.parsed);
-  //TODO(sxjscience) We can support inplace in the future
+  // TODO(sxjscience) We can support inplace in the future
   CHECK_EQ(req[0], kWriteTo) << "TopK does not support inplace";
   TopKImpl<xpu>(ctx.run_ctx, ctx.requested[0], inputs[0], outputs, param);
 }
@@ -265,7 +279,7 @@ void TopKBackward_(const nnvm::NodeAttrs& attrs,
     }
     return;
   }
-  int batch_size, element_num; // number of batches + the size of each batch
+  int batch_size, element_num;  // number of batches + the size of each batch
   int axis = 0;
   bool do_transpose = false;
   bool is_ascend = false;
@@ -279,8 +293,10 @@ void TopKBackward_(const nnvm::NodeAttrs& attrs,
     Tensor<xpu, 1, real_t>(workspace.dptr_, Shape1(batch_size * k), s);
   Tensor<xpu, 1, real_t> batch_shift =
     Tensor<xpu, 1, real_t>(workspace.dptr_ + batch_size * k, Shape1(batch_size), s);
-  Tensor<xpu, 2, real_t> out_grad = inputs[0].get_with_shape<xpu, 2, real_t>(Shape2(inputs[0].shape_.Size(), 1), s);
-  Tensor<xpu, 2, real_t> in_grad = outputs[0].get_with_shape<xpu, 2, real_t>(Shape2(outputs[0].shape_.Size(), 1), s);
+  Tensor<xpu, 2, real_t> out_grad =
+    inputs[0].get_with_shape<xpu, 2, real_t>(Shape2(inputs[0].shape_.Size(), 1), s);
+  Tensor<xpu, 2, real_t> in_grad =
+    outputs[0].get_with_shape<xpu, 2, real_t>(Shape2(outputs[0].shape_.Size(), 1), s);
   batch_shift = range<real_t>(0, batch_size, 1) * element_num;
   if (do_transpose) {
     Tensor<xpu, 1, real_t> indices = inputs[2].FlatTo1D<xpu, real_t>(s);
@@ -295,7 +311,8 @@ void TopKBackward_(const nnvm::NodeAttrs& attrs,
     sel_indices = transpose_indices(sel_indices, Shape3(src_shape[0], src_shape[2], src_shape[1]),
                                     Shape3(0, 2, 1));
   } else {
-    Tensor<xpu, 2, real_t> indices = inputs[2].get_with_shape<xpu, 2, real_t>(Shape2(batch_size, k), s);
+    Tensor<xpu, 2, real_t> indices =
+      inputs[2].get_with_shape<xpu, 2, real_t>(Shape2(batch_size, k), s);
     sel_indices = reshape(indices +
                           broadcast_to(inplace_reshape(batch_shift, Shape2(batch_size, 1)),
                                        TShape(Shape2(batch_size, k))),
@@ -352,7 +369,7 @@ inline bool TopKShape(const nnvm::NodeAttrs& attrs,
     CHECK_EQ(out_attrs->size(), 2);
   }
   TShape& in_shape = (*in_attrs)[0];
-  int batch_size, element_num; // number of batches + the size of each batch
+  int batch_size, element_num;  // number of batches + the size of each batch
   int axis = 0;
   bool do_transpose = false;
   bool is_ascend = false;
@@ -361,10 +378,9 @@ inline bool TopKShape(const nnvm::NodeAttrs& attrs,
   ParseTopKParam(in_shape, param,
                  &target_shape, &batch_size, &element_num, &axis, &k, &do_transpose, &is_ascend);
   if (param.ret_typ == topk_enum::kReturnIndices ||
-    param.ret_typ == topk_enum::kReturnMask) {
+      param.ret_typ == topk_enum::kReturnMask) {
     SHAPE_ASSIGN_CHECK(*out_attrs, 0, target_shape);
-  }
-  else {
+  } else {
     SHAPE_ASSIGN_CHECK(*out_attrs, 0, target_shape);
     SHAPE_ASSIGN_CHECK(*out_attrs, 1, target_shape);
   }
@@ -374,4 +390,4 @@ inline bool TopKShape(const nnvm::NodeAttrs& attrs,
 }  // namespace op
 }  // namespace mxnet
 
-#endif  // MXNET_OPERATOR_TENSOR_MATRIX_OP_INL_H_
+#endif  // MXNET_OPERATOR_TENSOR_ORDERING_OP_INL_H_

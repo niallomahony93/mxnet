@@ -11,6 +11,7 @@
 #include <mxnet/op_attr_types.h>
 #include <dmlc/parameter.h>
 #include <vector>
+#include <string>
 #include "../elemwise_op_common.h"
 
 namespace mxnet {
@@ -54,7 +55,8 @@ struct RangeParam : public dmlc::Parameter<RangeParam> {
     .describe("Spacing between values.");
     DMLC_DECLARE_FIELD(repeat)
     .set_default(1)
-    .describe("The repeating time of all elements. E.g repeat=3, the element a will be repeated three times --> a, a, a.");
+    .describe("The repeating time of all elements."
+              " E.g repeat=3, the element a will be repeated three times --> a, a, a.");
     DMLC_DECLARE_FIELD(ctx)
     .set_default("")
     .describe("Context of output, in format [cpu|gpu|cpu_pinned](n)."
@@ -137,14 +139,13 @@ inline bool RangeShape(const nnvm::NodeAttrs& attrs,
   if (param.step > 0) {
     CHECK(param.start < param.stop) << "Range does not support (start, stop, step) = "
       << "(" << param.start << "," << param.stop << "," << param.step << ")";
-//    SHAPE_ASSIGN_CHECK(*out_attrs, 0, mshadow::Shape1(param.repeat * ((param.stop - 1 - param.start) / param.step + 1)));
-  }
-  else {
+  } else {
     CHECK(param.start > param.stop) << "Range does not support (start, stop, step)= "
       << "(" << param.start << "," << param.stop << "," << param.step << ")";
-//    SHAPE_ASSIGN_CHECK(*out_attrs, 0, mshadow::Shape1(param.repeat * ((param.start - 1 - param.stop) / (-param.step) + 1)));
   }
-  SHAPE_ASSIGN_CHECK(*out_attrs, 0, mshadow::Shape1(param.repeat * ceil((param.stop - param.start) / param.step)));
+  SHAPE_ASSIGN_CHECK(*out_attrs, 0,
+                     mshadow::Shape1(param.repeat *
+                                     ceil((param.stop - param.start) / param.step)));
   return true;
 }
 
