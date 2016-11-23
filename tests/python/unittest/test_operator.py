@@ -1902,4 +1902,4 @@ if __name__ == '__main__':
     test_pad()
     test_mathematical()
     test_special_functions_using_scipy()
-    test_topk(ctx=mx.gpu())
+    test_topk()

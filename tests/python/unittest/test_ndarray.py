@@ -447,4 +447,4 @@ if __name__ == '__main__':
     test_ndarray_fill()
     test_reduce()
     test_arange()
-    test_topk(ctx=mx.gpu())
+    test_topk()
