@@ -2229,6 +2229,8 @@ def test_topk(ctx=default_context()):
                                              is_ascend=True)])
     b = mx.sym.topk(a, axis=3, is_ascend=True, ret_typ="value", k=3)
     check_numeric_gradient(b, location={'a': a_npy}, numeric_eps=1e-2, ctx=ctx)
+    check_numeric_gradient(b, location={'a': a_npy}, numeric_eps=1e-2, ctx=ctx,
+                           grad_nodes={'a': 'add'})
     check_symbolic_forward(b, location={'a': a_npy},
                            expected=[gt_topk(dat=a_npy, axis=3, ret_typ="value", k=3,
                                              is_ascend=True)])

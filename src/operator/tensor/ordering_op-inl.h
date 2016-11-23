@@ -288,11 +288,14 @@ void TopKBackward_(const nnvm::NodeAttrs& attrs,
   ParseTopKParam(outputs[0].shape_, param,
                  &target_shape, &batch_size, &element_num, &axis, &k, &do_transpose, &is_ascend);
   Tensor<xpu, 1, real_t> workspace =
-    ctx.requested[0].get_space_typed<xpu, 1, real_t>(Shape1(batch_size * k + batch_size), s);
+    ctx.requested[0].get_space_typed<xpu, 1, real_t>(Shape1(batch_size * k * 2 + batch_size), s);
   Tensor<xpu, 1, real_t> sel_indices =
     Tensor<xpu, 1, real_t>(workspace.dptr_, Shape1(batch_size * k), s);
   Tensor<xpu, 1, real_t> batch_shift =
     Tensor<xpu, 1, real_t>(workspace.dptr_ + batch_size * k, Shape1(batch_size), s);
+  Tensor<xpu, 1, real_t> dummy_index =
+    Tensor<xpu, 1, real_t>(workspace.dptr_ + batch_size * k + batch_size,
+                           Shape1(batch_size * k), s);
   Tensor<xpu, 2, real_t> out_grad =
     inputs[0].get_with_shape<xpu, 2, real_t>(Shape2(inputs[0].shape_.Size(), 1), s);
   Tensor<xpu, 2, real_t> in_grad =
@@ -323,7 +326,10 @@ void TopKBackward_(const nnvm::NodeAttrs& attrs,
     in_grad = scalar<real_t>(0);
     IndexFill(in_grad, sel_indices, out_grad);
   } else if (kAddTo == req[0]) {
-    AddTakeGradLargeBatch(in_grad, sel_indices, sel_indices, out_grad);
+    // TODO(sxjscience) We can use AddTakeGrad in the future.
+    // However, the current implementation of AddTakeGrad is not so efficient.
+    dummy_index = range<real_t>(0, sel_indices.shape_.Size());
+    AddTakeGradLargeBatch(in_grad, sel_indices, dummy_index, out_grad);
   } else if (kNullOp == req[0]) {
     return;
   } else {
