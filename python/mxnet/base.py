@@ -77,6 +77,7 @@ def check_call(ret):
 if sys.version_info[0] < 3:
     def c_str(string):
         """Create ctypes char * from a python string
+
         Parameters
         ----------
         string : string type
@@ -91,6 +92,7 @@ if sys.version_info[0] < 3:
 else:
     def c_str(string):
         """Create ctypes char * from a python string
+
         Parameters
         ----------
         string : string type

@@ -42,6 +42,5 @@ NNVM_REGISTER_OP(_arange)
 .set_attr<FCompute>("FCompute<cpu>", RangeCompute<cpu>)
 .add_arguments(RangeParam::__FIELDS__());
 
-
 }  // namespace op
 }  // namespace mxnet
