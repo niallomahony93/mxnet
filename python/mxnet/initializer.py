@@ -34,6 +34,12 @@ class Initializer(object):
             self._init_zero(name, arr)
         elif name.startswith('stn_loc') and name.endswith('bias'):
             self._init_loc_bias(name, arr)
+        elif name.startswith('warpping_loc') and name.endswith('weight'):
+            self._init_zero(name, arr)
+        elif name.startswith('warpping_loc') and name.endswith('bias'):
+            shape = arr.shape
+            assert (shape[0] == 4)
+            arr[:] = np.array([0, 0, 1, 1])
         elif name.endswith('bias'):
             self._init_bias(name, arr)
         elif name.endswith('gamma'):
