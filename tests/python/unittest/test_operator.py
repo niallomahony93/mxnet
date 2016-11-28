@@ -30,6 +30,7 @@ def check_elementwise_sum_with_shape(shape, n):
     exec1.forward()
     out1 = exec1.outputs[0].asnumpy()
     out = sum(a.asnumpy() for a  in arr)
+
     assert reldiff(out, out1) < 1e-6
     out_grad = mx.nd.empty(shape)
     out_grad[:] = np.random.uniform(-10, 10, shape)
@@ -1841,7 +1842,7 @@ def test_mathematical():
 
     # log10
     mathematical_core("log10", lambda x: mx.sym.log10(x), lambda x: np.log10(x),
-                      lambda x: (1 / x)) 
+                      lambda x: (1 / x))
 
     # log2
     mathematical_core("log2", lambda x: mx.sym.log2(x), lambda x: np.log2(x),
@@ -1929,7 +1930,7 @@ def test_order(ctx=default_context()):
                            expected=[gt_topk(dat=a_npy, axis=1, ret_typ="value", k=2,
                                              is_ascend=False)])
     b = mx.sym.topk(a, is_ascend=True, ret_typ="value", k=10)
-    check_numeric_gradient(b, location={'a': a_npy}, numeric_eps=1e-4, ctx=ctx)
+    check_numeric_gradient(b, location={'a': a_npy}, numeric_eps=1e-4, check_eps=2E-2, ctx=ctx)
     check_symbolic_forward(b, location={'a': a_npy},
                            expected=[gt_topk(dat=a_npy, axis=None, ret_typ="value", k=10,
                                              is_ascend=True)])
@@ -1968,6 +1969,32 @@ def test_order(ctx=default_context()):
     check_symbolic_forward(b, location={'a': a_npy},
                            expected=[gt_topk(dat=a_npy, axis=1, ret_typ="indices", k=5,
                                              is_ascend=False)])
+    a = mx.sym.Variable('a')
+    b = mx.sym.argmax(a, axis=1, keepdims=True)
+    check_symbolic_backward(sym=b, location={'a': a_npy},
+                            out_grads=[np.random.normal(size=(5, 5, 5, 5))],
+                            expected=[np.zeros((5, 5, 5, 5))])
+    check_symbolic_forward(b, location={'a': a_npy},
+                           expected=[gt_topk(dat=a_npy, axis=1, ret_typ="indices", k=1,
+                                             is_ascend=False)])
+    a = mx.sym.Variable('a')
+    b = mx.sym.argmin(a, axis=1, keepdims=True)
+    check_symbolic_backward(sym=b, location={'a': a_npy},
+                            out_grads=[np.random.normal(size=(5, 5, 5, 5))],
+                            expected=[np.zeros((5, 5, 5, 5))])
+    check_symbolic_forward(b, location={'a': a_npy},
+                           expected=[gt_topk(dat=a_npy, axis=1, ret_typ="indices", k=1,
+                                             is_ascend=True)])
+
+
+def test_blockgrad():
+    a = mx.sym.Variable('a')
+    b = mx.sym.BlockGrad(a)
+    exe = b.simple_bind(ctx=default_context(), a=(10, 10))
+    a_npy = np.random.rand(10, 10)
+    exe.forward(is_train=True, a=a_npy)
+    assert_almost_equal(exe.outputs[0].asnumpy(), a_npy)
+    exe.backward()  # No error if BlockGrad works
 
 
 if __name__ == '__main__':
@@ -2018,3 +2045,4 @@ if __name__ == '__main__':
     test_mathematical()
     test_special_functions_using_scipy()
     test_order()
+    test_blockgrad()
