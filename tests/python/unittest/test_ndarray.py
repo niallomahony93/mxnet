@@ -443,6 +443,13 @@ def test_order(ctx=default_context()):
     gt = gt_topk(a_npy, axis=None, ret_typ="indices", k=5*5*5*5, is_ascend=False)
     assert_almost_equal(nd_ret_argsort, gt)
 
+def test_ndarray_equal():
+    x = mx.nd.zeros((2, 3))
+    y = mx.nd.ones((2, 3))
+    z = x == y
+    assert (z.asnumpy() == np.zeros((2, 3))).all()
+    z = 0 == x
+    assert (z.asnumpy() == np.ones((2, 3))).all()
 
 if __name__ == '__main__':
     test_ndarray_setitem()
@@ -464,3 +471,4 @@ if __name__ == '__main__':
     test_reduce()
     test_arange()
     test_order()
+    test_ndarray_equal()
