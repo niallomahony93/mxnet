@@ -108,7 +108,7 @@ inline std::vector<ResourceRequest> SampleResource(const NodeAttrs& attrs) {
   .set_num_outputs(1)                                                   \
   .set_attr_parser(ParamParser<ParamType>)                              \
   .set_attr<nnvm::FInferShape>("FInferShape", InitShape<ParamType>)     \
-  .set_attr<nnvm::FInferType>("FInferType", InitType<ParamType>)                   \
+  .set_attr<nnvm::FInferType>("FInferType", InitType<ParamType>)        \
   .set_attr<FResourceRequest>("FResourceRequest", SampleResource)       \
   .add_arguments(ParamType::__FIELDS__())
 }  // namespace op
