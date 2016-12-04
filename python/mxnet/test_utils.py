@@ -115,7 +115,7 @@ def reldiff(a, b, return_index=False, thresh=1E-3):
     if not return_index:
         return ret
     else:
-        index = np.unravel_index(np.argmax(diff / norm), dims=a.shape)
+        index = np.unravel_index(np.argmax(relative_diff), dims=a.shape)
         return ret, index
 
 def almost_equal(a, b, threshold=None):
