@@ -338,7 +338,6 @@ def test_broadcast():
             assert err < 1E-8
     test_broadcast_to()
 
-
 def test_arange():
     for i in range(5):
         start = np.random.rand() * 10
@@ -349,7 +348,6 @@ def test_arange():
         gt = np.broadcast_to(gt.reshape((gt.shape[0], 1)), shape=(gt.shape[0], repeat)).ravel()
         pred = mx.nd.arange(start=start, stop=stop, step=step, repeat=repeat).asnumpy()
         assert_almost_equal(pred, gt, default_numerical_threshold())
-
 
 def test_order(ctx=default_context()):
     def gt_topk(dat, axis, ret_typ, k, is_ascend):
@@ -392,7 +390,7 @@ def test_order(ctx=default_context()):
     nd_ret_topk = mx.nd.topk(a_nd, axis=3, ret_typ="indices", k=2, is_ascend=False).asnumpy()
     gt = gt_topk(a_npy, axis=3, ret_typ="indices", k=2, is_ascend=False)
     assert_almost_equal(nd_ret_topk, gt)
-    nd_ret_topk = mx.nd.topk(a_nd, ret_typ="indices", k=21, is_ascend=False).asnumpy()
+    nd_ret_topk = mx.nd.topk(a_nd, axis=None, ret_typ="indices", k=21, is_ascend=False).asnumpy()
     gt = gt_topk(a_npy, axis=None, ret_typ="indices", k=21, is_ascend=False)
     assert_almost_equal(nd_ret_topk, gt)
 
@@ -403,7 +401,7 @@ def test_order(ctx=default_context()):
     nd_ret_topk = mx.nd.topk(a_nd, axis=3, ret_typ="value", k=2, is_ascend=False).asnumpy()
     gt = gt_topk(a_npy, axis=3, ret_typ="value", k=2, is_ascend=False)
     assert_almost_equal(nd_ret_topk, gt)
-    nd_ret_topk = mx.nd.topk(a_nd, ret_typ="value", k=21, is_ascend=False).asnumpy()
+    nd_ret_topk = mx.nd.topk(a_nd, axis=None, ret_typ="value", k=21, is_ascend=False).asnumpy()
     gt = gt_topk(a_npy, axis=None, ret_typ="value", k=21, is_ascend=False)
     assert_almost_equal(nd_ret_topk, gt)
 
@@ -414,7 +412,7 @@ def test_order(ctx=default_context()):
     nd_ret_topk = mx.nd.topk(a_nd, axis=1, ret_typ="mask", k=2, is_ascend=False).asnumpy()
     gt = gt_topk(a_npy, axis=1, ret_typ="mask", k=2, is_ascend=False)
     assert_almost_equal(nd_ret_topk, gt)
-    nd_ret_topk = mx.nd.topk(a_nd, ret_typ="mask", k=21, is_ascend=False).asnumpy()
+    nd_ret_topk = mx.nd.topk(a_nd, axis=None, ret_typ="mask", k=21, is_ascend=False).asnumpy()
     gt = gt_topk(a_npy, axis=None, ret_typ="mask", k=21, is_ascend=False)
     assert_almost_equal(nd_ret_topk, gt)
 
@@ -431,7 +429,7 @@ def test_order(ctx=default_context()):
     nd_ret_sort = mx.nd.sort(a_nd, axis=1, is_ascend=True).asnumpy()
     gt = gt_topk(a_npy, axis=1, ret_typ="value", k=5, is_ascend=True)
     assert_almost_equal(nd_ret_sort, gt)
-    nd_ret_sort = mx.nd.sort(a_nd, is_ascend=False).asnumpy()
+    nd_ret_sort = mx.nd.sort(a_nd, axis=None, is_ascend=False).asnumpy()
     gt = gt_topk(a_npy, axis=None, ret_typ="value", k=5*5*5*5, is_ascend=False)
     assert_almost_equal(nd_ret_sort, gt)
 
@@ -439,7 +437,7 @@ def test_order(ctx=default_context()):
     nd_ret_argsort = mx.nd.argsort(a_nd, axis=3, is_ascend=True).asnumpy()
     gt = gt_topk(a_npy, axis=3, ret_typ="indices", k=5, is_ascend=True)
     assert_almost_equal(nd_ret_argsort, gt)
-    nd_ret_argsort = mx.nd.argsort(a_nd, is_ascend=False).asnumpy()
+    nd_ret_argsort = mx.nd.argsort(a_nd, axis=None, is_ascend=False).asnumpy()
     gt = gt_topk(a_npy, axis=None, ret_typ="indices", k=5*5*5*5, is_ascend=False)
     assert_almost_equal(nd_ret_argsort, gt)
 

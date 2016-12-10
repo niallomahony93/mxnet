@@ -1156,39 +1156,3 @@ def arange(start, stop=None, step=1.0, repeat=1, name=None, dtype=_numpy.float32
     """
     return _internal._arange(start=start, stop=stop, step=step, repeat=repeat,
                              name=name, dtype=dtype)
-
-
-def zeros(shape, dtype=_numpy.float32):
-    """Create a Tensor filled with zeros, similar to numpy.zeros
-        See Also https://docs.scipy.org/doc/numpy/reference/generated/numpy.zeros.html.
-
-    Parameters
-    ----------
-    shape :  int or sequence of ints
-        Shape of the new array.
-    dtype : type, optional
-        The value type of the NDArray, default to np.float32
-    Returns
-    -------
-    out : Symbol
-        The created Symbol
-    """
-    return _internal._zeros(shape=shape, dtype=dtype)
-
-
-def ones(shape, dtype=_numpy.float32):
-    """Create a Tensor filled with ones, similar to numpy.ones
-        See Also https://docs.scipy.org/doc/numpy/reference/generated/numpy.ones.html.
-
-    Parameters
-    ----------
-    shape :  int or sequence of ints
-        Shape of the new array.
-    dtype : type, optional
-        The value type of the NDArray, default to np.float32
-    Returns
-    -------
-    out : Symbol
-        The created Symbol
-    """
-    return _internal._ones(shape=shape, dtype=dtype)

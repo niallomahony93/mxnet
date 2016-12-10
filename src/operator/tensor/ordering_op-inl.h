@@ -7,6 +7,7 @@
 #define MXNET_OPERATOR_TENSOR_ORDERING_OP_INL_H_
 
 #include <mxnet/operator_util.h>
+#include <dmlc/optional.h>
 #include <vector>
 #include "../mshadow_op.h"
 #include "../elemwise_op_common.h"
@@ -29,14 +30,14 @@ enum TopKReturnType {kReturnValue, kReturnIndices, kReturnMask, kReturnBoth};
 }  // topk_enum
 
 struct TopKParam : public dmlc::Parameter<TopKParam> {
-  int axis;
+  dmlc::optional<int> axis;
   int k;
   int ret_typ;
   bool is_ascend;
   DMLC_DECLARE_PARAMETER(TopKParam) {
-    DMLC_DECLARE_FIELD(axis).set_default(INT_MIN)
+    DMLC_DECLARE_FIELD(axis).set_default(dmlc::optional<int>(-1))
     .describe("Axis along which to choose the top k indices."
-              " If not given, the flattened array is used.");
+              " If not given, the flattened array is used. Default is -1.");
     DMLC_DECLARE_FIELD(k).set_default(1)
     .describe("Number of top elements to select,"
               " should be always smaller than or equal to the element number in the given axis."
@@ -58,24 +59,24 @@ struct TopKParam : public dmlc::Parameter<TopKParam> {
 };
 
 struct SortParam : public dmlc::Parameter<SortParam> {
-  int axis;
+  dmlc::optional<int> axis;
   bool is_ascend;
   DMLC_DECLARE_PARAMETER(SortParam) {
-    DMLC_DECLARE_FIELD(axis).set_default(INT_MIN)
+    DMLC_DECLARE_FIELD(axis).set_default(dmlc::optional<int>(-1))
     .describe("Axis along which to choose sort the input tensor."
-              " If not given, the flattened array is used.");
+              " If not given, the flattened array is used. Default is -1.");
     DMLC_DECLARE_FIELD(is_ascend).set_default(true)
       .describe("Whether sort in ascending or descending order.");
   }
 };
 
 struct ArgSortParam : public dmlc::Parameter<ArgSortParam> {
-  int axis;
+  dmlc::optional<int> axis;
   bool is_ascend;
   DMLC_DECLARE_PARAMETER(ArgSortParam) {
-    DMLC_DECLARE_FIELD(axis).set_default(INT_MIN)
+    DMLC_DECLARE_FIELD(axis).set_default(dmlc::optional<int>(-1))
     .describe("Axis along which to sort the input tensor."
-              " If not given, the flattened array is used.");
+              " If not given, the flattened array is used. Default is -1.");
     DMLC_DECLARE_FIELD(is_ascend).set_default(true)
       .describe("Whether sort in ascending or descending order.");
   }
@@ -84,16 +85,16 @@ struct ArgSortParam : public dmlc::Parameter<ArgSortParam> {
 inline void ParseTopKParam(const TShape& src_shape, const TopKParam& param, TShape *target_shape,
                            int *batch_size, int *element_num, int *axis, int *k,
                            bool *do_transpose, bool *is_ascend) {
-  *axis = param.axis;
   *do_transpose = false;
   *k = param.k;
   *is_ascend = param.is_ascend;
   // get batch_size, axis and element_num
-  if (param.axis == INT_MIN) {
+  if (!bool(param.axis)) {  // No axis given
     *axis = 0;
     *batch_size = 1;
     *element_num = src_shape.Size();
   } else {
+    *axis = param.axis.value();
     if (*axis < 0) {
       *axis += src_shape.ndim();
     }
@@ -110,7 +111,7 @@ inline void ParseTopKParam(const TShape& src_shape, const TopKParam& param, TSha
     *k = *element_num;
   }
   // get target_shape
-  if (param.axis == INT_MIN) {
+  if (!bool(param.axis)) {
     if (param.ret_typ != topk_enum::kReturnMask) {
       *target_shape = mshadow::Shape1(*k);
     } else {
@@ -135,9 +136,7 @@ inline void ParseTopKParam(const TShape& src_shape, const TopKParam& param, TSha
    * \param src the Source blob
    * \param ret the destination blobs
    * \param k the K elements to keep
-   * \param input_axis the axis to sort the input tensor along
-   * \param ret_typ to return the top k indices or mask the top k elements
-   * \param is_ascend whether to sort in ascending order
+   * \param param the topk parameters
    * \tparam xpu the device type.
    */
 template<typename xpu>

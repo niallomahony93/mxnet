@@ -10,6 +10,7 @@
 #include <mxnet/operator_util.h>
 #include <mxnet/op_attr_types.h>
 #include <dmlc/parameter.h>
+#include <dmlc/optional.h>
 #include <vector>
 #include <string>
 #include <limits>
@@ -24,7 +25,6 @@ struct InitOpParam : public dmlc::Parameter<InitOpParam> {
   int dtype;
   DMLC_DECLARE_PARAMETER(InitOpParam) {
     DMLC_DECLARE_FIELD(shape)
-    .set_default(TShape())
     .describe("The shape of the output");
     DMLC_DECLARE_FIELD(ctx)
     .set_default("")
@@ -41,18 +41,18 @@ struct InitOpParam : public dmlc::Parameter<InitOpParam> {
 };
 
 struct RangeParam : public dmlc::Parameter<RangeParam> {
-  real_t start;
-  real_t stop;
+  dmlc::optional<real_t> start;
+  dmlc::optional<real_t> stop;
   real_t step;
   int repeat;
   std::string ctx;
   int dtype;
   DMLC_DECLARE_PARAMETER(RangeParam) {
     DMLC_DECLARE_FIELD(start)
-    .set_default(std::numeric_limits<real_t>::infinity())
+    .set_default(dmlc::optional<real_t>())
     .describe("Start of interval. The interval includes this value. The default start value is 0.");
     DMLC_DECLARE_FIELD(stop)
-    .set_default(std::numeric_limits<real_t>::infinity())
+    .set_default(dmlc::optional<real_t>())
     .describe("End of interval. The interval does not include this value,"
               " except in some cases where step is not an integer and"
               " floating point round-off affects the length of out.");
@@ -81,14 +81,14 @@ struct RangeParam : public dmlc::Parameter<RangeParam> {
 inline void RangeParamParser(nnvm::NodeAttrs* attrs) {
   RangeParam param;
   param.Init(attrs->dict);
-  if (param.stop == std::numeric_limits<real_t>::infinity()) {
-    if (param.start == std::numeric_limits<real_t>::infinity()) {
+  if (!bool(param.stop)) {
+    if (!bool(param.start)) {
       LOG(FATAL) << "arange: Invalid input parameters! start and stop cannot be both empty!";
     }
     param.stop = param.start;
     param.start = 0;
   }
-  if (param.start == std::numeric_limits<real_t>::infinity()) {
+  if (!bool(param.start)) {
     param.start = 0;
   }
   attrs->parsed = std::move(param);
@@ -146,9 +146,9 @@ void RangeCompute(const nnvm::NodeAttrs& attrs,
   const RangeParam& param = nnvm::get<RangeParam>(attrs.parsed);
   MSHADOW_TYPE_SWITCH(outputs[0].type_flag_, DType, {
     Tensor<xpu, 1, DType> out = outputs[0].FlatTo1D<xpu, DType>(s);
-    ASSIGN_DISPATCH(out, req[0], range<DType>(static_cast<real_t>(param.start),
-                                              static_cast<real_t>(param.stop),
-                                              static_cast<real_t>(param.step),
+    ASSIGN_DISPATCH(out, req[0], range<DType>(param.start.value(),
+                                              param.stop.value(),
+                                              param.step,
                                               param.repeat));
   });
 }
@@ -165,15 +165,18 @@ inline bool RangeShape(const nnvm::NodeAttrs& attrs,
   CHECK(param.repeat > 0)
     << "Range only supports repeat > 0, received " << param.repeat;
   if (param.step > 0) {
-    CHECK(param.start < param.stop) << "Range does not support (start, stop, step) = "
-      << "(" << param.start << "," << param.stop << "," << param.step << ")";
+    CHECK(param.start.value() < param.stop.value())
+      << "Range does not support (start, stop, step) = "
+      << "(" << param.start.value() << "," << param.stop.value() << "," << param.step << ")";
   } else {
-    CHECK(param.start > param.stop) << "Range does not support (start, stop, step)= "
+    CHECK(param.start.value() > param.stop.value())
+      << "Range does not support (start, stop, step)= "
       << "(" << param.start << "," << param.stop << "," << param.step << ")";
   }
   SHAPE_ASSIGN_CHECK(*out_attrs, 0,
                      mshadow::Shape1(param.repeat *
-                                     ceil((param.stop - param.start) / param.step)));
+                                     ceil((param.stop.value() -
+                                           param.start.value()) / param.step)));
   return true;
 }
 

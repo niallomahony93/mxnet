@@ -73,7 +73,7 @@ NNVM_REGISTER_OP(sort)
       heads.emplace_back(nnvm::NodeEntry{ n, i, 0 });
     }
     return MakeGradNode("_backward_topk", n, heads,
-                         {{"axis", std::to_string(param.axis)},
+                         {{"axis", n->attrs.dict["axis"]},
                           {"k", "0"},
                           {"ret_typ", "value"},
                           {"is_ascend", std::to_string(param.is_ascend)}});

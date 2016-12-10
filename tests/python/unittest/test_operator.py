@@ -363,7 +363,7 @@ def test_pow_fn():
     exp = mx.symbol.Variable("exp")
     y = mx.sym.pow(2, exp)
     x = np.ones(shape)*3
-    check_numeric_gradient(y, [x], numeric_eps=1E-3)
+    check_numeric_gradient(y, [x])
     check_symbolic_forward(y, [x], [2**x])
     check_symbolic_backward(y, [x], [np.ones(shape)], [np.log(2) * 2**x])
 
@@ -595,7 +595,7 @@ def check_deconvolution_forward_backward(input_shape, num_filter, kernel, stride
     exe.forward()
     out = exe.outputs[0].asnumpy()
     exe.backward(out_grad)
-    assert_almost_equal(out, args_grad[0].asnumpy(), 1E-4)
+    assert reldiff(out, args_grad[0].asnumpy()) < 1e-6
 
 def check_deconvolution_gradient(input_shape, num_filter, pad):
     """configure A: input --> conv --> output.
@@ -638,7 +638,7 @@ def check_deconvolution_gradient(input_shape, num_filter, pad):
     exe_deconv.forward(is_train=True)
     deconv_out_grad = conv_data[:]
     exe_deconv.backward(deconv_out_grad)
-    assert_almost_equal(conv_args_grad[1].asnumpy(), deconv_args_grad[1].asnumpy(), 1E-2)
+    assert reldiff(conv_args_grad[1].asnumpy(), deconv_args_grad[1].asnumpy()) < 1e-6
 
 def check_deconvolution_target_shape(input_shape, kernel, stride, pad, adj, target_shape=None):
     data = mx.sym.Variable(name="data")
@@ -1488,17 +1488,15 @@ def test_support_vector_machine_l2_svm():
 def test_roipooling():
     data = mx.symbol.Variable(name='data')
     rois = mx.symbol.Variable(name='rois')
-    test = mx.symbol.ROIPooling(data=data, rois=rois, pooled_size=(4, 4), spatial_scale=1)
+    test = mx.symbol.ROIPooling(data=data, rois=rois, pooled_size=(6, 6), spatial_scale=1)
 
     x1 = np.random.rand(4, 3, 12, 8)
-    x2 = np.array([[0, 1.1, 1.1, 6.2, 6.2], [2, 6, 2, 8, 11], [1, 3, 1, 5, 10], [0, 3, 3, 3, 3]])
+    x2 = np.array([[0, 1, 1, 6, 6], [2, 6, 2, 7, 11], [1, 3, 1, 5, 10], [0, 3, 3, 3, 3]])
 
+    check_numeric_gradient(test, [x1, x2], numeric_eps=1e-3, check_eps=1e-2)
     check_numeric_gradient(sym=test, location=[x1, x2],
-                           grad_nodes={'data':'add', 'rois':'null'},
-                           numeric_eps=1e-3, check_eps=1e-1)
-    check_numeric_gradient(sym=test, location=[x1, x2],
-                           grad_nodes={'data':'add', 'rois':'null'},
-                           numeric_eps=1e-3, check_eps=1e-1)
+                           grad_nodes={'data':'add', 'rois':'write'},
+                           numeric_eps=1e-3, check_eps=1e-2)
 
 def check_pad_with_shape(shape, xpu, pad_width, mode):
     # bind with label
@@ -1516,7 +1514,7 @@ def check_pad_with_shape(shape, xpu, pad_width, mode):
     # compare numpy + mxnet
     assert_allclose(out, np_out, rtol=1e-5)
     # grad check
-    check_numeric_gradient(Y, [x.asnumpy()], numeric_eps=1e-2, check_eps=1e-2)
+    check_numeric_gradient(Y, [x.asnumpy()], numeric_eps=1e-3, check_eps=1e-2)
 
 def test_pad():
     shape1 = (2, 3, 2, 3)
@@ -1546,23 +1544,22 @@ def np_instance_norm(data, weight, bias, eps):
 
 def check_instance_norm_with_shape(shape, xpu):
     # bind with label
-    eps = 0.001
+    eps = 0.0234
     X = mx.symbol.Variable('X')
     G = mx.symbol.Variable('G')
     B = mx.symbol.Variable('B')
 
     Y = mx.symbol.InstanceNorm(data=X, beta=B, gamma=G, eps=eps)
-    x = mx.random.normal(0, 1, shape, ctx=mx.cpu()).copyto(xpu)
-    gamma = mx.random.normal(0, 1, shape[1], ctx=mx.cpu()).copyto(xpu)
-    beta = mx.random.normal(0, 1, shape[1], ctx=mx.cpu()).copyto(xpu)
+    x = mx.random.uniform(-1, 1, shape, ctx=mx.cpu()).copyto(xpu)
+    gamma = mx.random.uniform(-1, 1, shape[1], ctx=mx.cpu()).copyto(xpu)
+    beta = mx.random.uniform(-1, 1, shape[1], ctx=mx.cpu()).copyto(xpu)
 
     np_out = np_instance_norm(x.asnumpy(), gamma.asnumpy(), beta.asnumpy(), eps)
     exec1 = Y.bind(xpu, args = {'X':x, 'G':gamma, 'B':beta})
     exec1.forward(is_train=False)
     out = exec1.outputs[0].asnumpy()
     assert_allclose(out, np_out, rtol=1e-4)
-    check_numeric_gradient(Y, {'X':x.asnumpy(), 'G':gamma.asnumpy(), 'B':beta.asnumpy()},
-                           numeric_eps=1e-2, check_eps=0.2)
+    check_numeric_gradient(Y, {'X':x.asnumpy(), 'G':gamma.asnumpy(), 'B':beta.asnumpy()}, numeric_eps=1e-2, check_eps=0.16)
 
 def test_instance_normalization():
     check_instance_norm_with_shape((2,4,5,6), default_context())
@@ -1598,7 +1595,7 @@ def check_l2_normalization(in_shape, mode, ctx=default_context(), norm_eps=1e-10
     # compare numpy + mxnet
     assert_allclose(exe.outputs[0].asnumpy(), np_out, rtol=1e-5)
     # check gradient
-    check_numeric_gradient(out, [in_data], numeric_eps=1e-2, check_eps=5e-2)
+    check_numeric_gradient(out, [in_data], numeric_eps=1e-3, check_eps=1e-2)
 
 def test_l2_normalization():
     for mode in ['channel', 'spatial', 'instance']:
@@ -1798,7 +1795,7 @@ def mathematical_core(name, forward_mxnet_call, forward_numpy_call, backward_num
     exe_test.forward()
     out = exe_test.outputs[0].asnumpy()
     npout = forward_numpy_call(data_tmp)
-    assert reldiff(out, npout) < 1e-4, "%s mathematical forward failed\n%s\n\n%s" % (name, out, npout)
+    assert reldiff(out, npout) < 1e-6, "%s mathematical forward failed\n%s\n\n%s" % (name, out, npout)
 
     out_grad = mx.nd.empty(shape)
     out_grad[:] = grad_init
@@ -1810,7 +1807,7 @@ def mathematical_core(name, forward_mxnet_call, forward_numpy_call, backward_num
     # print(name)
     # print(arr_grad)
     # print(npout_grad)
-    assert reldiff(arr_grad, npout_grad) < 1e-4, "%s mathematical backward failed\n%s\n\n%s" % (
+    assert reldiff(arr_grad, npout_grad) < 1e-6, "%s mathematical backward failed\n%s\n\n%s" % (
         name, arr_grad, npout_grad)
 
 
@@ -1994,7 +1991,7 @@ def test_order(ctx=default_context()):
     check_symbolic_forward(b, location={'a': a_npy},
                            expected=[gt_topk(dat=a_npy, axis=1, ret_typ="value", k=2,
                                              is_ascend=False)])
-    b = mx.sym.topk(a, is_ascend=True, ret_typ="value", k=10)
+    b = mx.sym.topk(a, axis=None, is_ascend=True, ret_typ="value", k=10)
     check_numeric_gradient(b, location={'a': a_npy}, numeric_eps=1e-4, check_eps=2E-2, ctx=ctx)
     check_symbolic_forward(b, location={'a': a_npy},
                            expected=[gt_topk(dat=a_npy, axis=None, ret_typ="value", k=10,

@@ -888,44 +888,6 @@ def negative(arr):
     """ Return the negation of array values """
     return multiply(arr, -1.0)
 
-def zeros(shape, ctx=None, dtype=mx_real_t):
-    """Create a new NDArray filled with 0, with specified shape.
-
-    Parameters
-    ----------
-    shape : tuple
-        shape of the NDArray.
-    ctx : Context, optional.
-        The context of the NDArray, default to current default context.
-
-    Returns
-    -------
-    out: Array
-        The created NDArray.
-    """
-    arr = empty(shape, ctx, dtype)
-    arr[:] = 0.0
-    return arr
-
-def ones(shape, ctx=None, dtype=mx_real_t):
-    """Create a new NDArray filled with 1, with specified shape.
-
-    Parameters
-    ----------
-    shape : tuple
-        shape of the NDArray.
-    ctx : Context, optional
-        The context of the NDArray, default to current default context.
-
-    Returns
-    -------
-    out: Array
-        The created NDArray.
-    """
-    arr = empty(shape, ctx, dtype)
-    arr[:] = 1.0
-    return arr
-
 def full(shape, val, ctx=None):
     """Create a new NDArray filled with given value, with specified shape.
 
@@ -1029,7 +991,7 @@ def concatenate(arrays, axis=0, always_copy=True):
     return ret
 
 # pylint: disable= no-member, protected-access, too-many-arguments
-def arange(start=None, stop=None, step=None, repeat=1, ctx=Context.default_ctx, dtype=mx_real_t):
+def arange(start, stop=None, step=1, repeat=1, ctx=Context.default_ctx, dtype=mx_real_t):
     """Simlar function in the MXNet ndarray as numpy.arange
         See Also https://docs.scipy.org/doc/numpy/reference/generated/numpy.arange.html.
 
