@@ -35,7 +35,7 @@ def default_numerical_threshold():
     """Get default numerical threshold for regression test."""
     # _TODO: get from env variable, different threshold might
     # be needed for different device and dtype
-    return 1e-5
+    return 1e-6
 
 
 def random_arrays(*shapes):
@@ -89,34 +89,23 @@ def same(a, b):
     """
     return np.array_equal(a, b)
 
-def reldiff(a, b, return_index=False, thresh=1E-3):
+def reldiff(a, b):
     """Calculate the relative difference between two input arrays
 
-    Calculated by :math:`\\max(frac{|a-b|}{max(|a|, |b|) + 1E-7})`
-    Also If |a-b| is smaller than "thresh", the absolute difference will be used.
+    Calculated by :math:`\\frac{|a-b|_1}{|a|_1 + |b|_1}`
 
     Parameters
     ----------
     a : np.ndarray
     b : np.ndarray
-    return_index : bool, optional
-        Whether to return the index that has the maximum difference
-    thresh : float, optional
-        If |a-b| is smaller than "thresh", the absolute difference will be used.
     """
-    diff = np.abs(a - b)
-    norm = np.maximum(np.abs(a), np.abs(b)) + 1e-7
-    relative_diff = diff / norm
-    if isinstance(diff, np.ndarray):
-        relative_diff[diff < thresh] = diff[diff < thresh]
-    else:
-        relative_diff = diff if diff < thresh else relative_diff
-    ret = np.max(relative_diff)
-    if not return_index:
-        return ret
-    else:
-        index = np.unravel_index(np.argmax(relative_diff), dims=a.shape)
-        return ret, index
+    diff = np.sum(np.abs(a - b))
+    norm = np.sum(np.abs(a)) + np.sum(np.abs(b))
+    if diff == 0:
+        return 0
+    ret = diff / norm
+    return ret
+
 
 def almost_equal(a, b, threshold=None):
     """Test if two numpy arrays are almost equal."""
@@ -136,13 +125,11 @@ def assert_almost_equal(a, b, threshold=None):
         The checking threshold. Default threshold will be used if set to None
     """
     threshold = threshold or default_numerical_threshold()
-    rel, index = reldiff(a, b, True)
+    rel = reldiff(a, b)
     if np.isnan(rel) or rel > threshold:
         np.set_printoptions(threshold=4, suppress=True)
         msg = npt.build_err_msg([a, b],
-                                err_msg="Rel Err=%f, Expected <=%f,"
-                                        " Index of maximum error:%s, a=%f, b=%f"
-                                % (rel, threshold, str(index), a[index], b[index]),
+                                err_msg="Rel Err=%f, Expected <=%f" % (rel, threshold),
                                 names=["a", "b"])
         raise Exception(msg)
     return rel
@@ -252,33 +239,27 @@ def numeric_grad(executor, location, aux_states=None, eps=1e-4, use_forward_trai
     ---------
     ..[1] https://github.com/Theano/Theano/blob/master/theano/gradient.py
     """
-    approx_grads = {k: np.zeros(v.shape, dtype=np.float32)
-                    for k, v in location.items()}
     for k, v in location.items():
         executor.arg_dict[k][:] = v
+    approx_grads = {k: np.zeros(v.shape, dtype=np.float32)
+                    for k, v in location.items()}
+
+    executor.forward(is_train=use_forward_train)
+    f_x = executor.outputs[0].asnumpy()[0]
     for k in location:
         location[k] = np.ascontiguousarray(location[k])
     for k, v in location.items():
         old_value = v.copy()
         for i in range(np.prod(v.shape)):
             # inplace update
-            v.ravel()[i] += eps/2.0
+            v.ravel()[i] += eps
             executor.arg_dict[k][:] = v
             if aux_states is not None:
                 for key, val in aux_states.items():
                     executor.aux_dict[key][:] = val
             executor.forward(is_train=use_forward_train)
-            f_peps = executor.outputs[0].asnumpy()[0]
-
-            v.ravel()[i] -= eps
-            executor.arg_dict[k][:] = v
-            if aux_states is not None:
-                for key, val in aux_states.items():
-                    executor.aux_dict[key][:] = val
-            executor.forward(is_train=use_forward_train)
-            f_neps = executor.outputs[0].asnumpy()[0]
-
-            approx_grads[k].ravel()[i] = (f_peps - f_neps) / eps
+            f_eps = executor.outputs[0].asnumpy()[0]
+            approx_grads[k].ravel()[i] = (f_eps - f_x) / eps
             v.ravel()[i] = old_value.ravel()[i]
         # copy back the original value
         executor.arg_dict[k][:] = old_value
@@ -386,13 +367,13 @@ def check_numeric_gradient(sym, location, aux_states=None, numeric_eps=1e-4, che
         orig_grad = args_grad_npy[name]
         sym_grad = symbolic_grads[name]
         if grad_req[name] == 'write':
-            rel, index = reldiff(fd_grad, sym_grad, True)
+            rel = reldiff(fd_grad, sym_grad)
             arr_l = [fd_grad, sym_grad]
         elif grad_req[name] == 'add':
-            rel, index = reldiff(fd_grad, sym_grad - orig_grad, True)
+            rel = reldiff(fd_grad, sym_grad - orig_grad)
             arr_l = [fd_grad, sym_grad - orig_grad]
         elif grad_req[name] == 'null':
-            rel, index = reldiff(orig_grad, sym_grad, True)
+            rel = reldiff(orig_grad, sym_grad)
             arr_l = [orig_grad, sym_grad]
         else:
             raise ValueError
@@ -401,10 +382,8 @@ def check_numeric_gradient(sym, location, aux_states=None, numeric_eps=1e-4, che
             msg = npt.build_err_msg(arr_l,
                                     err_msg="In symbol \"%s\", ctx=%s, "
                                             "numeric check failed for \"%s\", grad_req= \"%s\". "
-                                            "Rel Err=%f, Expected <=%f,"
-                                            " Index of maximum error:%s, Numeric=%f, Calculated=%f"
-                                    %(sym.name, str(ctx), name, grad_req[name], rel, check_eps,
-                                      str(index), arr_l[0][index], arr_l[1][index]),
+                                            "Rel Err=%f, Expected <=%f"
+                                    %(sym.name, str(ctx), name, grad_req[name], rel, check_eps),
                                     names=["NUMERICAL", "BACKWARD"])
             raise Exception(msg)
 
@@ -458,16 +437,14 @@ def check_symbolic_forward(sym, location, expected, check_eps=1E-4, aux_states=N
     outputs = [x.asnumpy() for x in executor.outputs]
 
     for output_name, expect, output in zip(sym.list_outputs(), expected, outputs):
-        rel, index = reldiff(expect, output, True)
+        rel = reldiff(expect, output)
         if rel > check_eps:
             np.set_printoptions(threshold=4, suppress=True)
             msg = npt.build_err_msg([expect, output],
                                     err_msg="In symbol \"%s\", ctx=%s, "
                                             "forward check failed for \"%s\". "
-                                            "Rel Err=%f, Expected <=%f,"
-                                            " Index of maximum error:%s, Expect=%f, Forward=%f"
-                                    %(sym.name, str(ctx), output_name, rel, check_eps,
-                                      str(index), expect[index], output[index]),
+                                            "Rel Err=%f, Expected <=%f"
+                                    %(sym.name, str(ctx), output_name, rel, check_eps),
                                     names=["EXPECTED", "FORWARD"])
             raise Exception(msg)
 
@@ -536,13 +513,13 @@ def check_symbolic_backward(sym, location, out_grads, expected, check_eps=1e-5,
     grads = {k: v.asnumpy() for k, v in args_grad_data.items()}
     for name in expected:
         if grad_req[name] == 'write':
-            rel, index = reldiff(expected[name], grads[name], True)
+            rel = reldiff(expected[name], grads[name])
             arr_l = [expected[name], grads[name]]
         elif grad_req[name] == 'add':
-            rel, index = reldiff(expected[name], grads[name] - args_grad_npy[name], True)
+            rel = reldiff(expected[name], grads[name] - args_grad_npy[name])
             arr_l = [expected[name], grads[name] - args_grad_npy[name]]
         elif grad_req[name] == 'null':
-            rel, index = reldiff(args_grad_npy[name], grads[name], True)
+            rel = reldiff(args_grad_npy[name], grads[name])
             arr_l = [args_grad_npy[name], grads[name]]
         else:
             raise ValueError
@@ -551,10 +528,8 @@ def check_symbolic_backward(sym, location, out_grads, expected, check_eps=1e-5,
             msg = npt.build_err_msg(arr_l,
                                     err_msg="In symbol \"%s\", ctx=%s, "
                                             "backward check failed for \"%s\". "
-                                            "Rel Err=%f, Expected <=%f,"
-                                            " Index of maximum error:%s, Expect=%f, Backward=%f"
-                                    %(sym.name, str(ctx), name, rel, check_eps,
-                                      index, arr_l[0][index], arr_l[1][index]),
+                                            "Rel Err=%f, Expected <=%f"
+                                    %(sym.name, str(ctx), name, rel, check_eps),
                                     names=["EXPECTED", "BACKWARD"])
             raise Exception(msg)
 
