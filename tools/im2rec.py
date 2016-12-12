@@ -10,6 +10,7 @@ import random
 import argparse
 import cv2
 import time
+import traceback
 
 try:
     import multiprocessing
@@ -86,6 +87,8 @@ def read_list(path_in):
             yield item
 
 def image_encode(args, i, item, q_out):
+    fullpath = os.path.join(args.root, item[1])
+
     if len(item) > 3 and args.pack_label:
         header = mx.recordio.IRHeader(0, item[2:], item[0], 0)
     else:
@@ -93,21 +96,23 @@ def image_encode(args, i, item, q_out):
 
     if args.pass_through:
         try:
-            with open(os.path.join(args.root, item[1])) as fin:
+            with open(fullpath) as fin:
                 img = fin.read()
             s = mx.recordio.pack(header, img)
             q_out.put((i, s, item))
         except Exception, e:
+            traceback.print_exc()
             print('pack_img error:', item[1], e)
         return
 
     try:
-        img = cv2.imread(os.path.join(args.root, item[1]), args.color)
+        img = cv2.imread(fullpath, args.color)
     except:
-        print('imread error:', item[1])
+        traceback.print_exc()
+        print('imread error trying to load file: %s ' % fullpath)
         return
     if img is None:
-        print('read none error:', item[1])
+        print('imread read blank (None) image for file: %s' % fullpath)
         return
     if args.center_crop:
         if img.shape[0] > img.shape[1]:
@@ -127,7 +132,8 @@ def image_encode(args, i, item, q_out):
         s = mx.recordio.pack_img(header, img, quality=args.quality, img_fmt=args.encoding)
         q_out.put((i, s, item))
     except Exception, e:
-        print('pack_img error:', item[1], e)
+        traceback.print_exc()
+        print('pack_img error on file: %s' % fullpath, e)
         return
 
 def read_worker(args, q_in, q_out):
@@ -201,7 +207,7 @@ def parse_args():
         be packed by default.')
     rgroup.add_argument('--center-crop', type=bool, default=False,
                         help='specify whether to crop the center image to make it rectangular.')
-    rgroup.add_argument('--quality', type=int, default=90,
+    rgroup.add_argument('--quality', type=int, default=95,
                         help='JPEG quality for encoding, 1-100; or PNG compression for encoding, 1-9')
     rgroup.add_argument('--num-thread', type=int, default=1,
                         help='number of thread to use for encoding. order of images will be different\
@@ -215,7 +221,7 @@ def parse_args():
     rgroup.add_argument('--encoding', type=str, default='.jpg', choices=['.jpg', '.png'],
                         help='specify the encoding of the images.')
     rgroup.add_argument('--pack-label', default=False,
-        help='Whether to also pack multi dimensional label in the record file') 
+        help='Whether to also pack multi dimensional label in the record file')
     args = parser.parse_args()
     args.prefix = os.path.abspath(args.prefix)
     args.root = os.path.abspath(args.root)
