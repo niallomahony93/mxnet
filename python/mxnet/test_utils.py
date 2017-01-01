@@ -3,12 +3,15 @@
 # pylint: disable=invalid-name, no-member, too-many-arguments, too-many-locals, too-many-branches, too-many-statements, broad-except, line-too-long, unused-import
 from __future__ import absolute_import, print_function, division
 import time
+import traceback
+import numbers
 import numpy as np
 import numpy.testing as npt
 import mxnet as mx
 
 from .context import cpu, gpu, Context
 from .ndarray import array
+from .symbol import Symbol
 
 _rng = np.random.RandomState(1234)
 
@@ -75,6 +78,15 @@ def np_reduce(dat, axis, keepdims, numpy_reduce_func):
         ret = ret.reshape(tuple(keepdims_shape))
     return ret
 
+def print_max_err_loc(a, b, rtol=1e-7, atol=0):
+    """print location of maximum violation"""
+    diff = np.abs(a-b)
+    tol = atol + rtol*np.abs(b)
+    violation = diff/(tol+1e-20)
+    loc = np.argmax(violation)
+    idx = np.unravel_index(loc, violation.shape)
+    print('Maximum err at ', idx, ':', a.flat[loc], ' vs ', b.flat[loc])
+    return idx
 
 def same(a, b):
     """Test if two numpy arrays are the same
@@ -85,7 +97,6 @@ def same(a, b):
     b : np.ndarray
     """
     return np.array_equal(a, b)
-
 
 def reldiff(a, b):
     """Calculate the relative difference between two input arrays
@@ -131,6 +142,36 @@ def assert_almost_equal(a, b, threshold=None):
                                 names=["a", "b"])
         raise Exception(msg)
     return rel
+
+def almost_equal_ignore_nan(a, b, rtol=None, atol=None):
+    """Test that two numpy arrays are almost equal (ignoring NaN in either array).
+    Combines a relative and absolute measure of approximate eqality.
+    If either the relative or absolute check passes, the arrays are considered equal.
+    Including an absolute check resolves issues with the relative check where all
+    array values are close to zero.
+
+    Parameters
+    ----------
+    a : np.ndarray
+    b : np.ndarray
+    rtol : None or float
+        The relative threshold. Default threshold will be used if set to None
+    atol : None or float
+        The absolute threshold. Default threshold will be used if set to None
+    """
+    a = np.copy(a)
+    b = np.copy(b)
+    nan_mask = np.logical_or(np.isnan(a), np.isnan(b))
+    a[nan_mask] = 0
+    b[nan_mask] = 0
+
+    rtol = rtol or default_numerical_threshold()
+    atol = atol or default_numerical_threshold()
+
+    rel_approx_equal = reldiff(a, b) <= rtol
+    abs_approx_equal = np.sum(np.abs(a - b) > atol) == 0
+
+    return rel_approx_equal or abs_approx_equal
 
 
 def simple_forward(sym, ctx=None, is_train=False, **inputs):
@@ -610,19 +651,22 @@ def check_speed(sym, location=None, ctx=None, N=20, grad_req=None, typ="whole",
         raise ValueError('typ can only be "whole" or "forward".')
 
 
-def check_consistency(sym, ctx_list, scale=1.0, grad_req='write'):
+def check_consistency(sym, ctx_list, scale=1.0, grad_req='write',
+                      arg_params=None, aux_params=None, tol=None,
+                      raise_on_err=True, ground_truth=None):
     """Check symbol gives the same output for different running context
 
     Parameters
     ----------
-    sym : Symbol
-        symbol to run the consistency test
+    sym : Symbol or list of Symbols
+        symbol(s) to run the consistency test
     ctx_list : list
         running context. See example for more detail.
     scale : float, optional
         standard deviation of the inner normal distribution. Used in initialization
     grad_req : str or list of str or dict of str to str
         gradient requirement.
+
     Examples
     --------
     >>> # create the symbol
@@ -649,61 +693,97 @@ def check_consistency(sym, ctx_list, scale=1.0, grad_req='write'):
   'type_dict': {'concat_arg0': np.float32, 'concat_arg1': np.float32}}]
     >>> check_consistency(sym, ctx_list)
     """
-    tol = {np.dtype(np.float16): 1e-1,
-           np.dtype(np.float32): 1e-3,
-           np.dtype(np.float64): 1e-5,
-           np.dtype(np.uint8): 0,
-           np.dtype(np.int32): 0}
+    if tol is None:
+        tol = {np.dtype(np.float16): 1e-1,
+               np.dtype(np.float32): 1e-3,
+               np.dtype(np.float64): 1e-5,
+               np.dtype(np.uint8): 0,
+               np.dtype(np.int32): 0}
+    elif isinstance(tol, numbers.Number):
+        tol = {np.dtype(np.float16): tol,
+               np.dtype(np.float32): tol,
+               np.dtype(np.float64): tol,
+               np.dtype(np.uint8): tol,
+               np.dtype(np.int32): tol}
+
     assert len(ctx_list) > 1
-    exe_list = [sym.simple_bind(grad_req=grad_req, **ctx) for ctx in ctx_list]
+    if isinstance(sym, Symbol):
+        sym = [sym]*len(ctx_list)
+    else:
+        assert len(sym) == len(ctx_list)
+
+    output_names = sym[0].list_outputs()
+    arg_names = sym[0].list_arguments()
+    exe_list = []
+    for s, ctx in zip(sym, ctx_list):
+        assert s.list_arguments() == arg_names
+        assert s.list_outputs() == output_names
+        exe_list.append(s.simple_bind(grad_req=grad_req, **ctx))
+
+    arg_params = {} if arg_params is None else arg_params
+    aux_params = {} if aux_params is None else aux_params
+    for n, arr in exe_list[0].arg_dict.items():
+        if n not in arg_params:
+            arg_params[n] = np.random.normal(size=arr.shape, scale=scale)
+    for n, arr in exe_list[0].aux_dict.items():
+        if n not in aux_params:
+            aux_params[n] = 0
     for exe in exe_list:
-        assert len(exe.outputs) == 1
-        assert len(exe.arg_arrays) == len(exe_list[0].arg_arrays)
-        assert len(exe.grad_arrays) == len(exe_list[0].grad_arrays)
+        for name, arr in exe.arg_dict.items():
+            arr[:] = arg_params[name]
+        for name, arr in exe.aux_dict.items():
+            arr[:] = aux_params[name]
 
-    init = [np.random.normal(size=arr.shape, scale=scale) for arr in exe_list[0].arg_arrays]
-    if sym.name == 'embedding':
-        init[0] = np.random.randint(low=0, high=10, size=exe_list[0].arg_arrays[0].shape)
-
-    for exe in exe_list:
-        for arr, iarr in zip(exe.arg_arrays, init):
-            arr[:] = iarr.astype(arr.dtype)
-
-    # forward
-    for exe in exe_list:
-        exe.forward(is_train=True)
-        exe.backward(exe.outputs[0])
-
-    outputs = [exe.outputs[0].asnumpy() for exe in exe_list]
-    # lazy solution handling None grad
-    grads = [[grad.asnumpy() if grad is not None else np.zeros(1) for grad in exe.grad_arrays] for exe in exe_list]
-    dtypes = [arr.dtype for arr in outputs]
+    dtypes = [np.dtype(exe.outputs[0].dtype) for exe in exe_list]
     max_idx = np.argmax(dtypes)
+    gt = ground_truth
+    if gt is None:
+        gt = exe_list[max_idx].output_dict.copy()
+        if grad_req != 'null':
+            gt.update(exe_list[max_idx].grad_dict)
 
-    for i, exe in enumerate(exe_list):
-        if i == max_idx:
-            continue
-        for arr1, arr2 in zip([outputs[i]]+grads[i], [outputs[max_idx]]+grads[max_idx]):
-            arr2 = arr2.astype(dtypes[i])
-            try:
-                npt.assert_allclose(arr1, arr2, rtol=tol[dtypes[i]], atol=tol[dtypes[i]])
-            except Exception as e:
-                print(e)
-
-    #forward predict
+    # test
     for exe in exe_list:
         exe.forward(is_train=False)
 
-    outputs = [exe.outputs[0].asnumpy() for exe in exe_list]
-    dtypes = [arr.dtype for arr in outputs]
-    max_idx = np.argmax(dtypes)
-
     for i, exe in enumerate(exe_list):
         if i == max_idx:
             continue
-        for arr1, arr2 in zip([outputs[i]], [outputs[max_idx]]):
-            arr2 = arr2.astype(dtypes[i])
+        for name, arr in zip(output_names, exe.outputs):
+            gtarr = gt[name].astype(dtypes[i]).asnumpy()
+            arr = arr.asnumpy()
             try:
-                npt.assert_allclose(arr1, arr2, rtol=tol[dtypes[i]], atol=tol[dtypes[i]])
+                npt.assert_allclose(arr, gtarr, rtol=tol[dtypes[i]], atol=tol[dtypes[i]])
             except Exception as e:
-                print(e)
+                print('Predict Err: ctx %d vs ctx %d at %s'%(i, max_idx, name))
+                print_max_err_loc(arr, gtarr, rtol=tol[dtypes[i]], atol=tol[dtypes[i]])
+                traceback.print_exc()
+                if raise_on_err:
+                    raise e
+
+    # train
+    if grad_req != 'null':
+        for exe in exe_list:
+            exe.forward(is_train=True)
+            exe.backward(exe.outputs)
+
+        for i, exe in enumerate(exe_list):
+            if i == max_idx:
+                continue
+            curr = zip(output_names + arg_names, exe.outputs + exe.grad_arrays)
+            for name, arr in curr:
+                if gt[name] is None:
+                    assert arr is None
+                    continue
+                gtarr = gt[name].astype(dtypes[i]).asnumpy()
+                arr = arr.asnumpy()
+                try:
+                    npt.assert_allclose(arr, gtarr, rtol=tol[dtypes[i]], atol=tol[dtypes[i]])
+                except Exception as e:
+                    print('Train Err: ctx %d vs ctx %d at %s'%(i, max_idx, name))
+                    print_max_err_loc(arr, gtarr, rtol=tol[dtypes[i]], atol=tol[dtypes[i]])
+                    print(e)
+                    if raise_on_err:
+                        raise e
+
+    return gt

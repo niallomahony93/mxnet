@@ -3,9 +3,8 @@
 
 """NDArray interface of mxnet"""
 from __future__ import absolute_import
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 
-import re
 import sys
 import ctypes
 import logging
@@ -14,73 +13,60 @@ import numpy as np
 from .base import _LIB
 from .base import c_array, c_str, mx_uint, py_str
 from .base import DataIterHandle, NDArrayHandle
-from .base import check_call, ctypes2docstring
+from .base import mx_real_t
+from .base import check_call, build_param_doc as _build_param_doc
 from .ndarray import NDArray
 from .ndarray import array
 from .ndarray import concatenate
 
+# pylint: disable=W0622
+class DataDesc(namedtuple('DataDesc', ['name', 'shape'])):
+    """Named data desc description contains name, shape, type and other extended attributes.
+    """
+    def __new__(cls, name, shape, dtype=mx_real_t, layout='NCHW'):
+        ret = super(cls, DataDesc).__new__(cls, name, shape)
+        ret.dtype = dtype
+        ret.layout = layout
+        return ret
 
-class LayoutMapper(object):
-    """A helper class to decide data layouts (which axis is batch_size dimension)."""
-    def get_layout_string(self, name):
-        """Get layout string for the given data name.
+    def __repr__(self):
+        return "DataDesc[%s,%s,%s,%s]" % (self.name, self.shape, self.dtype,
+                                          self.layout)
 
-        Paramseters
-        -----------
-        name : str
-            The name of a data, label or output tensor.
-
-        Returns
-        -------
-        The layout string. For example "NCHW". Returns None if
-        not known.
-        """
-        raise NotImplementedError()
-
-    def get_batch_axis(self, name):
+    @staticmethod
+    def get_batch_axis(layout):
         """Get the dimension that corresponds to the batch size.
 
         Parameters
         ----------
-        name : str
-            The name of the blob (could be data, label or output names).
+        layout : str
+            layout string. For example, "NCHW".
 
         Returns
         -------
         An axis indicating the batch_size dimension. When data-parallelism is
         used, the data will be automatically split and concatenate along the batch_size
-        dimension. Axis can be -1, which means the array thing will be copied for each
+        dimension. Axis can be -1, which means the whole array will be copied for each
         data-parallelism device.
         """
-        raise NotImplementedError()
-
-
-class DefaultLayoutMapper(LayoutMapper):
-    """A default data layout mapper.
-
-    It decides the data layout by information encoded in name.
-    If a name contains the string :__layout_XXXXX__, then XXXXX
-    will be parsed as the layout string.
-    """
-    def __init__(self, default_batch_axis=0):
-        super(DefaultLayoutMapper, self).__init__()
-        self._default_batch_axis = default_batch_axis
-
-    LAYOUT_PATTERN = re.compile(r':__layout_([^_*])__')
-    def get_layout_string(self, name):
-        ret = DefaultLayoutMapper.LAYOUT_PATTERN.search(name)
-        if ret is None:
-            return None
-        return ret.group(1)
-
-    def get_batch_axis(self, name):
-        layout = self.get_layout_string(name)
         if layout is None:
-            return self._default_batch_axis
-        # N indicate batch size. Note when N is not found,
-        # it returns -1, which is what we expect
+            return 0
         return layout.find('N')
 
+    @staticmethod
+    def get_list(shapes, types):
+        """Get DataDesc list from attribute lists.
+
+        Parameters
+        ----------
+        shapes : shape tuple list with (name, shape) tuples
+        types : type tuple list with (name, type) tuples
+        """
+        if types is not None:
+            type_dict = dict(types)
+            return [DataDesc(x[0], x[1], type_dict[x[0]]) for x in shapes]
+        else:
+            return [DataDesc(x[0], x[1]) for x in shapes]
 
 class DataBatch(object):
     """Default object for holding a mini-batch of data and related information."""
@@ -234,13 +220,13 @@ class ResizeIter(DataIter):
 
 class PrefetchingIter(DataIter):
     """Base class for prefetching iterators. Takes one or more DataIters (
-    or any class with "reset" and "read" methods) and combine them with
+    or any class with "reset" and "next" methods) and combine them with
     prefetching. For example:
 
     Parameters
     ----------
     iters : DataIter or list of DataIter
-        one or more DataIters (or any class with "reset" and "read" methods)
+        one or more DataIters (or any class with "reset" and "next" methods)
     rename_data : None or list of dict
         i-th element is a renaming map for i-th iter, in the form of
         {'original_name' : 'new_name'}. Should have one entry for each entry
@@ -301,8 +287,11 @@ class PrefetchingIter(DataIter):
         if self.rename_data is None:
             return sum([i.provide_data for i in self.iters], [])
         else:
-            return sum([[(r[n], s) for n, s in i.provide_data] \
-                       for r, i in zip(self.rename_data, self.iters)], [])
+            return sum([[
+                DataDesc(r[x.name], x.shape, x.dtype)
+                if isinstance(x, DataDesc) else DataDesc(*x)
+                for x in i.provide_data
+            ] for r, i in zip(self.rename_data, self.iters)], [])
 
     @property
     def provide_label(self):
@@ -310,8 +299,11 @@ class PrefetchingIter(DataIter):
         if self.rename_label is None:
             return sum([i.provide_label for i in self.iters], [])
         else:
-            return sum([[(r[n], s) for n, s in i.provide_label] \
-                       for r, i in zip(self.rename_label, self.iters)], [])
+            return sum([[
+                DataDesc(r[x.name], x.shape, x.dtype)
+                if isinstance(x, DataDesc) else DataDesc(*x)
+                for x in i.provide_label
+            ] for r, i in zip(self.rename_label, self.iters)], [])
 
     def reset(self):
         for e in self.data_ready:
@@ -394,6 +386,7 @@ def _init_data(data, allow_empty, default_name):
 
 class NDArrayIter(DataIter):
     """NDArrayIter object in mxnet. Taking NDArray or numpy array to get dataiter.
+
     Parameters
     ----------
     data: NDArray or numpy.ndarray, a list of them, or a dict of string to them.
@@ -406,19 +399,21 @@ class NDArrayIter(DataIter):
         Whether to shuffle the data
     last_batch_handle: 'pad', 'discard' or 'roll_over'
         How to handle the last batch
+
     Note
     ----
     This iterator will pad, discard or roll over the last batch if
     the size of data does not match batch_size. Roll over is intended
     for training and can cause problems if used for prediction.
     """
-    def __init__(self, data, label=None, batch_size=1, shuffle=False, last_batch_handle='pad'):
+    def __init__(self, data, label=None, batch_size=1, shuffle=False,
+                 last_batch_handle='pad', label_name='softmax_label'):
         # pylint: disable=W0201
 
         super(NDArrayIter, self).__init__()
 
         self.data = _init_data(data, allow_empty=False, default_name='data')
-        self.label = _init_data(label, allow_empty=True, default_name='softmax_label')
+        self.label = _init_data(label, allow_empty=True, default_name=label_name)
 
         # shuffle data
         if shuffle:
@@ -451,13 +446,18 @@ class NDArrayIter(DataIter):
     @property
     def provide_data(self):
         """The name and shape of data provided by this iterator"""
-        return [(k, tuple([self.batch_size] + list(v.shape[1:]))) for k, v in self.data]
+        return [
+            DataDesc(k, tuple([self.batch_size] + list(v.shape[1:])), v.dtype)
+            for k, v in self.data
+        ]
 
     @property
     def provide_label(self):
         """The name and shape of label provided by this iterator"""
-        return [(k, tuple([self.batch_size] + list(v.shape[1:]))) for k, v in self.label]
-
+        return [
+            DataDesc(k, tuple([self.batch_size] + list(v.shape[1:])), v.dtype)
+            for k, v in self.label
+        ]
 
     def hard_reset(self):
         """Igore roll over data and set to start"""
@@ -505,6 +505,7 @@ class NDArrayIter(DataIter):
 
 class MXDataIter(DataIter):
     """DataIter built in MXNet. List all the needed functions here.
+
     Parameters
     ----------
     handle : DataIterHandle
@@ -516,7 +517,6 @@ class MXDataIter(DataIter):
         # debug option, used to test the speed with io effect eliminated
         self._debug_skip_load = False
 
-
         # load the first batch to get shape information
         self.first_batch = None
         self.first_batch = self.next()
@@ -524,8 +524,8 @@ class MXDataIter(DataIter):
         label = self.first_batch.label[0]
 
         # properties
-        self.provide_data = [(data_name, data.shape)]
-        self.provide_label = [(label_name, label.shape)]
+        self.provide_data = [DataDesc(data_name, data.shape, data.dtype)]
+        self.provide_label = [DataDesc(label_name, label.shape, label.dtype)]
         self.batch_size = data.shape[0]
 
 
@@ -613,7 +613,12 @@ def _make_io_iterator(handle):
             ctypes.byref(arg_types), \
             ctypes.byref(arg_descs)))
     iter_name = py_str(name.value)
-    param_str = ctypes2docstring(num_args, arg_names, arg_types, arg_descs)
+
+    narg = int(num_args.value)
+    param_str = _build_param_doc(
+        [py_str(arg_names[i]) for i in range(narg)],
+        [py_str(arg_types[i]) for i in range(narg)],
+        [py_str(arg_descs[i]) for i in range(narg)])
 
     doc_str = ('%s\n\n' +
                '%s\n' +
@@ -628,10 +633,12 @@ def _make_io_iterator(handle):
     def creator(*args, **kwargs):
         """Create an iterator.
         The parameters listed below can be passed in as keyword arguments.
+
         Parameters
         ----------
         name : string, required.
             Name of the resulting data iterator.
+
         Returns
         -------
         dataiter: Dataiter
