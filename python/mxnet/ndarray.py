@@ -1068,14 +1068,14 @@ def ones(shape, ctx=None, dtype=mx_real_t):
         ctx = Context.default_ctx
     return _internal._ones(shape=shape, ctx=ctx, dtype=dtype)
 
-def full(shape, val, ctx=None):
+def full(shape, val, ctx=None, dtype=mx_real_t):
     """Create a new NDArray filled with given value, with specified shape.
 
     Parameters
     ----------
     shape : tuple
         shape of the NDArray.
-    val : float
+    val : float or int
         value to be filled with.
     ctx : Context, optional
         The context of the NDArray, default to current default context.
@@ -1085,7 +1085,7 @@ def full(shape, val, ctx=None):
     out: Array
         The created NDArray.
     """
-    arr = empty(shape, ctx)
+    arr = empty(shape, ctx, dtype)
     arr[:] = val
     return arr
 
