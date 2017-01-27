@@ -59,6 +59,7 @@ class GridGeneratorOp : public Operator {
                        const std::vector<TBlob> &aux_args) {
     using namespace mshadow;
     using namespace mshadow::expr;
+    CHECK_EQ(req[grid::kOut], kWriteTo);
     CHECK_EQ(in_data.size(), 1);
     CHECK_EQ(out_data.size(), 2);
     Stream<xpu> *s = ctx.get_stream<xpu>();
@@ -102,7 +103,8 @@ class GridGeneratorOp : public Operator {
         workspace[1] = scalar<DType>((DType(data.size(2)) - 1.0) / 2.0);
         Assign(out, req[grid::kOut],
                (data + broadcast_with_axis(grid_dst, -1, data.shape_[0])) /
-                 broadcast_to(reshape(workspace, Shape4(1, 2, 1, 1)), TShape(data.shape_)) - scalar<DType>(1));
+                 broadcast_to(reshape(workspace, Shape4(1, 2, 1, 1)),
+                              TShape(data.shape_)) - scalar<DType>(1));
         break;
       }
     }

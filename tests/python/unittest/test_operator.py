@@ -2248,9 +2248,16 @@ def test_grid_generator():
         tmp[0] = -1.0 + (np.arange(target_shape[0]*target_shape[1]) % target_shape[1]) * (2.0 / (target_shape[1]-1))
         tmp[1] = -1.0 + (np.arange(target_shape[0]*target_shape[1]) // target_shape[1]) * (2.0 / (target_shape[0]-1))
         tmp[2] = 1
-        
         grad_est = np.dot(out_grad[0].reshape(2,target_shape[0]*target_shape[1]),tmp.T).reshape(1,6)
         assert reldiff(exe.grad_dict['affine'].asnumpy()[0], grad_est) < 1E-6
+        # check addto
+        exe = grid.simple_bind(ctx=default_context(), affine=(1,6), grad_req='add')
+        grid_grad_npy = np.random.normal(size=exe.grad_dict['affine'].shape)
+        exe.grad_dict['affine'][:] = grid_grad_npy
+        exe.arg_dict['affine'][:] = np.array([[1.0, 0, 0, 0, 1.0, 0]])
+        exe.forward()
+        exe.backward(mx.nd.array(out_grad))
+        assert reldiff(exe.grad_dict['affine'].asnumpy()[0], grad_est + grid_grad_npy) < 1E-6
 
     # transform_type = warp
     test_case = [(12,21),(4,3),(6,12)]
@@ -2274,6 +2281,15 @@ def test_grid_generator():
         grad_est[0,0] = out_grad[0,0] / ((target_shape[1]-1.0) / 2.0)
         grad_est[0,1] = out_grad[0,1] / ((target_shape[0]-1.0) / 2.0)
         assert reldiff(exe.grad_dict['flow'].asnumpy(), grad_est) < 1E-6
+        # check addto
+        exe_add = grid.simple_bind(ctx=default_context(), flow=(1, 2) + target_shape, grad_req='add')
+        flow_grad_npy = np.random.normal(size=exe_add.grad_dict['flow'].shape)
+        exe_add.arg_dict['flow'][:] = np.ones((1, 2) + target_shape)
+        exe_add.grad_dict['flow'][:] = flow_grad_npy
+        exe_add.forward()
+        exe_add.backward(mx.nd.array(out_grad))
+        assert reldiff(exe_add.grad_dict['flow'].asnumpy(), grad_est + flow_grad_npy) < 1E-6
+
 
 def test_bilinear_sampler():
     
