@@ -156,7 +156,8 @@ MXNET_REGISTER_OP_PROPERTY(BilinearSampler, BilinearSamplerProp)
 .add_argument("grid", "Symbol", "Input grid to the BilinearsamplerOp."
                                 "grid has two channels: x_src, y_src")
 .add_arguments(BilinearSamplerParam::__FIELDS__())
-.describe("Apply bilinear sampling to input feature map.\n    "
+.describe("Apply bilinear sampling to input feature map,"
+" which is the key of \"[NIPS2015] Spatial Transformer Networks\"\n    "
 "output[batch, channel, y_dst, x_dst] = G(data[batch, channel, y_src, x_src)\n    "
 "x_dst, y_dst enumerate all spatial locations in output\n    "
 "x_src = grid[batch, 0, y_dst, x_dst]\n    "
