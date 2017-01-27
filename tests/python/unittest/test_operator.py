@@ -2251,7 +2251,7 @@ def test_grid_generator():
         
         grad_est = np.dot(out_grad[0].reshape(2,target_shape[0]*target_shape[1]),tmp.T).reshape(1,6)
         assert reldiff(exe.grad_dict['affine'].asnumpy()[0], grad_est) < 1E-6
-    
+
     # transform_type = warp
     test_case = [(12,21),(4,3),(6,12)]
     for target_shape in test_case:
@@ -2404,7 +2404,6 @@ def test_bilinear_sampler():
         for item in test_case:
             data_shape, grid_shape = item
             exe = net.simple_bind(data=data_shape,grid=grid_shape,ctx=ctx,grad_req='write')
-            
             # check forward
             tmp = np.zeros(grid_shape)
             xv, yv = np.meshgrid(np.arange(grid_shape[2]), np.arange(grid_shape[3]))
@@ -2421,9 +2420,22 @@ def test_bilinear_sampler():
             exe.backward(mx.nd.array(out_grad))
             data_grad, grid_grad = bilinear_backward_numpy(out_grad,exe.arg_dict['data'].asnumpy(), 
                                                        exe.arg_dict['grid'].asnumpy())
-            
+
             assert  reldiff(exe.grad_dict['data'].asnumpy(),data_grad) < 1E-5
-            assert  reldiff(exe.grad_dict['grid'].asnumpy(),grid_grad) < 1E-5      
+            assert  reldiff(exe.grad_dict['grid'].asnumpy(),grid_grad) < 1E-5
+
+            # check kAddTo
+            exe_addto = net.simple_bind(data=data_shape, grid=grid_shape, ctx=ctx, grad_req='add')
+            data_initial_grid = np.random.normal(size=exe_addto.grad_dict['data'].shape)
+            grid_initial_grid = np.random.normal(size=exe_addto.grad_dict['grid'].shape)
+            exe_addto.arg_dict['data'][:] = exe.arg_dict['data'][:]
+            exe_addto.arg_dict['grid'][:] = exe.arg_dict['grid'][:]
+            exe_addto.grad_dict['data'][:] = data_initial_grid
+            exe_addto.grad_dict['grid'][:] = grid_initial_grid
+            exe_addto.forward()
+            exe_addto.backward(mx.nd.array(out_grad))
+            assert reldiff(exe_addto.grad_dict['data'].asnumpy(), data_grad + data_initial_grid) < 1E-5
+            assert reldiff(exe_addto.grad_dict['grid'].asnumpy(), grid_grad + grid_initial_grid) < 1E-5
             
 def test_index2d():
     for _ in range(30):
@@ -2487,6 +2499,7 @@ if __name__ == '__main__':
     test_order()
     test_blockgrad()
     test_take()
+    set_default_context(mx.gpu())
     test_grid_generator()
     test_bilinear_sampler()
     test_binary_logic()

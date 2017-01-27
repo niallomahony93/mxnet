@@ -122,8 +122,8 @@ __global__ void BilinearSamplerBackwardKernel(const int i_c, const int i_h,
                         * top_left_y_w);
     }
     // calc grad of grid
-    *(grad_grid + grid_src_index + o_h * o_w) = top_left_y_gw * (i_h - 1) / 2;
-    *(grad_grid + grid_src_index) = top_left_x_gw * (i_w - 1) / 2;
+    *(grad_grid + grid_src_index + o_h * o_w) += top_left_y_gw * (i_h - 1) / 2;
+    *(grad_grid + grid_src_index) += top_left_x_gw * (i_w - 1) / 2;
   }
 }
 }  // namespace cuda
