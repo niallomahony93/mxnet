@@ -2515,7 +2515,6 @@ if __name__ == '__main__':
     test_order()
     test_blockgrad()
     test_take()
-    set_default_context(mx.gpu())
     test_grid_generator()
     test_bilinear_sampler()
     test_binary_logic()
