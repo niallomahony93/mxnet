@@ -2223,6 +2223,7 @@ def test_take():
                 idx_shape += (np.random.randint(low=3, high=5), ) 
             check_output_n_grad(data_shape, idx_shape)
 
+
 def test_grid_generator():
     # transform_type =  affine
     test_case = [(20,21),(4,3),(6,12),(15,17)]
@@ -2436,9 +2437,8 @@ def test_bilinear_sampler():
             exe.backward(mx.nd.array(out_grad))
             data_grad, grid_grad = bilinear_backward_numpy(out_grad,exe.arg_dict['data'].asnumpy(), 
                                                        exe.arg_dict['grid'].asnumpy())
-
-            assert  reldiff(exe.grad_dict['data'].asnumpy(),data_grad) < 1E-5
-            assert  reldiff(exe.grad_dict['grid'].asnumpy(),grid_grad) < 1E-5
+            assert reldiff(exe.grad_dict['data'].asnumpy(),data_grad) < 1E-4
+            assert reldiff(exe.grad_dict['grid'].asnumpy(),grid_grad) < 1E-5
 
             # check kAddTo
             exe_addto = net.simple_bind(data=data_shape, grid=grid_shape, ctx=ctx, grad_req='add')
@@ -2450,7 +2450,7 @@ def test_bilinear_sampler():
             exe_addto.grad_dict['grid'][:] = grid_initial_grid
             exe_addto.forward()
             exe_addto.backward(mx.nd.array(out_grad))
-            assert reldiff(exe_addto.grad_dict['data'].asnumpy(), data_grad + data_initial_grid) < 1E-5
+            assert reldiff(exe_addto.grad_dict['data'].asnumpy(), data_grad + data_initial_grid) < 1E-4
             assert reldiff(exe_addto.grad_dict['grid'].asnumpy(), grid_grad + grid_initial_grid) < 1E-5
             
 def test_index2d():
