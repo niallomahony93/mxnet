@@ -13,8 +13,5 @@ NNVM_REGISTER_OP(uniform)
 NNVM_REGISTER_OP(normal)
 .set_attr<FCompute>("FCompute<gpu>", SampleNormal_<gpu>);
 
-NNVM_REGISTER_OP(BSN)
-.set_attr<FCompute>("FCompute<gpu>", BinaryStochasticNeuronCompute<gpu>);
-
 }  // namespace op
 }  // namespace mxnet

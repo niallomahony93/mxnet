@@ -58,6 +58,47 @@ void IdentityCompute(const nnvm::NodeAttrs& attrs,
   });
 }
 
+struct BinaryStochasticNeuronParam : public dmlc::Parameter<BinaryStochasticNeuronParam> {
+  bool stochastic_train;
+  bool stochastic_test;
+  DMLC_DECLARE_PARAMETER(BinaryStochasticNeuronParam) {
+    DMLC_DECLARE_FIELD(stochastic_train).set_default(true)
+      .describe("Whether to draw samples in the training process.");
+    DMLC_DECLARE_FIELD(stochastic_test).set_default(false)
+      .describe("Whether to draw samples in the testing process. (is_train=False)");
+  }
+};
+
+template<typename xpu>
+void BinaryStochasticNeuronCompute(const nnvm::NodeAttrs& attrs,
+  const OpContext& ctx,
+  const std::vector<TBlob>& inputs,
+  const std::vector<OpReqType>& req,
+  const std::vector<TBlob>& outputs) {
+  using namespace mshadow;
+  using namespace mshadow::expr;
+  Stream<xpu> *s = ctx.get_stream<xpu>();
+  const BinaryStochasticNeuronParam& param = nnvm::get<BinaryStochasticNeuronParam>(attrs.parsed);
+  // Use sigmoid activation to compute the probability of the Bernoulli distribution
+  if ((ctx.is_train && param.stochastic_train) || (!ctx.is_train && param.stochastic_test)) {
+    CHECK(req[0] == kWriteTo || req[0] == kWriteInplace);
+    CHECK_EQ(outputs[0].type_flag_, mshadow::kFloat32) << "only support float32 rnd so far";
+    Tensor<xpu, 1, float> bsn_out = outputs[0].FlatTo1D<xpu, float>(s);
+    Tensor<xpu, 1, float> sigmoid_out = outputs[1].FlatTo1D<xpu, float>(s);
+    sigmoid_out = F<mshadow_op::sigmoid>(inputs[0].FlatTo1D<xpu, float>(s));
+    mshadow::Random<xpu, float> *prnd = ctx.requested[0].get_random<xpu, float>(s);
+    prnd->SampleUniform(&bsn_out, 0.0, 1.0);
+    bsn_out = F<mshadow_op::lt>(bsn_out, sigmoid_out);
+  } else {
+    MSHADOW_TYPE_SWITCH(outputs[0].type_flag_, DType, {
+      Tensor<xpu, 1, DType> bsn_out = outputs[0].FlatTo1D<xpu, DType>(s);
+      Tensor<xpu, 1, DType> sigmoid_out = outputs[1].FlatTo1D<xpu, DType>(s);
+      sigmoid_out = F<mshadow_op::sigmoid>(inputs[0].FlatTo1D<xpu, DType>(s));
+      ASSIGN_DISPATCH(bsn_out, req[0], F<mshadow_op::round>(sigmoid_out));
+    });
+  }
+}
+
 #define MXNET_OPERATOR_REGISTER_UNARY(name)                         \
   NNVM_REGISTER_OP(name)                                            \
   .set_num_inputs(1)                                                \
