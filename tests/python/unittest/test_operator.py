@@ -2478,7 +2478,24 @@ def test_bsn():
         assert_almost_equal(exe.grad_dict['data'].asnumpy(), gt_prob * (1 - gt_prob) * out_grad_npy)
     assert_almost_equal(sample_sum / 500, gt_prob, 6E-2)
 
+def test_cast():
+    for srctype in [np.int32, np.float32, np.float16]:
+        for dsttype in [np.float32, np.int32, np.float16]:
+            x = mx.sym.Variable('x', dtype=srctype)
+            y = mx.sym.Cast(x, dtype=dsttype)
+            exe = y.simple_bind(ctx=default_context(), x=(10, 10))
+            assert exe.arg_arrays[0].dtype == srctype
+            assert exe.outputs[0].dtype == dsttype
+            X = np.random.uniform(-10, 10, size=(10, 10))
+            exe.arg_arrays[0][:] = X
+            exe.forward()
+            exe.backward(mx.nd.array(X, dtype=dsttype, ctx=default_context()))
+            assert_almost_equal(exe.outputs[0].asnumpy(), X.astype(srctype).astype(dsttype), threshold=5e-4)
+            assert_almost_equal(exe.grad_arrays[0].asnumpy(), X.astype(dsttype).astype(srctype), threshold=5e-4)
+
+
 if __name__ == '__main__':
+    test_cast()
     test_clip()
     test_index2d()
     test_scalarop()
