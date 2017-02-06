@@ -725,12 +725,13 @@ class RMSPropNoncentered(Optimizer):
         clip gradient in range [-clip_gradient, clip_gradient]
     """
     def __init__(self, learning_rate=0.002, gamma1=0.95,
-                 wd=0., rescale_grad=1, clip_gradient=None, lr_scheduler=None, eps=1e-4):
+                 wd=0., rescale_grad=1, clip_gradient=None, lr_scheduler=None, eps=1e-4, **kwargs):
         super(RMSPropNoncentered, self).__init__(learning_rate=learning_rate,
                                                  rescale_grad=rescale_grad,
                                                  wd=wd,
                                                  clip_gradient=clip_gradient,
-                                                 lr_scheduler=lr_scheduler)
+                                                 lr_scheduler=lr_scheduler,
+                                                 **kwargs)
         self.gamma1 = gamma1
         self.eps = eps
 
