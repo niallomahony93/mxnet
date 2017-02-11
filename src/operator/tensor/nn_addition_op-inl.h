@@ -70,6 +70,7 @@ void LocalCorrelationForward_(const nnvm::NodeAttrs& attrs,
                               const std::vector<TBlob>& inputs,
                               const std::vector<OpReqType>& req,
                               const std::vector<TBlob>& outputs) {
+  using namespace mshadow;
   using namespace mshadow::expr;
   mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
   const LocalCorrelationParam& param_ = nnvm::get<LocalCorrelationParam>(attrs.parsed);
@@ -158,6 +159,7 @@ void LocalCorrelationBackward_(const nnvm::NodeAttrs& attrs,
                                const std::vector<TBlob>& inputs,
                                const std::vector<OpReqType>& req,
                                const std::vector<TBlob>& outputs) {
+  using namespace mshadow;
   using namespace mshadow::expr;
   mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
   const LocalCorrelationParam& param_ = nnvm::get<LocalCorrelationParam>(attrs.parsed);
