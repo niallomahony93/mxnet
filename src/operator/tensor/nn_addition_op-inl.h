@@ -95,7 +95,7 @@ void LocalCorrelationForward_(const nnvm::NodeAttrs& attrs,
   CHECK_EQ(k_y, outputs[0].shape_[3]);
   CHECK_EQ(k_x, outputs[0].shape_[4]);
   mshadow::Tensor<xpu, 3, real_t> corr_weight =
-    outputs[0].get_with_shape<xpu, 3, real_t>(s, Shape3(batch_size * h1 * w1, 1, k_y * k_x));
+    outputs[0].get_with_shape<xpu, 3, real_t>(Shape3(batch_size * h1 * w1, 1, k_y * k_x), s);
   mshadow::Tensor<xpu, 4, real_t> lhs = inputs[0].get<xpu, 4, real_t>(s);
   mshadow::Tensor<xpu, 4, real_t> rhs = inputs[1].get<xpu, 4, real_t>(s);
   mshadow::Tensor<xpu, 3, real_t> out = outputs[0].get_with_shape<xpu, 3, real_t>(
@@ -104,7 +104,7 @@ void LocalCorrelationForward_(const nnvm::NodeAttrs& attrs,
   int ele_tmp_rhs_bytes = sizeof(real_t) * (channel_num * h1 * w1 * k_y * k_x);
   int ele_batch_dot_workspace_bytes = sizeof(real_t*) * h1 * w1;
   int workspace_ele_size = ele_tmp_lhs_bytes + ele_tmp_rhs_bytes + ele_batch_dot_workspace_bytes;
-  int batch_step_ = std::min(static_cast<int>((param.max_workspace << 20) / workspace_ele_size), batch_size);
+  int batch_step_ = std::min(static_cast<int>((param_.max_workspace << 20) / workspace_ele_size), batch_size);
   CHECK_GE(batch_step_, 1);
   mshadow::Tensor<xpu, 1, void*> workspace =
     ctx.requested[0].get_space_typed<xpu, 1, void*>(mshadow::Shape1(batch_step_ * workspace_ele_size), s);
@@ -126,7 +126,7 @@ void LocalCorrelationForward_(const nnvm::NodeAttrs& attrs,
                                   Shape4(0, 2, 3, 1)),
                         Shape3(step * h1 * w1, 1, channel_num));
       if (no_padding) {
-        temp_rhs = reshape(swap_axis<1, 0>(unpack_patch2col(rhs.Slice(i, i + step),
+        tmp_rhs = reshape(swapaxis<1, 0>(unpack_patch2col(rhs.Slice(i, i + step),
                                                             param_.kernel[0],
                                                             param_.kernel[1],
                                                             param_.stride[0],
@@ -137,7 +137,7 @@ void LocalCorrelationForward_(const nnvm::NodeAttrs& attrs,
       } else {
         int pad_y = param_.dilate[0] * (param_.kernel[0] - 1) / 2;
         int pad_x = param_.dilate[1] * (param_.kernel[1] - 1) / 2;
-        temp_rhs = reshape(swap_axis<1, 0>(unpack_patch2col(pad(rhs.Slice(i, i + step), pad_y, pad_x),
+        tmp_rhs = reshape(swapaxis<1, 0>(unpack_patch2col(pad(rhs.Slice(i, i + step), pad_y, pad_x),
                                                             param_.kernel[0],
                                                             param_.kernel[1],
                                                             param_.stride[0],
@@ -183,7 +183,7 @@ void LocalCorrelationBackward_(const nnvm::NodeAttrs& attrs,
   int ele_tmp_rhs_bytes = sizeof(real_t) * (channel_num * h1 * w1 * k_y * k_x);
   int ele_batch_dot_workspace_bytes = sizeof(real_t*) * h1 * w1;
   int workspace_ele_size = ele_tmp_lhs_bytes + ele_tmp_rhs_bytes + ele_batch_dot_workspace_bytes;
-  int batch_step_ = std::min(static_cast<int>((param.max_workspace << 20) / workspace_ele_size), batch_size);
+  int batch_step_ = std::min(static_cast<int>((param_.max_workspace << 20) / workspace_ele_size), batch_size);
   CHECK_GE(batch_step_, 1);
   mshadow::Tensor<xpu, 1, void*> workspace =
     ctx.requested[0].get_space_typed<xpu, 1, void*>(mshadow::Shape1(batch_step_ * workspace_ele_size), s);
@@ -201,7 +201,7 @@ void LocalCorrelationBackward_(const nnvm::NodeAttrs& attrs,
                                                     workspace.dptr_ + step * (ele_tmp_lhs_bytes + ele_tmp_rhs_bytes)),
                                                   Shape1(step * h1 * w1));
     if (param_.no_padding) {
-      temp_rhs = reshape(swap_axis<1, 0>(unpack_patch2col(rhs.Slice(i, i + step),
+      tmp_rhs = reshape(swapaxis<1, 0>(unpack_patch2col(rhs.Slice(i, i + step),
                                                           param_.kernel[0],
                                                           param_.kernel[1],
                                                           param_.stride[0],
@@ -212,7 +212,7 @@ void LocalCorrelationBackward_(const nnvm::NodeAttrs& attrs,
     } else {
       int pad_y = param_.dilate[0] * (param_.kernel[0] - 1) / 2;
       int pad_x = param_.dilate[1] * (param_.kernel[1] - 1) / 2;
-      temp_rhs = reshape(swap_axis<1, 0>(unpack_patch2col(pad(rhs.Slice(i, i + step), pad_y, pad_x),
+      tmp_rhs = reshape(swapaxis<1, 0>(unpack_patch2col(pad(rhs.Slice(i, i + step), pad_y, pad_x),
                                                           param_.kernel[0],
                                                           param_.kernel[1],
                                                           param_.stride[0],
@@ -232,7 +232,7 @@ void LocalCorrelationBackward_(const nnvm::NodeAttrs& attrs,
                                     0.0f, batch_dot_workspace);
     if (param_.no_padding) {
       Assign(rhs_grad.Slice(i, i + step), req[1],
-              pack_col2patch(swap_axis<1, 0>(reshape(tmp_rhs,
+              pack_col2patch(swapaxis<1, 0>(reshape(tmp_rhs,
                                                     Shape2(step * h1 * w1, channel_num * k_y * k_x))),
                             rhs.Slice(i, i + step).shape_,
                             param_.kernel[0],
@@ -246,7 +246,8 @@ void LocalCorrelationBackward_(const nnvm::NodeAttrs& attrs,
       pshape[2] += param_.dilate[0] * (param_.kernel[0] - 1);
       pshape[3] += param_.dilate[1] * (param_.kernel[1] - 1);
       Assign(rhs_grad.Slice(i, i + step), req[1],
-              crop(pack_col2patch(temp_col,
+              crop(pack_col2patch(swapaxis<1, 0>(reshape(tmp_rhs,
+                                                    Shape2(step * h1 * w1, channel_num * k_y * k_x))),
                                   pshape,
                                   param_.kernel[0],
                                   param_.kernel[1],
