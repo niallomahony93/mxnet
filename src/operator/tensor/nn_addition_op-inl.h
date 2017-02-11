@@ -146,7 +146,7 @@ void LocalCorrelationForward_(const nnvm::NodeAttrs& attrs,
                                                             param_.dilate[1])),
                            Shape3(step * h1 * w1, channel_num, k_y * k_x));
       }
-      mshadow::BatchGEMM<false, false>(out.Slice(i, i + step), tmp_lhs, tmp_rhs, 1.0f,
+      mshadow::BatchGEMM<false, false>(out.Slice(i * h1 * w1, (i + step) * h1 * w1), tmp_lhs, tmp_rhs, 1.0f,
                                        (kAddTo == req[0]) ? 1.0f : 0.0f,
                                        batch_dot_workspace);
     }
@@ -221,14 +221,14 @@ void LocalCorrelationBackward_(const nnvm::NodeAttrs& attrs,
                                                           param_.dilate[1])),
                           Shape3(step * h1 * w1, channel_num, k_y * k_x));
     }
-    mshadow::BatchGEMM<false, true>(tmp_lhs, out_grad.Slice(i, i + step), tmp_rhs, 1.0f,
+    mshadow::BatchGEMM<false, true>(tmp_lhs, out_grad.Slice(i * h1 * w1, (i + step) * h1 * w1), tmp_rhs, 1.0f,
                                     0.0f, batch_dot_workspace);
     Assign(lhs_grad.Slice(i, i + step), req[0], transpose(reshape(tmp_lhs,
                                                                   Shape4(step, h1, w1, channel_num)),
                                                           Shape4(0, 3, 1, 2)));
     tmp_lhs = reshape(transpose(lhs.Slice(i, i + step), Shape4(0, 2, 3, 1)),
                       Shape3(step * h1 * w1, 1, channel_num));
-    mshadow::BatchGEMM<true, false>(tmp_rhs, tmp_lhs, out_grad.Slice(i, i + step), 1.0f,
+    mshadow::BatchGEMM<true, false>(tmp_rhs, tmp_lhs, out_grad.Slice(i * h1 * w1, (i + step) * h1 * w1), 1.0f,
                                     0.0f, batch_dot_workspace);
     if (param_.no_padding) {
       Assign(rhs_grad.Slice(i, i + step), req[1],
