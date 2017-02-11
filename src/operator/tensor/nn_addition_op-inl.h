@@ -46,7 +46,7 @@ struct LocalFilterParam : public dmlc::Parameter<LocalFilterParam> {
   TShape dilate;
   TShape stride;
   bool no_padding;
-  uint64_t max_workspace;
+  uint64_t workspace;
   DMLC_DECLARE_PARAMETER(LocalFilterParam) {
     int shape[] = {1, 1};
     DMLC_DECLARE_FIELD(kernel)
@@ -59,7 +59,7 @@ struct LocalFilterParam : public dmlc::Parameter<LocalFilterParam> {
     .describe("Whether we need to add padding to the data."
               " If no_padding is true, the \"valid\" convolution will be used. "
               "Otherwise the same convolution will be used.");
-    DMLC_DECLARE_FIELD(max_workspace).set_default(1024).set_range(0, 8192)
+    DMLC_DECLARE_FIELD(workspace).set_default(1024).set_range(0, 8192)
     .describe("Maximum tmp workspace allowed for convolution (MB).");
   }
 };
@@ -104,7 +104,7 @@ void LocalCorrelationForward_(const nnvm::NodeAttrs& attrs,
   int ele_tmp_rhs_bytes = sizeof(real_t) * (channel_num * h1 * w1 * k_y * k_x);
   int ele_batch_dot_workspace_bytes = sizeof(real_t*) * h1 * w1;
   int workspace_ele_size = ele_tmp_lhs_bytes + ele_tmp_rhs_bytes + ele_batch_dot_workspace_bytes;
-  int batch_step_ = std::min(static_cast<int>((param_.max_workspace << 20) / workspace_ele_size), batch_size);
+  int batch_step_ = std::min(static_cast<int>((param_.workspace << 20) / workspace_ele_size), batch_size);
   CHECK_GE(batch_step_, 1);
   mshadow::Tensor<xpu, 1, void*> workspace =
     ctx.requested[0].get_space_typed<xpu, 1, void*>(mshadow::Shape1(batch_step_ * workspace_ele_size), s);
@@ -183,7 +183,7 @@ void LocalCorrelationBackward_(const nnvm::NodeAttrs& attrs,
   int ele_tmp_rhs_bytes = sizeof(real_t) * (channel_num * h1 * w1 * k_y * k_x);
   int ele_batch_dot_workspace_bytes = sizeof(real_t*) * h1 * w1;
   int workspace_ele_size = ele_tmp_lhs_bytes + ele_tmp_rhs_bytes + ele_batch_dot_workspace_bytes;
-  int batch_step_ = std::min(static_cast<int>((param_.max_workspace << 20) / workspace_ele_size), batch_size);
+  int batch_step_ = std::min(static_cast<int>((param_.workspace << 20) / workspace_ele_size), batch_size);
   CHECK_GE(batch_step_, 1);
   mshadow::Tensor<xpu, 1, void*> workspace =
     ctx.requested[0].get_space_typed<xpu, 1, void*>(mshadow::Shape1(batch_step_ * workspace_ele_size), s);
