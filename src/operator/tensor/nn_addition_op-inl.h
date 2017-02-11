@@ -102,7 +102,7 @@ void LocalCorrelationForward_(const nnvm::NodeAttrs& attrs,
                                            Shape3(batch_size * h1 * w1, 1, k_y * k_x), s);
   int ele_tmp_lhs_bytes = sizeof(real_t) * (channel_num * h1 * w1);
   int ele_tmp_rhs_bytes = sizeof(real_t) * (channel_num * h1 * w1 * k_y * k_x);
-  int ele_batch_dot_workspace_bytes = sizeof(real_t*) * h1 * w1;
+  int ele_batch_dot_workspace_bytes = sizeof(real_t*) * 3 * h1 * w1;
   int workspace_ele_size = ele_tmp_lhs_bytes + ele_tmp_rhs_bytes + ele_batch_dot_workspace_bytes;
   int batch_step_ = std::min(static_cast<int>((param_.workspace << 20) / workspace_ele_size), batch_size);
   CHECK_GE(batch_step_, 1);
@@ -181,7 +181,7 @@ void LocalCorrelationBackward_(const nnvm::NodeAttrs& attrs,
   mshadow::Tensor<xpu, 4, real_t> rhs_grad = outputs[1].get<xpu, 4, real_t>(s);
   int ele_tmp_lhs_bytes = sizeof(real_t) * (channel_num * h1 * w1);
   int ele_tmp_rhs_bytes = sizeof(real_t) * (channel_num * h1 * w1 * k_y * k_x);
-  int ele_batch_dot_workspace_bytes = sizeof(real_t*) * h1 * w1;
+  int ele_batch_dot_workspace_bytes = sizeof(real_t*) * 3 * h1 * w1;
   int workspace_ele_size = ele_tmp_lhs_bytes + ele_tmp_rhs_bytes + ele_batch_dot_workspace_bytes;
   int batch_step_ = std::min(static_cast<int>((param_.workspace << 20) / workspace_ele_size), batch_size);
   CHECK_GE(batch_step_, 1);
