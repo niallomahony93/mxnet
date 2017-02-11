@@ -165,12 +165,12 @@ void LocalCorrelationBackward_(const nnvm::NodeAttrs& attrs,
   const LocalCorrelationParam& param_ = nnvm::get<LocalCorrelationParam>(attrs.parsed);
   CHECK_NE(req[0], kWriteInplace);
   CHECK_NE(req[1], kWriteInplace);
-  int batch_size = inputs[0].shape_[0];
-  int channel_num = inputs[0].shape_[1];
-  int h1 = inputs[0].shape_[2];
-  int w1 = inputs[0].shape_[3];
-  int h2 = inputs[1].shape_[2];
-  int w2 = inputs[1].shape_[3];
+  int batch_size = inputs[1].shape_[0];
+  int channel_num = inputs[1].shape_[1];
+  int h1 = inputs[1].shape_[2];
+  int w1 = inputs[1].shape_[3];
+  int h2 = inputs[2].shape_[2];
+  int w2 = inputs[2].shape_[3];
   int k_y = param_.kernel[0];
   int k_x = param_.kernel[1];
   mshadow::Tensor<xpu, 3, real_t> out_grad = inputs[0].get_with_shape<xpu, 3, real_t>(
