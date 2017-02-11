@@ -113,15 +113,15 @@ void LocalCorrelationForward_(const nnvm::NodeAttrs& attrs,
       const index_t step = std::min(batch_step_, batch_size - i);
       mshadow::Tensor<xpu, 3, real_t> tmp_lhs = mshadow::Tensor<xpu, 3, real_t>(
                                               reinterpret_cast<real_t*>(workspace.dptr_),
-                                              Shape3(step * h1 * w1, 1, channel_num));
+                                              Shape3(step * h1 * w1, 1, channel_num), s);
       mshadow::Tensor<xpu, 3, real_t> tmp_rhs = mshadow::Tensor<xpu, 3, real_t>(
                                                     reinterpret_cast<real_t*>(
                                                       workspace.dptr_ + step * ele_tmp_lhs_bytes),
-                                                    Shape3(step * h1 * w1, channel_num, k_y * k_x));
+                                                    Shape3(step * h1 * w1, channel_num, k_y * k_x), s);
       mshadow::Tensor<xpu, 1, real_t*> batch_dot_workspace = mshadow::Tensor<xpu, 1, real_t*>(
                                                     reinterpret_cast<real_t**>(
                                                       workspace.dptr_ + step * (ele_tmp_lhs_bytes + ele_tmp_rhs_bytes)),
-                                                    Shape1(step * h1 * w1));
+                                                    Shape1(step * h1 * w1), s);
       tmp_lhs = reshape(transpose(lhs.Slice(i, i + step),
                                   Shape4(0, 2, 3, 1)),
                         Shape3(step * h1 * w1, 1, channel_num));
@@ -191,15 +191,15 @@ void LocalCorrelationBackward_(const nnvm::NodeAttrs& attrs,
     const index_t step = std::min(batch_step_, batch_size - i);
     mshadow::Tensor<xpu, 3, real_t> tmp_lhs = mshadow::Tensor<xpu, 3, real_t>(
                                             reinterpret_cast<real_t*>(workspace.dptr_),
-                                            Shape3(step * h1 * w1, 1, channel_num));
+                                            Shape3(step * h1 * w1, 1, channel_num), s);
     mshadow::Tensor<xpu, 3, real_t> tmp_rhs = mshadow::Tensor<xpu, 3, real_t>(
                                                   reinterpret_cast<real_t*>(
                                                     workspace.dptr_ + step * ele_tmp_lhs_bytes),
-                                                  Shape3(step * h1 * w1, channel_num, k_y * k_x));
+                                                  Shape3(step * h1 * w1, channel_num, k_y * k_x), s);
     mshadow::Tensor<xpu, 1, real_t*> batch_dot_workspace = mshadow::Tensor<xpu, 1, real_t*>(
                                                   reinterpret_cast<real_t**>(
                                                     workspace.dptr_ + step * (ele_tmp_lhs_bytes + ele_tmp_rhs_bytes)),
-                                                  Shape1(step * h1 * w1));
+                                                  Shape1(step * h1 * w1), s);
     if (param_.no_padding) {
       tmp_rhs = reshape(swapaxis<1, 0>(unpack_patch2col(rhs.Slice(i, i + step),
                                                           param_.kernel[0],

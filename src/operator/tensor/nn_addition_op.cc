@@ -25,6 +25,10 @@ NNVM_REGISTER_OP(LocalCorrelation)
   [](const NodeAttrs& attrs) {
     return std::vector<ResourceRequest>{ResourceRequest::kTempSpace};
   })
+.set_attr<nnvm::FListInputNames>("FListInputNames",
+  [](const NodeAttrs& attrs) {
+    return std::vector<std::string>{"lhs", "rhs"};
+  })
 .set_attr<nnvm::FGradient>("FGradient", ElemwiseGradUseIn{"_backward_LocalCorrelation"})
 .add_argument("lhs", "NDArray", "lhs data, the query input data that we want to find the correlation weights")
 .add_argument("rhs", "NDArray", "rhs data, the search data that we will try to attend the lhs on.");
