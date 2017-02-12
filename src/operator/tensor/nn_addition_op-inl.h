@@ -348,7 +348,7 @@ void LocalFilterForward_(const nnvm::NodeAttrs& attrs,
   int pad_type = param_.pad_type;
   CHECK(pad_type == PadType::kSame || pad_type == PadType::kValid);
   CHECK_EQ(batch_size, inputs[1].shape_[0]);
-  CHECK_EQ(channel_num, outputs[1].shape_[1]);
+  CHECK_EQ(channel_num, outputs[0].shape_[1]);
   CHECK_EQ(batch_size, outputs[0].shape_[0]);
   CHECK_EQ(h1, outputs[0].shape_[2]);
   CHECK_EQ(w1, outputs[0].shape_[3]);
