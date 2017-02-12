@@ -34,9 +34,9 @@ struct LocalCorrelationParam : public dmlc::Parameter<LocalCorrelationParam> {
     DMLC_DECLARE_FIELD(stride).set_default(TShape(shape, shape + 2))
     .describe("Size of the stride for rhs.");
     shape[0] = shape[1] = 0;
-    DMLC_DECLARE_FIELD(pad_type).set_default(0)
-    .add_enum("valid", 0)
-    .add_enum("same", 1)
+    DMLC_DECLARE_FIELD(pad_type).set_default(PadType::kValid)
+    .add_enum("valid", PadType::kValid)
+    .add_enum("same", PadType::kSame)
     .describe("Whether we need to add padding to the lhs."
       " If pad_type is \"valid\", the \"valid\" correlation will be performed."
       " Otherwise zero-padding will be used.");
