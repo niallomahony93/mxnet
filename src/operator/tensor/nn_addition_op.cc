@@ -44,7 +44,7 @@ NNVM_REGISTER_OP(_backward_LocalCorrelation)
 .set_attr<nnvm::TIsBackward>("TIsBackward", true)
 .set_attr<FCompute>("FCompute<cpu>", LocalCorrelationBackward_<cpu>);
 
-/*
+
 NNVM_REGISTER_OP(LocalFilter)
 .MXNET_DESCRIBE("Calculate the local convolution between data and weight."
                 " data will be of shape (B, C, H_2, W_2), weight will be of shape (B, H_1, W_1, ksize_y, ksize_x)."
@@ -60,6 +60,10 @@ NNVM_REGISTER_OP(LocalFilter)
   [](const NodeAttrs& attrs) {
     return std::vector<ResourceRequest>{ResourceRequest::kTempSpace};
   })
+.set_attr<nnvm::FListInputNames>("FListInputNames",
+  [](const NodeAttrs& attrs) {
+    return std::vector<std::string>{"data", "weight"};
+  })
 .set_attr<nnvm::FGradient>("FGradient", ElemwiseGradUseIn{"_backward_LocalFilter"})
 .add_argument("data", "NDArray", "The data input, shape (B, C, H_2, W_2)")
 .add_argument("weight", "NDArray", "The weight input, shape (B, H_1, W_1, k_h, k_w)");
@@ -74,6 +78,6 @@ NNVM_REGISTER_OP(_backward_LocalFilter)
   })
 .set_attr<nnvm::TIsBackward>("TIsBackward", true)
 .set_attr<FCompute>("FCompute<cpu>", LocalFilterBackward_<cpu>);
-*/
+
 }  // namespace op
 }  // namespace mxnet
