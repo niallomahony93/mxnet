@@ -421,7 +421,7 @@ void LocalFilterBackward_(const nnvm::NodeAttrs& attrs,
   using namespace mshadow;
   using namespace mshadow::expr;
   mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
-  const LocalCorrelationParam& param_ = nnvm::get<LocalCorrelationParam>(attrs.parsed);
+  const LocalFilterParam& param_ = nnvm::get<LocalFilterParam>(attrs.parsed);
   CHECK_NE(req[0], kWriteInplace);
   CHECK_NE(req[1], kWriteInplace);
   int batch_size = inputs[1].shape_[0];
