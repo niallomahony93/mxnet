@@ -59,9 +59,9 @@ struct LocalFilterParam : public dmlc::Parameter<LocalFilterParam> {
     .describe("Dilate for the local filters.");
     DMLC_DECLARE_FIELD(stride).set_default(TShape(shape, shape + 2))
     .describe("Stride for the local filters.");
-    DMLC_DECLARE_FIELD(pad_type).set_default(0)
-    .add_enum("valid", 0)
-    .add_enum("same", 1)
+    DMLC_DECLARE_FIELD(pad_type).set_default(PadType::kValid)
+    .add_enum("valid", PadType::kValid)
+    .add_enum("same", PadType::kSame)
     .describe("If pad_type is valid, the \"valid\" convolution will be used. "
               "Otherwise the data will be padded to make sure that the output"
               " will be have the same height/width as the input.");
