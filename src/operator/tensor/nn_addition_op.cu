@@ -15,12 +15,11 @@ NNVM_REGISTER_OP(LocalCorrelation)
 NNVM_REGISTER_OP(_backward_LocalCorrelation)
 .set_attr<FCompute>("FCompute<gpu>", LocalCorrelationBackward_<gpu>);
 
-/*
 NNVM_REGISTER_OP(LocalFilter)
 .set_attr<FCompute>("FCompute<gpu>", LocalFilterForward_<gpu>);
 
 NNVM_REGISTER_OP(_backward_LocalFilter)
 .set_attr<FCompute>("FCompute<gpu>", LocalFilterBackward_<gpu>);
-*/
+
 }  // namespace op
 }  // namespace mxnet
