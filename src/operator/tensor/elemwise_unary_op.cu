@@ -233,10 +233,5 @@ NNVM_REGISTER_OP(gammaln)
 NNVM_REGISTER_OP(_backward_gammaln)
 .set_attr<FCompute>("FCompute<gpu>", BinaryCompute<gpu, unary_bwd<mshadow_op::gammaln_grad> >);
 
-NNVM_REGISTER_OP(BSN)
-.set_attr<FCompute>("FCompute<gpu>", BinaryStochasticNeuronCompute<gpu>);
-
-NNVM_REGISTER_OP(_backward_BSN)
-.set_attr<FCompute>("FCompute<gpu>", BinaryCompute<gpu, unary_bwd<mshadow_op::sigmoid_grad>>);
 }  // namespace op
 }  // namespace mxnet

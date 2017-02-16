@@ -2472,17 +2472,17 @@ def test_bsn():
     ctx = default_context()
     data = mx.sym.Variable('data')
     bsn_st = mx.sym.BSN(data, stochastic_train=True, stochastic_test=True)
-    data_npy = np.random.normal(size=(6, 5))
+    data_npy = np.random.normal(size=(6, 5)).astype(np.float32)
     sigmoid = lambda x: 1 / (1 + np.exp(-x))
     exe = bsn_st.simple_bind(ctx=ctx, data=(6, 5))
     gt_prob = sigmoid(data_npy)
     sample_sum = np.zeros((6, 5), dtype=np.float32)
-    out_grad_npy = np.random.normal(size=(6, 5))
-    for i in range(500):
+    out_grad_npy = np.random.normal(size=(6, 5)).astype(np.float32)
+    for i in range(5000):
         sample_sum += exe.forward(is_train=True, data=data_npy)[0].asnumpy()
         exe.backward(out_grads=[mx.nd.array(out_grad_npy)])
         assert_almost_equal(exe.grad_dict['data'].asnumpy(), gt_prob * (1 - gt_prob) * out_grad_npy)
-    assert_almost_equal(sample_sum / 500, gt_prob, 6E-2)
+    assert_almost_equal(sample_sum / 5000, gt_prob, 1E-1)
 
 def test_cast():
     for srctype in [np.int32, np.float32, np.float16]:
