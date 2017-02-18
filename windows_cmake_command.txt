@@ -1,6 +1,7 @@
 cmake -G "Visual Studio 14 2015 Win64" ^
 -DCMAKE_BUILD_TYPE=Release ^
 -DCMAKE_CONFIGURATION_TYPES="Release" ^
+-DCUDA_ARCH_NAME="Maxwell" ^
 -DMKL_INCLUDE_DIR="C:\\Program Files (x86)\\IntelSWTools\\compilers_and_libraries_2017\\windows\\mkl\\include" ^
 -DMKL_RT_LIBRARY="C:\\Program Files (x86)\\IntelSWTools\\compilers_and_libraries_2017\\windows\\mkl\\lib\\intel64\\mkl_rt.lib" ^
 -DOpenCV_DIR="E:\ThirdParty\opencv-3.1\opencv\build\x64\vc14\lib" ^
