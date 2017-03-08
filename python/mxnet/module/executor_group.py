@@ -62,7 +62,7 @@ def _merge_multi_context(outputs, major_axis):
             else:
                 # Concatenate if necessary
                 rets.append(nd.concat(*[tensor.copyto(tensors[0].context) for tensor in tensors],
-                                      axis=axis))
+                                      dim=axis))
         else:
             # negative axis means the there is no batch_size axis, and all the
             # results should be the same on each device. We simply take the
