@@ -185,8 +185,9 @@ class BaseRNNCell(object):
                 state = func(name='%sbegin_state_%d'%(self._prefix, self._init_counter),
                              **kwargs)
             else:
+                kwargs.update(info)
                 state = func(name='%sbegin_state_%d'%(self._prefix, self._init_counter),
-                             **info, **kwargs)
+                             **kwargs)
             states.append(state)
         return states
 
@@ -523,7 +524,7 @@ class FusedRNNCell(BaseRNNCell):
     def state_info(self):
         b = self._bidirectional + 1
         n = (self._mode == 'lstm') + 1
-        return [{'shape': (b*self._num_layers, 0, self._num_hidden), 'layout': 'LNC'}
+        return [{'shape': (b*self._num_layers, 0, self._num_hidden), '__layout__': 'LNC'}
                 for _ in range(n)]
 
     @property
