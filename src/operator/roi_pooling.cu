@@ -103,9 +103,7 @@ inline void ROIPoolForward(const Tensor<gpu, 4, Dtype> &out,
   const int pooled_height = out.size(2);
   const int pooled_width = out.size(3);
   const int gridSize = (count + kMaxThreadsPerBlock - 1) / kMaxThreadsPerBlock;
-  const int grid_dim_x = (gridSize > kMaxGridNum) ? kMaxGridNum : gridSize;
-  const int grid_dim_y = (gridSize > kMaxGridNum) ? (gridSize + kMaxGridNum - 1) / kMaxGridNum : 1;
-  dim3 dimGrid(grid_dim_x, grid_dim_y);
+  dim3 dimGrid(kMaxGridDim, (gridSize + kMaxGridDim - 1) / kMaxGridDim);
   dim3 dimBlock(kMaxThreadsPerBlock);
   CheckLaunchParam(dimGrid, dimBlock, "ROIPooling Forward");
   cudaStream_t stream = Stream<gpu>::GetStream(out.stream_);
@@ -191,112 +189,15 @@ __global__ void ROIPoolBackwardAccKernel(const int count, const Dtype* top_diff,
 }
 
 template<typename Dtype>
-__global__ void ROIPoolBackwardAccKernelAtomic(const int count, const Dtype* top_diff,
-                                               const Dtype* argmax_data, const int num_rois,
-                                               const float spatial_scale, const int channels,
-                                               const int height, const int width,
-                                               const int pooled_height, const int pooled_width,
-                                               Dtype* bottom_diff, const Dtype* bottom_rois) {
-  for (int index = (blockIdx.x + blockIdx.y * gridDim.x) * blockDim.x + threadIdx.x;
-       index < count;
-       index += blockDim.x * gridDim.x * gridDim.y) {
-    // Skip if nothing is pooled in the forward pass
-    Dtype argmax_location = argmax_data[index];
-    if (argmax_location == -1.0) {
-      continue;
-    }
-    // (roi_n, c, out_h, out_w) coords in top data
-    int out_w = index % pooled_width;
-    int out_h = (index / pooled_width) % pooled_height;
-    int c = (index / pooled_width / pooled_height) % channels;
-    int roi_n = index / pooled_width / pooled_height / channels;
-    const Dtype* offset_bottom_rois = bottom_rois + roi_n * 5;
-    int roi_batch_ind = offset_bottom_rois[0];
-    int bottom_index = (roi_batch_ind * channels + c) * height * width + static_cast<int>(argmax_location);
-    Dtype gradient = top_diff[index];
-    atomicAdd(bottom_diff + bottom_index, gradient);
-  }
-}
-
-inline void ROIPoolBackwardAcc(const Tensor<gpu, 4, float> &in_grad,
-                               const Tensor<gpu, 4, float> &out_grad,
-                               const Tensor<gpu, 2, float> &bbox,
-                               const Tensor<gpu, 4, float> &max_idx,
+inline void ROIPoolBackwardAcc(const Tensor<gpu, 4, Dtype> &in_grad,
+                               const Tensor<gpu, 4, Dtype> &out_grad,
+                               const Tensor<gpu, 2, Dtype> &bbox,
+                               const Tensor<gpu, 4, Dtype> &max_idx,
                                const float spatial_scale) {
-  const float *top_diff = out_grad.dptr_;
-  const float *bottom_rois = bbox.dptr_;
-  float *bottom_diff = in_grad.dptr_;
-  float *argmax_data = max_idx.dptr_;
-  const int num_rois = bbox.size(0);
-  const int channels = in_grad.size(1);
-  const int height = in_grad.size(2);
-  const int width = in_grad.size(3);
-  const int pooled_height = out_grad.size(2);
-  const int pooled_width = out_grad.size(3);
-  const int count = out_grad.shape_.Size();
-  const int gridSize = (count + kMaxThreadsPerBlock - 1) / kMaxThreadsPerBlock;
-  const int grid_dim_x = (gridSize > kMaxGridNum) ? kMaxGridNum : gridSize;
-  const int grid_dim_y = (gridSize > kMaxGridNum) ? (gridSize + kMaxGridNum - 1) / kMaxGridNum : 1;
-  dim3 dimGrid(grid_dim_x, grid_dim_y);
-  dim3 dimBlock(kMaxThreadsPerBlock);
-  CheckLaunchParam(dimGrid, dimBlock, "ROIPooling Backward");
-  cudaStream_t stream = Stream<gpu>::GetStream(in_grad.stream_);
-  ROIPoolBackwardAccKernelAtomic<float> <<<dimGrid, dimBlock, 0, stream >>>(
-      count, top_diff, argmax_data, num_rois, spatial_scale, channels, height, width,
-      pooled_height, pooled_width, bottom_diff, bottom_rois);
-}
-
-inline void ROIPoolBackwardAcc(const Tensor<gpu, 4, double> &in_grad,
-                               const Tensor<gpu, 4, double> &out_grad,
-                               const Tensor<gpu, 2, double> &bbox,
-                               const Tensor<gpu, 4, double> &max_idx,
-                               const float spatial_scale) {
-  const double *top_diff = out_grad.dptr_;
-  const double *bottom_rois = bbox.dptr_;
-  double *bottom_diff = in_grad.dptr_;
-  double *argmax_data = max_idx.dptr_;
-  const int num_rois = bbox.size(0);
-  const int channels = in_grad.size(1);
-  const int height = in_grad.size(2);
-  const int width = in_grad.size(3);
-  const int pooled_height = out_grad.size(2);
-  const int pooled_width = out_grad.size(3);
-#if __CUDA_ARCH__ < 600
-  const int count = in_grad.shape_.Size();
-  const int gridSize = (count + kMaxThreadsPerBlock - 1) / kMaxThreadsPerBlock;
-  const int grid_dim_x = (gridSize > kMaxGridNum) ? kMaxGridNum : gridSize;
-  const int grid_dim_y = (gridSize > kMaxGridNum) ? (gridSize + kMaxGridNum - 1) / kMaxGridNum : 1;
-  dim3 dimGrid(grid_dim_x, grid_dim_y);
-  dim3 dimBlock(kMaxThreadsPerBlock);
-  CheckLaunchParam(dimGrid, dimBlock, "ROIPooling Backward");
-  cudaStream_t stream = Stream<gpu>::GetStream(in_grad.stream_);
-  ROIPoolBackwardAccKernel<double> <<<dimGrid, dimBlock, 0, stream>>>(
-      count, top_diff, argmax_data, num_rois, spatial_scale, channels, height, width,
-      pooled_height, pooled_width, bottom_diff, bottom_rois);
-#else
-  const int count = out_grad.shape_.Size();
-  const int gridSize = (count + kMaxThreadsPerBlock - 1) / kMaxThreadsPerBlock;
-  const int grid_dim_x = (gridSize > kMaxGridNum) ? kMaxGridNum : gridSize;
-  const int grid_dim_y = (gridSize > kMaxGridNum) ? (gridSize + kMaxGridNum - 1) / kMaxGridNum : 1;
-  dim3 dimGrid(grid_dim_x, grid_dim_y);
-  dim3 dimBlock(kMaxThreadsPerBlock);
-  CheckLaunchParam(dimGrid, dimBlock, "ROIPooling Backward");
-  cudaStream_t stream = Stream<gpu>::GetStream(in_grad.stream_);
-  ROIPoolBackwardAccKernelAtomic<double> <<<dimGrid, dimBlock, 0, stream>>>(
-    count, top_diff, argmax_data, num_rois, spatial_scale, channels, height, width,
-    pooled_height, pooled_width, bottom_diff, bottom_rois);
-#endif
-}
-
-inline void ROIPoolBackwardAcc(const Tensor<gpu, 4, mshadow::half::half_t> &in_grad,
-                               const Tensor<gpu, 4, mshadow::half::half_t> &out_grad,
-                               const Tensor<gpu, 2, mshadow::half::half_t> &bbox,
-                               const Tensor<gpu, 4, mshadow::half::half_t> &max_idx,
-                               const float spatial_scale) {
-  const mshadow::half::half_t *top_diff = out_grad.dptr_;
-  const mshadow::half::half_t *bottom_rois = bbox.dptr_;
-  mshadow::half::half_t *bottom_diff = in_grad.dptr_;
-  mshadow::half::half_t *argmax_data = max_idx.dptr_;
+  const Dtype *top_diff = out_grad.dptr_;
+  const Dtype *bottom_rois = bbox.dptr_;
+  Dtype *bottom_diff = in_grad.dptr_;
+  Dtype *argmax_data = max_idx.dptr_;
   const int count = in_grad.shape_.Size();
   const int num_rois = bbox.size(0);
   const int channels = in_grad.size(1);
@@ -305,16 +206,15 @@ inline void ROIPoolBackwardAcc(const Tensor<gpu, 4, mshadow::half::half_t> &in_g
   const int pooled_height = out_grad.size(2);
   const int pooled_width = out_grad.size(3);
   const int gridSize = (count + kMaxThreadsPerBlock - 1) / kMaxThreadsPerBlock;
-  const int grid_dim_x = (gridSize > kMaxGridNum) ? kMaxGridNum : gridSize;
-  const int grid_dim_y = (gridSize > kMaxGridNum) ? (gridSize + kMaxGridNum - 1) / kMaxGridNum : 1;
-  dim3 dimGrid(grid_dim_x, grid_dim_y);
+  dim3 dimGrid(kMaxGridDim, (gridSize + kMaxGridDim - 1) / kMaxGridDim);
   dim3 dimBlock(kMaxThreadsPerBlock);
   CheckLaunchParam(dimGrid, dimBlock, "ROIPooling Backward");
   cudaStream_t stream = Stream<gpu>::GetStream(in_grad.stream_);
-  ROIPoolBackwardAccKernel<mshadow::half::half_t> <<<dimGrid, dimBlock, 0, stream >>>(
+  ROIPoolBackwardAccKernel<Dtype><<<dimGrid, dimBlock, 0, stream>>>(
       count, top_diff, argmax_data, num_rois, spatial_scale, channels, height, width,
       pooled_height, pooled_width, bottom_diff, bottom_rois);
 }
+
 }  // namespace cuda
 
 template<typename Dtype>

@@ -193,6 +193,87 @@ class BaseModule(object):
         self.forward(data_batch, is_train=True)
         self.backward()
 
+    def train(self, data_batch, max_norm=None, norm_type=2):
+        """A convenient function that try to train the network for one step
+        
+        Parameters
+        ----------
+        data_batch : mx.io.DataBatch
+
+        Returns
+        -------
+        ret : None or float
+            If max_norm is not None, the graident will be clipped to 
+        """
+
+    def clip_grad_norm(self, max_norm=1.0, norm_type=2):
+        """Clips gradient norm.
+
+        The norm is computed over all gradients together, as if they were
+         concatenated into a single vector. Gradients are modified in-place.
+
+        Parameters
+        ----------
+        max_norm : float or int
+            The maximum clipping threshold of the gradient norm.
+        norm_type : float or int or str, optional
+            The type of the norm. L2 norm will be used by default.
+        Returns
+        -------
+        norm_val : float
+            The computed norm of the gradients.
+            
+        Examples
+        --------
+        An example of using clip_grad_norm to clip the gradient before updating the parameters::
+            >>> #Get the gradient via back-propagation
+            >>> net.forward_backward(data_batch=data_batch)
+            >>> norm_val = net.clip_grad_norm(max_norm=1.0)
+            >>> net.update()
+        """
+        assert self.binded and self.params_initialized
+        norm_val = self.global_norm(norm_type=2)
+        if norm_val > max_norm:
+            ratio = max_norm / float(norm_val + 1e-6)
+            for grads in self._exec_group.grad_arrays:
+                for grad in grads:
+                    grad[:] *= ratio
+        return norm_val
+
+    def global_norm(self, norm_type=2):
+        """Calculate gradient norm.
+
+        The norm is computed over all gradients together, as if they were
+         concatenated into a single vector.
+
+        Parameters
+        ----------
+        norm_type : float or int or str, optional
+            The type of the norm. L2 norm will be used by default.
+
+        Returns
+        -------
+        norm_val : float
+            The computed norm of the gradients.
+        """
+        assert self.binded and self.params_initialized
+        parameters = list(filter(lambda p: p.grad is not None, parameters))
+        max_norm = float(max_norm)
+        norm_type = float(norm_type)
+        if norm_type == float('inf'):
+            total_norm = max(p.grad.data.abs().max() for p in parameters)
+        else:
+            total_norm = 0
+            for p in parameters:
+                param_norm = p.grad.data.norm(norm_type)
+                total_norm += param_norm ** norm_type
+            total_norm = total_norm ** (1. / norm_type)
+        clip_coef = max_norm / (total_norm + 1e-6)
+        if clip_coef < 1:
+            for p in parameters:
+                p.grad.data.mul_(clip_coef)
+        return total_norm
+
     def score(self, eval_data, eval_metric, num_batch=None, batch_end_callback=None,
               score_end_callback=None,
               reset=True, epoch=0):
