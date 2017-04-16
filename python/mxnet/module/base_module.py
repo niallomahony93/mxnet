@@ -206,18 +206,19 @@ class BaseModule(object):
             If max_norm is not None, the graident will be clipped to 
         """
 
-    def clip_grad_norm(self, max_norm=1.0, norm_type=2):
+    def clip_by_global_norm(self, max_norm=1.0):
         """Clips gradient norm.
 
         The norm is computed over all gradients together, as if they were
          concatenated into a single vector. Gradients are modified in-place.
+        The method is first used in
+         `[ICML2013] On the difficulty of training recurrent neural networks`
 
         Parameters
         ----------
         max_norm : float or int
             The maximum clipping threshold of the gradient norm.
-        norm_type : float or int or str, optional
-            The type of the norm. L2 norm will be used by default.
+        
         Returns
         -------
         norm_val : float
@@ -231,48 +232,31 @@ class BaseModule(object):
             >>> norm_val = net.clip_grad_norm(max_norm=1.0)
             >>> net.update()
         """
-        assert self.binded and self.params_initialized
-        norm_val = self.global_norm(norm_type=2)
-        if norm_val > max_norm:
-            ratio = max_norm / float(norm_val + 1e-6)
-            for grads in self._exec_group.grad_arrays:
-                for grad in grads:
-                    grad[:] *= ratio
-        return norm_val
+        raise NotImplementedError()
 
-    def global_norm(self, norm_type=2):
-        """Calculate gradient norm.
+    def global_norm(self):
+        """Calculate global gradient norm.
 
-        The norm is computed over all gradients together, as if they were
+        The L2 norm is computed over all gradients together, as if they were
          concatenated into a single vector.
-
-        Parameters
-        ----------
-        norm_type : float or int or str, optional
-            The type of the norm. L2 norm will be used by default.
+        
+        Could be used to debug the optimization process.
+         See http://videolectures.net/deeplearning2015_goodfellow_network_optimization/
 
         Returns
         -------
         norm_val : float
             The computed norm of the gradients.
+
+        Examples
+        --------
+        An example of using global_norm to calculate the gradient norm after back-propgation::
+            >>> #Get the gradient via back-propagation
+            >>> net.forward_backward(data_batch=data_batch)
+            >>> norm_val = net.global_norm()
+            >>> print(norm_val)
         """
-        assert self.binded and self.params_initialized
-        parameters = list(filter(lambda p: p.grad is not None, parameters))
-        max_norm = float(max_norm)
-        norm_type = float(norm_type)
-        if norm_type == float('inf'):
-            total_norm = max(p.grad.data.abs().max() for p in parameters)
-        else:
-            total_norm = 0
-            for p in parameters:
-                param_norm = p.grad.data.norm(norm_type)
-                total_norm += param_norm ** norm_type
-            total_norm = total_norm ** (1. / norm_type)
-        clip_coef = max_norm / (total_norm + 1e-6)
-        if clip_coef < 1:
-            for p in parameters:
-                p.grad.data.mul_(clip_coef)
-        return total_norm
+        raise NotImplementedError()
 
     def score(self, eval_data, eval_metric, num_batch=None, batch_end_callback=None,
               score_end_callback=None,
@@ -450,7 +434,7 @@ class BaseModule(object):
             epoch_end_callback=None, batch_end_callback=None, kvstore='local',
             optimizer='sgd', optimizer_params=(('learning_rate', 0.01),),
             eval_end_callback=None,
-            eval_batch_end_callback=None, initializer=Uniform(0.01),
+            eval_batch_end_callback=None, initializer=Uniform(0.01), max_norm=None,
             arg_params=None, aux_params=None, allow_missing=False,
             force_rebind=False, force_init=False, begin_epoch=0, num_epoch=None,
             validation_metric=None, monitor=None):
@@ -551,6 +535,8 @@ class BaseModule(object):
                 if monitor is not None:
                     monitor.tic()
                 self.forward_backward(data_batch)
+                if max_norm is not None:
+                    norm_val = self.clip_by_global_norm(max_norm=max_norm)
                 self.update()
                 try:
                     # pre fetch next batch
@@ -1031,3 +1017,20 @@ class BaseModule(object):
         not even be associated with any symbols.
         """
         return self._symbol
+
+    def summary(self, level=1):
+        """Summarize the network parameters.
+
+        Parameters
+        ----------
+        level : int, optional
+            Level of the summarization logs to print.
+            The log becomes more verbose with higher summary level.
+            - Level = 0
+                Print the total param number + aux param number
+            - Level = 1
+                Print the shape of all parameters + The total number of paremter numbers
+            - Level = 2
+                Print the shape of the data and other available information in Level 1
+        """
+        raise NotImplementedError()

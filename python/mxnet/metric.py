@@ -5,6 +5,7 @@
 from __future__ import absolute_import
 
 import numpy
+import math
 from . import ndarray
 
 def check_label_shapes(labels, preds, shape=0):
