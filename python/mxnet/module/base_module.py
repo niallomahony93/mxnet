@@ -193,19 +193,6 @@ class BaseModule(object):
         self.forward(data_batch, is_train=True)
         self.backward()
 
-    def train(self, data_batch, max_norm=None, norm_type=2):
-        """A convenient function that try to train the network for one step
-        
-        Parameters
-        ----------
-        data_batch : mx.io.DataBatch
-
-        Returns
-        -------
-        ret : None or float
-            If max_norm is not None, the graident will be clipped to 
-        """
-
     def clip_by_global_norm(self, max_norm=1.0):
         """Clips gradient norm.
 
@@ -218,12 +205,12 @@ class BaseModule(object):
         ----------
         max_norm : float or int
             The maximum clipping threshold of the gradient norm.
-        
+
         Returns
         -------
         norm_val : float
             The computed norm of the gradients.
-            
+
         Examples
         --------
         An example of using clip_grad_norm to clip the gradient before updating the parameters::
@@ -239,7 +226,7 @@ class BaseModule(object):
 
         The L2 norm is computed over all gradients together, as if they were
          concatenated into a single vector.
-        
+
         Could be used to debug the optimization process.
          See http://videolectures.net/deeplearning2015_goodfellow_network_optimization/
 
@@ -472,6 +459,9 @@ class BaseModule(object):
         initializer : Initializer
             The initializer is called to initialize the module parameters when they are
             not already initialized.
+        max_norm : float or None
+            The max_norm for global L2 norm clipping. Norm clip will not be triggered
+             if setting to zero
         arg_params : dict
             Defaults to ``None``, if not ``None``, should be existing parameters from a trained
             model or loaded from a checkpoint (previously saved model). In this case,
@@ -536,7 +526,7 @@ class BaseModule(object):
                     monitor.tic()
                 self.forward_backward(data_batch)
                 if max_norm is not None:
-                    norm_val = self.clip_by_global_norm(max_norm=max_norm)
+                    self.clip_by_global_norm(max_norm=max_norm)
                 self.update()
                 try:
                     # pre fetch next batch

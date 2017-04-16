@@ -2212,9 +2212,9 @@ def global_norm(t_list):
 
     Given a tuple or list of tensors t_list, this operation returns the global norm of the elements
      in all tensors in t_list. The global norm is computed as:
-    
+
     ``global_norm = sqrt(sum([l2norm(t)**2 for t in t_list]))``
-    
+
     Any entries in t_list that are of type None are ignored.
 
     Parameters
@@ -2240,12 +2240,12 @@ def global_norm(t_list):
     7.74597
     """
     ret = None
-    for t in t_list:
-        if t is not None:
+    for arr in t_list:
+        if arr is not None:
             if ret is None:
-                ret = square(norm(t))
+                ret = square(norm(arr))
             else:
-                ret += square(norm(t))
+                ret += square(norm(arr))
     ret = sqrt(ret)
     return ret
 

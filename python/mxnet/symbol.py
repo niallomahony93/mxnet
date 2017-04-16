@@ -1425,7 +1425,7 @@ def arange(start, stop=None, step=1.0, repeat=1, name=None, dtype=None):
     return _internal._arange(start=start, stop=stop, step=step, repeat=repeat,
                              name=name, dtype=dtype)
 
-
+# pylint: disable=undefined-variable
 def global_norm(t_list, name=None):
     """Computes the global norm of multiple tensors.
 
@@ -1466,3 +1466,4 @@ def global_norm(t_list, name=None):
                 ret += square(norm(t))
     ret = sqrt(ret, name=name)
     return ret
+# pylint: enable=undefined-variable

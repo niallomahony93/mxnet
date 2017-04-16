@@ -9,7 +9,6 @@ import logging
 import warnings
 
 from .. import context as ctx
-from .. import ndarray as nd
 
 from ..initializer import Uniform
 
@@ -444,7 +443,7 @@ class BucketingModule(BaseModule):
         -------
         norm_val : float
             The computed norm of the gradients.
-        
+
         Examples
         --------
         An example of using global_norm to calculate the gradient norm after back-propgation::
@@ -521,7 +520,7 @@ class BucketingModule(BaseModule):
 
     def summary(self, level=2):
         """Summarize the network parameters.
-        
+
         Parameters
         ----------
         level : int, optional

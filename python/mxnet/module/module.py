@@ -773,9 +773,10 @@ class Module(BaseModule):
         assert self.binded
         self._exec_group.install_monitor(mon)
 
+    # pylint: disable=invalid-name
     def summary(self, level=2):
         """Summarize the network parameters.
-        
+
         Parameters
         ----------
         level : int, optional
@@ -791,29 +792,29 @@ class Module(BaseModule):
         assert self.binded and self.params_initialized
         assert 0 <= level <= 2,\
             "Level must be between 0 and 2, level=%d is not supported" % level
-        def _log_var(k, v, typ="param"):
+        def _log_var(key, value, typ="param"):
             if typ == "param":
                 if k in self._fixed_param_names:
                     self.logger.info("   %s: %s, %d, req = %s, fixed"
-                                     %(k,
-                                       str(v.shape),
-                                       np.prod(v.shape),
+                                     %(key,
+                                       str(value.shape),
+                                       np.prod(value.shape),
                                        self._exec_group.grad_req[k]))
                 else:
                     self.logger.info("   %s: %s, %d, req = %s"
-                                     % (k,
-                                        str(v.shape),
-                                        np.prod(v.shape),
+                                     % (key,
+                                        str(value.shape),
+                                        np.prod(value.shape),
                                         self._exec_group.grad_req[k]))
             elif typ == "data" or typ == "aux":
                 self.logger.info("   %s: %s, %d"
-                                 % (k,
-                                    str(v.shape),
-                                    np.prod(v.shape)))
+                                 % (key,
+                                    str(value.shape),
+                                    np.prod(value.shape)))
         total_param_num = 0
         total_fixed_param_num = 0
         total_aux_param_num = 0
-        if level >=2 :
+        if level >= 2:
             if len(self.data_names) == 0:
                 self.logger.info("Data: None")
             else:
@@ -850,3 +851,4 @@ class Module(BaseModule):
         self.logger.info("Total Param Num (exclude fixed ones): " + str(total_param_num))
         self.logger.info("Total Fixed Param Num: " + str(total_fixed_param_num))
         self.logger.info("Total Aux Param Num: " + str(total_aux_param_num))
+    # pylint: enable=invalid-name
