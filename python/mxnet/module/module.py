@@ -773,7 +773,7 @@ class Module(BaseModule):
         assert self.binded
         self._exec_group.install_monitor(mon)
 
-    def summary(self, level=1):
+    def summary(self, level=2):
         """Summarize the network parameters.
         
         Parameters

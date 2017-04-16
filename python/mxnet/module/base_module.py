@@ -1018,7 +1018,7 @@ class BaseModule(object):
         """
         return self._symbol
 
-    def summary(self, level=1):
+    def summary(self, level=2):
         """Summarize the network parameters.
 
         Parameters
