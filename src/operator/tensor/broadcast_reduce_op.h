@@ -45,6 +45,7 @@ struct ReduceAxisParam : public dmlc::Parameter<ReduceAxisParam> {
 
 struct PickParam : public dmlc::Parameter<PickParam> {
   dmlc::optional<int> axis;
+  int mode;
   bool keepdims;
   DMLC_DECLARE_PARAMETER(PickParam) {
     DMLC_DECLARE_FIELD(axis).set_default(dmlc::optional<int>(-1))
