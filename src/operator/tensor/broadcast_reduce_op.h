@@ -65,22 +65,6 @@ struct PickParam : public dmlc::Parameter<PickParam> {
   }
 };
 
-struct PickParam : public dmlc::Parameter<PickParam> {
-  dmlc::optional<int> axis;
-  int mode;
-  bool keepdims;
-  DMLC_DECLARE_PARAMETER(PickParam) {
-    DMLC_DECLARE_FIELD(axis).set_default(dmlc::optional<int>(-1))
-      .describe("int or None. The axis to picking the elements. "
-                "Negative values means indexing from right to left. "
-                "If is `None`, the elements in the index w.r.t the "
-                "flattened input will be picked.");
-    DMLC_DECLARE_FIELD(keepdims).set_default(false)
-      .describe("If true, the axis where we pick the elements is left "
-                "in the result as dimension with size one.");
-  }
-};
-
 struct BroadcastAxesParam : public dmlc::Parameter<BroadcastAxesParam> {
   TShape axis;
   TShape size;
