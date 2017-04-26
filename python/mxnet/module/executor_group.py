@@ -505,7 +505,6 @@ class DataParallelExecutorGroup(object):
                     out_grads_slice.append(og_my_slice.as_in_context(self.contexts[i]))
                 else:
                     out_grads_slice.append(grad.copyto(self.contexts[i]))
-            print("out_grads_slice=", out_grads_slice)
             exec_.backward(out_grads=out_grads_slice)
 
     def update_metric(self, eval_metric, labels):
