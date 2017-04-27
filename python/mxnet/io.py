@@ -87,7 +87,7 @@ class DataBatch(object):
     data : list of NDArray
           A list of input data.
     label : list of NDArray, optional
-          A list of input labels. It's none by default
+          A list of input labels.
     pad : int, optional
           The number of examples padded at the batch end. It is used when the
           examples read is less than the batch size.
