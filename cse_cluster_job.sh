@@ -12,4 +12,4 @@
 # completed (e)
 #$ -m be
 source ~/.cshrc_user
-make
+make -j64
