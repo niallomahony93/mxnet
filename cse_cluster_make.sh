@@ -1,1 +1,1 @@
-qsub -q gpu.q cse_cluster_job.sh
+qsub -q all.q cse_cluster_job.sh
