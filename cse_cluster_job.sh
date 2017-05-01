@@ -6,6 +6,8 @@
 # specify the working path
 #$ -wd /project/dygroup2/xingjian/mxnet
 
+#$ -l h=client111
+
 # email me with this address...
 #$ -M xshiab@connect.ust.hk
 # email when the job starts (b) and after the job has been
