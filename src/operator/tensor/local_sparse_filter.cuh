@@ -114,7 +114,7 @@ void LocalSparseFilterForwardImpl(const mshadow::Tensor<gpu, 4, DType> &data,
   int K = values.shape_[2];
   int outC = weight.shape_[1];
   const int grid_dim_x = B * H * W;
-  const int grid_dim_y = outC / TILE_SIZE;
+  const int grid_dim_y = (outC + TILE_SIZE - 1) / TILE_SIZE;
   dim3 dimGrid(grid_dim_x, grid_dim_y);
   dim3 dimBlock(TILE_SIZE, TILE_SIZE);
   CheckLaunchParam(dimGrid, dimBlock, "LocalSparseFilterForward");
