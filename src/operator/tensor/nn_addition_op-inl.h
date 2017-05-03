@@ -70,6 +70,23 @@ struct LocalFilterParam : public dmlc::Parameter<LocalFilterParam> {
   }
 };
 
+struct LocalSparseFilterParam : public dmlc::Parameter<LocalSparseFilterParam> {
+  int num_filter;
+  int L;
+  int K;
+  uint64_t workspace;
+  DMLC_DECLARE_PARAMETER(LocalSparseFilterParam) {
+    DMLC_DECLARE_FIELD(L).set_lower_bound(1)
+    .describe("Number of local kernels.");
+    DMLC_DECLARE_FIELD(L).set_lower_bound(1)
+    .describe("The neignborhood number of each local kernel.");
+    DMLC_DECLARE_FIELD(num_filter).set_lower_bound(1)
+    .describe("Number of filters.");
+    DMLC_DECLARE_FIELD(workspace).set_default(512).set_range(0, 8192)
+    .describe("Maximum tmp workspace allowed for sparse local filter (MB).");
+  }
+};
+
 template<typename xpu>
 void LocalCorrelationForward_(const nnvm::NodeAttrs& attrs,
                               const OpContext& ctx,
@@ -324,96 +341,7 @@ inline bool LocalCorrelationShape(const nnvm::NodeAttrs& attrs,
 }
 
 template<typename xpu>
-void LocalFilterForward_(const nnvm::NodeAttrs& attrs,
-                         const OpContext& ctx,
-                         const std::vector<TBlob>& inputs,
-                         const std::vector<OpReqType>& req,
-                         const std::vector<TBlob>& outputs) {
-  using namespace mshadow;
-  using namespace mshadow::expr;
-  mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
-  const LocalFilterParam& param_ = nnvm::get<LocalFilterParam>(attrs.parsed);
-  CHECK_EQ(param_.kernel.ndim(), 2);
-  CHECK_EQ(outputs[0].type_flag_, mshadow::kFloat32)
-    << "LocalFilter only support 32 bit float so far";
-  int batch_size = inputs[0].shape_[0];
-  int channel_num = inputs[0].shape_[1];
-  int h2 = inputs[0].shape_[2];
-  int w2 = inputs[0].shape_[3];
-  int h1 = inputs[1].shape_[1];
-  int w1 = inputs[1].shape_[2];
-  int k_y = param_.kernel[0];
-  int k_x = param_.kernel[1];
-  CHECK(k_y % 2 == 1 && k_x % 2 == 1) << "Only support odd kernel size";
-  int pad_type = param_.pad_type;
-  CHECK(pad_type == PadType::kSame || pad_type == PadType::kValid);
-  CHECK_EQ(batch_size, inputs[1].shape_[0]);
-  CHECK_EQ(channel_num, outputs[0].shape_[1]);
-  CHECK_EQ(batch_size, outputs[0].shape_[0]);
-  CHECK_EQ(h1, outputs[0].shape_[2]);
-  CHECK_EQ(w1, outputs[0].shape_[3]);
-  CHECK_EQ(k_y, inputs[1].shape_[3]);
-  CHECK_EQ(k_x, inputs[1].shape_[4]);
-  mshadow::Tensor<xpu, 4, real_t> data = inputs[0].get<xpu, 4, real_t>(s);
-  mshadow::Tensor<xpu, 3, real_t> weight = inputs[1].get_with_shape<xpu, 3, real_t>(
-                                           Shape3(batch_size * h1 * w1, k_y * k_x, 1), s);
-  mshadow::Tensor<xpu, 4, real_t> out = outputs[0].get<xpu, 4, real_t>(s);
-  int ele_tmp_data_bytes = sizeof(real_t) * (channel_num * h1 * w1 * k_y * k_x);
-  int ele_tmp_out_bytes = sizeof(real_t) * (channel_num * h1 * w1);
-  int ele_batch_dot_workspace_bytes = sizeof(real_t*) * 3 * h1 * w1;
-  int workspace_ele_size = ele_tmp_data_bytes + ele_tmp_out_bytes + ele_batch_dot_workspace_bytes;
-  int batch_step_ = std::min(static_cast<int>((param_.workspace << 20) / workspace_ele_size), batch_size);
-  CHECK_GE(batch_step_, 1);
-  mshadow::Tensor<xpu, 1, void*> workspace =
-    ctx.requested[0].get_space_typed<xpu, 1, void*>(mshadow::Shape1(batch_step_ * workspace_ele_size), s);
-  if (kNullOp != req[0]) {
-    for (int i = 0; i < batch_size; i += batch_step_) {
-      const index_t step = std::min(batch_step_, batch_size - i);
-      mshadow::Tensor<xpu, 3, real_t> tmp_data = mshadow::Tensor<xpu, 3, real_t>(
-                                              reinterpret_cast<real_t*>(workspace.dptr_),
-                                              Shape3(step * h1 * w1, channel_num, k_y * k_x), s);
-      mshadow::Tensor<xpu, 3, real_t> tmp_out = mshadow::Tensor<xpu, 3, real_t>(
-                                                    reinterpret_cast<real_t*>(
-                                                      workspace.dptr_ + step * ele_tmp_data_bytes),
-                                                    Shape3(step * h1 * w1, channel_num, 1), s);
-      mshadow::Tensor<xpu, 1, real_t*> batch_dot_workspace = mshadow::Tensor<xpu, 1, real_t*>(
-                                                    reinterpret_cast<real_t**>(
-                                                      workspace.dptr_ + step * (ele_tmp_data_bytes + ele_tmp_out_bytes)),
-                                                    Shape1(step * 3 * h1 * w1), s);
-      
-      if (pad_type == PadType::kValid) {
-        tmp_data = reshape(swapaxis<1, 0>(unpack_patch2col(data.Slice(i, i + step),
-                                                           param_.kernel[0],
-                                                           param_.kernel[1],
-                                                           param_.stride[0],
-                                                           param_.stride[1],
-                                                           param_.dilate[0],
-                                                           param_.dilate[1])),
-                           Shape3(step * h1 * w1, channel_num, k_y * k_x));
-      } else {
-        int pad_y = param_.dilate[0] * (param_.kernel[0] - 1) / 2;
-        int pad_x = param_.dilate[1] * (param_.kernel[1] - 1) / 2;
-        tmp_data = reshape(swapaxis<1, 0>(unpack_patch2col(pad(data.Slice(i, i + step), pad_y, pad_x),
-                                                            param_.kernel[0],
-                                                            param_.kernel[1],
-                                                            param_.stride[0],
-                                                            param_.stride[1],
-                                                            param_.dilate[0],
-                                                            param_.dilate[1])),
-                           Shape3(step * h1 * w1, channel_num, k_y * k_x));
-      }
-      mshadow::BatchGEMM<false, false>(tmp_out,
-                                       tmp_data, weight.Slice(i * h1 * w1, (i + step) * h1 * w1), 1.0f,
-                                       0.0f, batch_dot_workspace);
-      Assign(out.Slice(i, i + step), req[0], transpose(reshape(tmp_out,
-                                                               Shape4(step, h1, w1, channel_num)),
-                                                       Shape4(0, 3, 1, 2)));
-    }
-  }
-}
-
-template<typename xpu>
-void LocalFilterBackward_(const nnvm::NodeAttrs& attrs,
+void LocalSparseFilterForward_(const nnvm::NodeAttrs& attrs,
                                const OpContext& ctx,
                                const std::vector<TBlob>& inputs,
                                const std::vector<OpReqType>& req,
@@ -421,160 +349,61 @@ void LocalFilterBackward_(const nnvm::NodeAttrs& attrs,
   using namespace mshadow;
   using namespace mshadow::expr;
   mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
-  const LocalFilterParam& param_ = nnvm::get<LocalFilterParam>(attrs.parsed);
-  CHECK_NE(req[0], kWriteInplace);
-  CHECK_NE(req[1], kWriteInplace);
-  int batch_size = inputs[1].shape_[0];
-  int channel_num = inputs[1].shape_[1];
-  int h2 = inputs[1].shape_[2];
-  int w2 = inputs[1].shape_[3];
-  int h1 = inputs[2].shape_[1];
-  int w1 = inputs[2].shape_[2];
-  int k_y = param_.kernel[0];
-  int k_x = param_.kernel[1];
-  mshadow::Tensor<xpu, 4, real_t> out_grad = inputs[0].get<xpu, 4, real_t>(s);
-  mshadow::Tensor<xpu, 4, real_t> data = inputs[1].get<xpu, 4, real_t>(s);
-  mshadow::Tensor<xpu, 3, real_t> weight = inputs[2].get_with_shape<xpu, 3, real_t>(
-                                               Shape3(batch_size * h1 * w1, 1, k_y * k_x), s);
-  mshadow::Tensor<xpu, 4, real_t> data_grad = outputs[0].get<xpu, 4, real_t>(s);
-  mshadow::Tensor<xpu, 3, real_t> weight_grad = outputs[1].get_with_shape<xpu, 3, real_t>(
-                                               Shape3(batch_size * h1 * w1, 1, k_y * k_x), s);
-  int ele_tmp_data_bytes = sizeof(real_t) * (channel_num * h1 * w1 * k_y * k_x);
-  int ele_tmp_out_grad_bytes = sizeof(real_t) * (channel_num * h1 * w1);
-  int ele_batch_dot_workspace_bytes = sizeof(real_t*) * 3 * h1 * w1;
-  int workspace_ele_size = ele_tmp_data_bytes + ele_tmp_out_grad_bytes + ele_batch_dot_workspace_bytes;
-  int batch_step_ = std::min(static_cast<int>((param_.workspace << 20) / workspace_ele_size), batch_size);
-  CHECK_GE(batch_step_, 1);
-  mshadow::Tensor<xpu, 1, void*> workspace =
-    ctx.requested[0].get_space_typed<xpu, 1, void*>(mshadow::Shape1(batch_step_ * workspace_ele_size), s);
-  for (int i = 0; i < batch_size; i += batch_step_) {
-    const index_t step = std::min(batch_step_, batch_size - i);
-    mshadow::Tensor<xpu, 3, real_t> tmp_data = mshadow::Tensor<xpu, 3, real_t>(
-                                            reinterpret_cast<real_t*>(workspace.dptr_),
-                                            Shape3(step * h1 * w1, channel_num, k_y * k_x), s);
-    mshadow::Tensor<xpu, 3, real_t> tmp_out_grad = mshadow::Tensor<xpu, 3, real_t>(
-                                                  reinterpret_cast<real_t*>(
-                                                    workspace.dptr_ + step * ele_tmp_data_bytes),
-                                                  Shape3(step * h1 * w1, 1, channel_num), s);
-    mshadow::Tensor<xpu, 1, real_t*> batch_dot_workspace = mshadow::Tensor<xpu, 1, real_t*>(
-                                                  reinterpret_cast<real_t**>(
-                                                    workspace.dptr_ + step * (ele_tmp_data_bytes + ele_tmp_out_grad_bytes)),
-                                                  Shape1(step * 3 * h1 * w1), s);
-    if (param_.pad_type == PadType::kValid) {
-      tmp_data = reshape(swapaxis<1, 0>(unpack_patch2col(data.Slice(i, i + step),
-                                                          param_.kernel[0],
-                                                          param_.kernel[1],
-                                                          param_.stride[0],
-                                                          param_.stride[1],
-                                                          param_.dilate[0],
-                                                          param_.dilate[1])),
-                          Shape3(step * h1 * w1, channel_num, k_y * k_x));
-    } else {
-      int pad_y = param_.dilate[0] * (param_.kernel[0] - 1) / 2;
-      int pad_x = param_.dilate[1] * (param_.kernel[1] - 1) / 2;
-      tmp_data = reshape(swapaxis<1, 0>(unpack_patch2col(pad(data.Slice(i, i + step), pad_y, pad_x),
-                                                          param_.kernel[0],
-                                                          param_.kernel[1],
-                                                          param_.stride[0],
-                                                          param_.stride[1],
-                                                          param_.dilate[0],
-                                                          param_.dilate[1])),
-                          Shape3(step * h1 * w1, channel_num, k_y * k_x));
-    }
-    tmp_out_grad = reshape(transpose(out_grad.Slice(i, i + step), Shape4(0, 2, 3, 1)),
-                           Shape3(step * h1 * w1, 1, channel_num));
-    mshadow::BatchGEMM<false, false>(weight_grad.Slice(i * h1 * w1, (i + step) * h1 * w1),
-                                     tmp_out_grad, tmp_data, 1.0f,
-                                     (req[1] == kAddTo) ? 1.0f : 0.0f,
-                                     batch_dot_workspace);
-    mshadow::BatchGEMM<true, false>(tmp_data,
-                                    tmp_out_grad, weight.Slice(i * h1 * w1, (i + step) * h1 * w1), 1.0f,
-                                    0.0f, batch_dot_workspace);
-    if (param_.pad_type == PadType::kValid) {
-      Assign(data_grad.Slice(i, i + step), req[0],
-              pack_col2patch(swapaxis<1, 0>(reshape(tmp_data,
-                                                    Shape2(step * h1 * w1, channel_num * k_y * k_x))),
-                            data.Slice(i, i + step).shape_,
-                            param_.kernel[0],
-                            param_.kernel[1],
-                            param_.stride[0],
-                            param_.stride[1],
-                            param_.dilate[0],
-                            param_.dilate[1]));
-    } else {
-      Shape<4> pshape = data.Slice(i, i + step).shape_;
-      pshape[2] += param_.dilate[0] * (param_.kernel[0] - 1);
-      pshape[3] += param_.dilate[1] * (param_.kernel[1] - 1);
-      Assign(data_grad.Slice(i, i + step), req[0],
-              crop(pack_col2patch(swapaxis<1, 0>(reshape(tmp_data,
-                                                    Shape2(step * h1 * w1, channel_num * k_y * k_x))),
-                                  pshape,
-                                  param_.kernel[0],
-                                  param_.kernel[1],
-                                  param_.stride[0],
-                                  param_.stride[1],
-                                  param_.dilate[0],
-                                  param_.dilate[1]),
-                  Shape2(h2, w2)));
-    }
-  }
+  const LocalSparseFilterParam& param_ = nnvm::get<LocalSparseFilterParam>(attrs.parsed);
+  CHECK_EQ(outputs[0].type_flag_, mshadow::kFloat32)
+    << "LocalSparseFilter only support 32 bit float so far";
+  mshadow::Tensor<xpu, 4, real_t> data = inputs[0].get<xpu, 4, real_t>(s);
+  mshadow::Tensor<xpu, 3, real_t> weight = inputs[1].get<xpu, 3, real_t>(s);
+  mshadow::Tensor<xpu, 1, real_t> bias = inputs[2].get<xpu, 1, real_t>(s);
+  mshadow::Tensor<xpu, 5, real_t> values = inputs[3].get<xpu, 5, real_t>(s);
+  mshadow::Tensor<xpu, 5, real_t> indices = inputs[4].get<xpu, 5, real_t>(s);
+  mshadow::Tensor<xpu, 4, real_t> out = outputs[0].get<xpu, 4, real_t>(s);
+  CHECK_EQ(data.CheckContiguous(), true);
+  CHECK_EQ(weight.CheckContiguous(), true);
+  CHECK_EQ(bias.CheckContiguous(), true);
+  CHECK_EQ(values.CheckContiguous(), true);
+  CHECK_EQ(indices.CheckContiguous(), true);
+  CHECK_EQ(out.CheckContiguous(), true);
+  LocalSparseFilterForward<real_t, xpu>(data, weight, bias, values, indices, out);
 }
 
-inline bool LocalFilterShape(const nnvm::NodeAttrs& attrs,
-                                  std::vector<TShape> *in_attrs,
-                                  std::vector<TShape> *out_attrs) {
-  CHECK_EQ(in_attrs->size(), 2);
+template<typename xpu>
+void LocalSparseFilterBackward_(const nnvm::NodeAttrs& attrs,
+                               const OpContext& ctx,
+                               const std::vector<TBlob>& inputs,
+                               const std::vector<OpReqType>& req,
+                               const std::vector<TBlob>& outputs) {
+  using namespace mshadow;
+  using namespace mshadow::expr;
+  mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
+  const LocalSparseFilterParam& param_ = nnvm::get<LocalSparseFilterParam>(attrs.parsed);
+  CHECK_NE(req[0], kWriteInplace);
+  CHECK_NE(req[1], kWriteInplace);
+  CHECK_NE(req[2], kWriteInplace);
+  CHECK_NE(req[3], kWriteInplace);
+  LOG(FATAL) << "Not Implemented Error";
+}
+
+inline bool LocalSparseFilterShape(const nnvm::NodeAttrs& attrs,
+                                   std::vector<TShape> *in_attrs,
+                                   std::vector<TShape> *out_attrs) {
+  CHECK_EQ(in_attrs->size(), 5);
   CHECK_EQ(out_attrs->size(), 1);
-  const LocalFilterParam& param_ = nnvm::get<LocalFilterParam>(attrs.parsed);
-  CHECK_EQ(param_.kernel.ndim(), 2) << "kernel must be (ky, kx)";
-  CHECK(param_.kernel[0] % 2 == 1 && param_.kernel[1] % 2 == 1)
-    << "kernel size must be odd, kernel=" << param_.kernel;
-  CHECK(param_.stride[0] == 1 && param_.stride[1] == 1) << "stride is not supported and must be 1.";
+  const LocalSparseFilterParam& param_ = nnvm::get<LocalSparseFilterParam>(attrs.parsed);
   TShape& data_shape = (*in_attrs)[0];
-  TShape& weight_shape = (*in_attrs)[1];
   CHECK_EQ(data_shape.ndim(), 4);
-  CHECK_EQ(weight_shape.ndim(), 5);
-  int batch_size = data_shape[0];
-  int channel_num = data_shape[1];
-  int h2 = data_shape[2];
-  int w2 = data_shape[3];
-  int h1 = weight_shape[1];
-  int w1 = weight_shape[2];
-  int ky = weight_shape[3];
-  int kx = weight_shape[4];
-  // We will first try to complete the shape information
-  if (batch_size == 0) {
-    batch_size = weight_shape[0];
-    CHECK_NE(batch_size, 0) << "shape is invalid! data_shape=" << data_shape << ", weight_shape=" << weight_shape;
-  }
-  if (h1 == 0 && h2 != 0) {
-    h1 = (param_.pad_type == PadType::kValid) ? (h2 - param_.dilate[0] * (param_.kernel[0] - 1)) : h2;
-  } else if (h1 != 0 && h2 == 0) {
-    h2 = (param_.pad_type == PadType::kValid) ? h1 + param_.dilate[0] * (param_.kernel[0] - 1) : h1;
-  }
-  if (w1 == 0 && w2 != 0) {
-    w1 = (param_.pad_type == PadType::kValid) ? w2 - param_.dilate[0] * (param_.kernel[0] - 1) : w2;
-  } else if (w1 != 0 && w2 == 0) {
-    w2 = (param_.pad_type == PadType::kValid) ? w1 + param_.dilate[1] * (param_.kernel[1] - 1) : w1;
-  }
-  mshadow::Shape<4> out_shape;
-  out_shape[0] = batch_size;
-  out_shape[1] = channel_num;
-  out_shape[2] = h1;
-  out_shape[3] = w1;
-  SHAPE_ASSIGN_CHECK(*out_attrs, 0, out_shape);
-  batch_size = (*out_attrs)[0][0];
-  channel_num = (*out_attrs)[0][1];
-  h1 = (*out_attrs)[0][2];
-  w1 = (*out_attrs)[0][3];
-  h2 = (param_.pad_type == PadType::kValid) ? h1 + param_.dilate[0] * (param_.kernel[0] - 1) : h1;
-  w2 = (param_.pad_type == PadType::kValid) ? w1 + param_.dilate[1] * (param_.kernel[1] - 1) : w1;
-  CHECK(h1 != 0 && w1 != 0) << "Incomplete shape inference failed! data_shape="
-                            << data_shape << ", weight_shape=" << weight_shape;
-  CHECK_EQ(ky, param_.kernel[0]);
-  CHECK_EQ(kx, param_.kernel[1]);
-  SHAPE_ASSIGN_CHECK(*in_attrs, 0, mshadow::Shape4(batch_size, channel_num, h2, w2));
-  SHAPE_ASSIGN_CHECK(*in_attrs, 1, mshadow::Shape5(batch_size, h1, w1, ky, kx));
+  int B = data_shape[0];
+  int inC = data_shape[1];
+  int H = data_shape[2];
+  int W = data_shape[3];
+  int L = param_.L;
+  int K = param_.K;
+  int outC = param_.num_filter;
+  SHAPE_ASSIGN_CHECK(*out_attrs, 0, mshadow::Shape4(B, outC, H, W));
+  SHAPE_ASSIGN_CHECK(*in_attrs, 1, mshadow::Shape3(L, outC, inC));
+  SHAPE_ASSIGN_CHECK(*in_attrs, 2, mshadow::Shape1(outC));
+  SHAPE_ASSIGN_CHECK(*in_attrs, 3, mshadow::Shape5(B, L, K, H, W));
+  SHAPE_ASSIGN_CHECK(*in_attrs, 4, mshadow::Shape5(B, L, K, H, W));
   return true;
 }
 

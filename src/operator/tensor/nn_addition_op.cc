@@ -12,10 +12,11 @@ namespace mxnet {
 namespace op {
 DMLC_REGISTER_PARAMETER(LocalCorrelationParam);
 DMLC_REGISTER_PARAMETER(LocalFilterParam);
+DMLC_REGISTER_PARAMETER(LocalSparseFilterParam);
 DMLC_REGISTER_PARAMETER(BinaryStochasticNeuronParam);
 
 NNVM_REGISTER_OP(LocalCorrelation)
-.MXNET_DESCRIBE("Calculate the inner product between the vector lhs_{:, i,j} and rhs_{:, N(i), N(j)}."
+.MXNET_DESCRIBE("Calculate the inner product between the vector lhs_{:, i, j} and rhs_{:, N(i), N(j)}."
                 " lhs will be of shape (B, C, H_1, W_1), rhs will be of shape (B, C, H_2, W_2)."
                 " The output will have shape (B, H_1, W_1, ksize_y, ksize_x).")
 .set_num_inputs(2)
@@ -47,40 +48,52 @@ NNVM_REGISTER_OP(_backward_LocalCorrelation)
 .set_attr<nnvm::TIsBackward>("TIsBackward", true)
 .set_attr<FCompute>("FCompute<cpu>", LocalCorrelationBackward_<cpu>);
 
-
-NNVM_REGISTER_OP(LocalFilter)
-.MXNET_DESCRIBE("Calculate the local convolution between data and weight."
-                " data will be of shape (B, C, H_2, W_2), weight will be of shape (B, H_1, W_1, ksize_y, ksize_x)."
-                " The output will have shape (B, C, H_1, W_1)."
-                " It can actually be viewed as the reverse operation of LocalCorrelation.")
-.set_num_inputs(2)
+NNVM_REGISTER_OP(LocalSparseFilter)
+.MXNET_DESCRIBE("The sparse local filter layer:"
+                " data will be of shape (B, inC, H, W), indices will be of shape (B, L, K, H, W),"
+                " values will be of shape (B, L, K, H, W)."
+                " weight will be of shape (L, outC, inC), bias will be of shape (outC,)."
+                " The output will have shape (B, outC, H, W).")
+.set_num_inputs(5)
 .set_num_outputs(1)
-.set_attr_parser(ParamParser<LocalFilterParam>)
-.set_attr<nnvm::FInferShape>("FInferShape", LocalFilterShape)
-.set_attr<nnvm::FInferType>("FInferType", ElemwiseType<2, 1>)
-.set_attr<FCompute>("FCompute<cpu>", LocalFilterForward_<cpu>)
+.set_attr_parser(ParamParser<LocalSparseFilterParam>)
+.set_attr<nnvm::FInferShape>("FInferShape", LocalSparseFilterShape)
+.set_attr<nnvm::FInferType>("FInferType", ElemwiseType<5, 1>)
+.set_attr<FCompute>("FCompute<cpu>", LocalSparseFilterForward_<cpu>)
 .set_attr<FResourceRequest>("FResourceRequest",
   [](const NodeAttrs& attrs) {
     return std::vector<ResourceRequest>{ResourceRequest::kTempSpace};
   })
 .set_attr<nnvm::FListInputNames>("FListInputNames",
   [](const NodeAttrs& attrs) {
-    return std::vector<std::string>{"data", "weight"};
+    return std::vector<std::string>{"data", "weight", "bias", "values", "indices"};
   })
-.set_attr<nnvm::FGradient>("FGradient", ElemwiseGradUseIn{"_backward_LocalFilter"})
-.add_argument("data", "NDArray", "The data input, shape (B, C, H_2, W_2)")
-.add_argument("weight", "NDArray", "The weight input, shape (B, H_1, W_1, k_h, k_w)");
+.set_attr<nnvm::FGradient>("FGradient",
+  [](const nnvm::NodePtr& n, const std::vector<nnvm::NodeEntry>& ograds) {
+    auto ret = MakeNonlossGradNode("_backward_LocalSparseFilter", n, ograds,
+                                   {n->inputs[0], n->inputs[1], n->inputs[2],
+                                    n->inputs[3], n->inputs[4]}, n->attrs.dict);
+    auto p = MakeNode("zeros_like", n->attrs.name + "_index_backward",
+                      {n->inputs[4]}, nullptr, &n);
+    ret.emplace_back(nnvm::NodeEntry{p, 0, 0});
+    return ret;
+  })
+.add_argument("data", "NDArray-or-Symbol", "The data input, shape (B, inC, H, W)")
+.add_argument("weight", "NDArray-or-Symbol", "The weight, shape (L, outC, inC)")
+.add_argument("bias", "NDArray-or-Symbol", "The bias, shape (outC,)")
+.add_argument("values", "NDArray-or-Symbol", "The value of the corresponding indices, shape (B, L, K, H, W)")
+.add_argument("indices", "NDArray-or-Symbol", "The indices of the local connections, shape (B, L, K, H, W)");
 
-NNVM_REGISTER_OP(_backward_LocalFilter)
-.set_num_inputs(3)
-.set_num_outputs(2)
-.set_attr_parser(ParamParser<LocalFilterParam>)
+NNVM_REGISTER_OP(_backward_LocalSparseFilter)
+.set_num_inputs(6)
+.set_num_outputs(4)
+.set_attr_parser(ParamParser<LocalSparseFilterParam>)
 .set_attr<FResourceRequest>("FResourceRequest",
   [](const NodeAttrs& attrs) {
     return std::vector<ResourceRequest>{ResourceRequest::kTempSpace};
   })
 .set_attr<nnvm::TIsBackward>("TIsBackward", true)
-.set_attr<FCompute>("FCompute<cpu>", LocalFilterBackward_<cpu>);
+.set_attr<FCompute>("FCompute<cpu>", LocalSparseFilterBackward_<cpu>);
 
 // Binary Stochastic Neurons
 NNVM_REGISTER_OP(BSN)
@@ -111,11 +124,21 @@ NNVM_REGISTER_OP(BSN)
   ret.push_back(ResourceRequest::kRandom);
   return ret;
 })
-.add_argument("data", "NDArray", "Source input")
+.add_argument("data", "NDArray-or-Symbol", "Source input")
 .add_arguments(BinaryStochasticNeuronParam::__FIELDS__());
 
 MXNET_OPERATOR_REGISTER_BINARY(_backward_BSN)
 .set_attr<FCompute>("FCompute<cpu>", BinaryCompute<cpu, unary_bwd<mshadow_op::sigmoid_grad>>);
+
+template<typename DType>
+void LocalSparseFilterForward(const mshadow::Tensor<cpu, 4, real_t> &data,
+                              const mshadow::Tensor<cpu, 3, real_t> &weight,
+                              const mshadow::Tensor<cpu, 1, real_t> &bias,
+                              const mshadow::Tensor<cpu, 5, real_t> &values,
+                              const mshadow::Tensor<cpu, 5, real_t> &indices,
+                              const mshadow::Tensor<cpu, 5, real_t> &out) {
+  LOG(FATAL) << "Not Implemented";
+}
 
 }  // namespace op
 }  // namespace mxnet
