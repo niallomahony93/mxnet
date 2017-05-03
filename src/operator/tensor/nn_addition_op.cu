@@ -15,8 +15,6 @@ namespace mxnet {
 namespace op {
 const int TILE_SIZE = 32;
 
-
-
 template<typename DType>
 __global__ void LocalSparseFilterForwardKernel(const int B, const int inC, const int H, const int W,
                                                const int outC, const int L, const int K,
@@ -121,7 +119,11 @@ void LocalSparseFilterForwardImpl(const mshadow::Tensor<gpu, 4, DType> &data,
   cudaError err = cudaPeekAtLastError();
   CHECK_EQ(err, cudaSuccess) << cudaGetErrorString(err);
 }
+}
+}
 
+namespace mxnet {
+namespace op {
 NNVM_REGISTER_OP(LocalCorrelation)
 .set_attr<FCompute>("FCompute<gpu>", LocalCorrelationForward_<gpu>);
 

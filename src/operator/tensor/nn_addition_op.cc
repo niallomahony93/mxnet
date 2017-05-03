@@ -19,7 +19,11 @@ void LocalSparseFilterForwardImpl(const mshadow::Tensor<cpu, 4, DType> &data,
                                   const mshadow::Tensor<cpu, 5, DType> &out) {
   LOG(FATAL) << "Not Implemented";
 }
+}
+}
 
+namespace mxnet {
+namespace op {
 DMLC_REGISTER_PARAMETER(LocalCorrelationParam);
 DMLC_REGISTER_PARAMETER(LocalFilterParam);
 DMLC_REGISTER_PARAMETER(LocalSparseFilterParam);
