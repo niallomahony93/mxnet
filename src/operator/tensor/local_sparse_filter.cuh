@@ -5,7 +5,11 @@
 */
 #ifndef MXNET_OPERATOR_TENSOR_LOCAL_SPARSE_FILTER_CUH_
 #define MXNET_OPERATOR_TENSOR_LOCAL_SPARSE_FILTER_CUH_
-
+#include <mxnet/base.h>
+#include <mxnet/operator.h>
+#include <algorithm>
+#include <vector>
+#include "../mxnet_op.h"
 
 namespace mxnet {
 namespace op {
