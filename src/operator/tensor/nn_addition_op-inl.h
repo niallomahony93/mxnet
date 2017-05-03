@@ -364,7 +364,7 @@ void LocalSparseFilterForward_(const nnvm::NodeAttrs& attrs,
   CHECK_EQ(values.CheckContiguous(), true);
   CHECK_EQ(indices.CheckContiguous(), true);
   CHECK_EQ(out.CheckContiguous(), true);
-  LocalSparseFilterForward<real_t>(data, weight, bias, values, indices, out);
+  LocalSparseFilterForwardImpl<real_t>(data, weight, bias, values, indices, out);
 }
 
 template<typename xpu>

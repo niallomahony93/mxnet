@@ -131,12 +131,12 @@ MXNET_OPERATOR_REGISTER_BINARY(_backward_BSN)
 .set_attr<FCompute>("FCompute<cpu>", BinaryCompute<cpu, unary_bwd<mshadow_op::sigmoid_grad>>);
 
 template<typename DType>
-void LocalSparseFilterForward(const mshadow::Tensor<cpu, 4, real_t> &data,
-                              const mshadow::Tensor<cpu, 3, real_t> &weight,
-                              const mshadow::Tensor<cpu, 1, real_t> &bias,
-                              const mshadow::Tensor<cpu, 5, real_t> &values,
-                              const mshadow::Tensor<cpu, 5, real_t> &indices,
-                              const mshadow::Tensor<cpu, 5, real_t> &out) {
+void LocalSparseFilterForwardImpl(const mshadow::Tensor<cpu, 4, DType> &data,
+                                  const mshadow::Tensor<cpu, 3, DType> &weight,
+                                  const mshadow::Tensor<cpu, 1, DType> &bias,
+                                  const mshadow::Tensor<cpu, 5, DType> &values,
+                                  const mshadow::Tensor<cpu, 5, DType> &indices,
+                                  const mshadow::Tensor<cpu, 5, DType> &out) {
   LOG(FATAL) << "Not Implemented";
 }
 

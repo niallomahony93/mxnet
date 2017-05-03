@@ -114,12 +114,12 @@ __global__ void LocalSparseFilterForwardKernel(const int B, const int inC, const
 }
 
 template<typename DType>
-void LocalSparseFilterForward(const mshadow::Tensor<gpu, 4, real_t> &data,
-                              const mshadow::Tensor<gpu, 3, real_t> &weight,
-                              const mshadow::Tensor<gpu, 1, real_t> &bias,
-                              const mshadow::Tensor<gpu, 5, real_t> &values,
-                              const mshadow::Tensor<gpu, 5, real_t> &indices,
-                              const mshadow::Tensor<gpu, 5, real_t> &out) {
+void LocalSparseFilterForwardImpl(const mshadow::Tensor<gpu, 4, DType> &data,
+                                  const mshadow::Tensor<gpu, 3, DType> &weight,
+                                  const mshadow::Tensor<gpu, 1, DType> &bias,
+                                  const mshadow::Tensor<gpu, 5, DType> &values,
+                                  const mshadow::Tensor<gpu, 5, DType> &indices,
+                                  const mshadow::Tensor<gpu, 5, DType> &out) {
   using namespace mshadow::cuda;
   int B = data.shape_[0];
   int inC = data.shape_[1];
