@@ -104,6 +104,7 @@ void LocalSparseFilterForwardImpl(const mshadow::Tensor<gpu, 4, DType> &data,
                                   const mshadow::Tensor<gpu, 5, DType> &values,
                                   const mshadow::Tensor<gpu, 5, DType> &indices,
                                   const mshadow::Tensor<gpu, 4, DType> &out) {
+  using namespace mshadow;
   using namespace mshadow::cuda;
   int B = data.shape_[0];
   int inC = data.shape_[1];
@@ -119,7 +120,7 @@ void LocalSparseFilterForwardImpl(const mshadow::Tensor<gpu, 4, DType> &data,
   CheckLaunchParam(dimGrid, dimBlock, "LocalSparseFilterForward");
   cudaStream_t stream = Stream<gpu>::GetStream(data.stream_);
   LocalSparseFilterForwardKernel << <dimGrid, dimBlock, 0, stream >> >
-    (B, inC, H, W, outC, L, K, out, data, weight, bias, values, indices);
+    (B, inC, H, W, outC, L, K, out.dptr_, data.dptr_, weight.dptr_, bias.dptr_, values.dptr_, indices.dptr_);
   cudaError err = cudaPeekAtLastError();
   CHECK_EQ(err, cudaSuccess) << cudaGetErrorString(err);
 }
