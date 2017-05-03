@@ -48,14 +48,8 @@ struct LocalCorrelationParam : public dmlc::Parameter<LocalCorrelationParam> {
 
 struct LocalSparseFilterParam : public dmlc::Parameter<LocalSparseFilterParam> {
   int num_filter;
-  int L;
-  int K;
   uint64_t workspace;
   DMLC_DECLARE_PARAMETER(LocalSparseFilterParam) {
-    DMLC_DECLARE_FIELD(L).set_lower_bound(1)
-    .describe("Number of local kernels.");
-    DMLC_DECLARE_FIELD(K).set_lower_bound(1)
-    .describe("The neignborhood number of each local kernel.");
     DMLC_DECLARE_FIELD(num_filter).set_lower_bound(1)
     .describe("Number of filters.");
     DMLC_DECLARE_FIELD(workspace).set_default(512).set_range(0, 8192)
@@ -367,13 +361,14 @@ inline bool LocalSparseFilterShape(const nnvm::NodeAttrs& attrs,
   CHECK_EQ(out_attrs->size(), 1);
   const LocalSparseFilterParam& param_ = nnvm::get<LocalSparseFilterParam>(attrs.parsed);
   TShape& data_shape = (*in_attrs)[0];
+  TShape& values_shape = (*in_attrs)[3];
   CHECK_EQ(data_shape.ndim(), 4);
   int B = data_shape[0];
   int inC = data_shape[1];
   int H = data_shape[2];
   int W = data_shape[3];
-  int L = param_.L;
-  int K = param_.K;
+  int L = values_shape[1];
+  int K = values_shape[2];
   int outC = param_.num_filter;
   SHAPE_ASSIGN_CHECK(*out_attrs, 0, mshadow::Shape4(B, outC, H, W));
   SHAPE_ASSIGN_CHECK(*in_attrs, 1, mshadow::Shape3(L, outC, inC));
