@@ -11,7 +11,6 @@
 namespace mxnet {
 namespace op {
 DMLC_REGISTER_PARAMETER(LocalCorrelationParam);
-DMLC_REGISTER_PARAMETER(LocalFilterParam);
 DMLC_REGISTER_PARAMETER(LocalSparseFilterParam);
 DMLC_REGISTER_PARAMETER(BinaryStochasticNeuronParam);
 
