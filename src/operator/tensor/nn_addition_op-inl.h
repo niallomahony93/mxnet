@@ -13,6 +13,7 @@
 #include "../mshadow_op.h"
 #include "../elemwise_op_common.h"
 #include "../mxnet_op.h"
+#include "./local_sparse_filter.h"
 
 namespace mxnet {
 namespace op {
