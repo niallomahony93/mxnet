@@ -71,7 +71,7 @@ __global__ void LocalSparseFilterForwardKernel(const int B, const int inC, const
           __syncthreads();
           if (ty == 0) {
             if (ic + tx < inC) {
-              data_shared[tx] = data[ADDRESS_3D(ic + tx, local_connection_ind, B, C, H * W)];
+              data_shared[tx] = data[ADDRESS_3D(ic + tx, local_connection_ind, B, inC, H * W)];
             } else {
               data_shared[tx] = 0;
             }
@@ -79,7 +79,7 @@ __global__ void LocalSparseFilterForwardKernel(const int B, const int inC, const
           __syncthreads();
           weight_shared[ty][tx] *= (local_connection_val * data_shared[tx]);
           __syncthreads();
-          Reduce1D<mshadow::red::sum, 5>(weight_shared[ty]);
+          mshadow::cuda::Reduce1D<mshadow::red::sum, 5>(weight_shared[ty]);
           __syncthreads();
           if (tx == 0) {
             out_shared[ty] += weight_shared[ty];
