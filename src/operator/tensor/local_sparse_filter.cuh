@@ -82,7 +82,7 @@ __global__ void LocalSparseFilterForwardKernel(const int B, const int inC, const
           mshadow::cuda::Reduce1D<mshadow::red::sum, 5>(weight_shared[ty]);
           __syncthreads();
           if (tx == 0) {
-            out_shared[ty] += weight_shared[ty];
+            out_shared[ty] += weight_shared[ty][0];
           }
           __syncthreads();
         }
