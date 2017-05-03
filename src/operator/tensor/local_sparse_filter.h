@@ -17,7 +17,7 @@ void LocalSparseFilterForwardImpl(const mshadow::Tensor<cpu, 4, DType> &data,
                                   const mshadow::Tensor<cpu, 1, DType> &bias,
                                   const mshadow::Tensor<cpu, 5, DType> &values,
                                   const mshadow::Tensor<cpu, 5, DType> &indices,
-                                  const mshadow::Tensor<cpu, 5, DType> &out) {
+                                  const mshadow::Tensor<cpu, 4, DType> &out) {
   LOG(FATAL) << "Not Implemented";
 }
 }  // namespace op
@@ -25,4 +25,4 @@ void LocalSparseFilterForwardImpl(const mshadow::Tensor<cpu, 4, DType> &data,
 #ifdef __CUDACC__
 #include "./local_sparse_filter.cuh"
 #endif
-#endif  // MXNET_OPERATOR_TENSOR_LOCAL_SPARSE_FILTER_CUH_
+#endif  // MXNET_OPERATOR_TENSOR_LOCAL_SPARSE_FILTER_H_

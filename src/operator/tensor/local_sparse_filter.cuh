@@ -99,7 +99,7 @@ void LocalSparseFilterForwardImpl(const mshadow::Tensor<gpu, 4, DType> &data,
                                   const mshadow::Tensor<gpu, 1, DType> &bias,
                                   const mshadow::Tensor<gpu, 5, DType> &values,
                                   const mshadow::Tensor<gpu, 5, DType> &indices,
-                                  const mshadow::Tensor<gpu, 5, DType> &out) {
+                                  const mshadow::Tensor<gpu, 4, DType> &out) {
   using namespace mshadow::cuda;
   int B = data.shape_[0];
   int inC = data.shape_[1];
