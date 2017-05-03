@@ -10,6 +10,16 @@
 
 namespace mxnet {
 namespace op {
+template<typename DType>
+void LocalSparseFilterForwardImpl(const mshadow::Tensor<cpu, 4, DType> &data,
+                                  const mshadow::Tensor<cpu, 3, DType> &weight,
+                                  const mshadow::Tensor<cpu, 1, DType> &bias,
+                                  const mshadow::Tensor<cpu, 5, DType> &values,
+                                  const mshadow::Tensor<cpu, 5, DType> &indices,
+                                  const mshadow::Tensor<cpu, 5, DType> &out) {
+  LOG(FATAL) << "Not Implemented";
+}
+
 DMLC_REGISTER_PARAMETER(LocalCorrelationParam);
 DMLC_REGISTER_PARAMETER(LocalFilterParam);
 DMLC_REGISTER_PARAMETER(LocalSparseFilterParam);
@@ -129,16 +139,6 @@ NNVM_REGISTER_OP(BSN)
 
 MXNET_OPERATOR_REGISTER_BINARY(_backward_BSN)
 .set_attr<FCompute>("FCompute<cpu>", BinaryCompute<cpu, unary_bwd<mshadow_op::sigmoid_grad>>);
-
-template<typename DType>
-void LocalSparseFilterForwardImpl(const mshadow::Tensor<cpu, 4, DType> &data,
-                                  const mshadow::Tensor<cpu, 3, DType> &weight,
-                                  const mshadow::Tensor<cpu, 1, DType> &bias,
-                                  const mshadow::Tensor<cpu, 5, DType> &values,
-                                  const mshadow::Tensor<cpu, 5, DType> &indices,
-                                  const mshadow::Tensor<cpu, 5, DType> &out) {
-  LOG(FATAL) << "Not Implemented";
-}
 
 }  // namespace op
 }  // namespace mxnet

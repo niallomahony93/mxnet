@@ -15,24 +15,6 @@ namespace mxnet {
 namespace op {
 const int TILE_SIZE = 32;
 
-NNVM_REGISTER_OP(LocalCorrelation)
-.set_attr<FCompute>("FCompute<gpu>", LocalCorrelationForward_<gpu>);
-
-NNVM_REGISTER_OP(_backward_LocalCorrelation)
-.set_attr<FCompute>("FCompute<gpu>", LocalCorrelationBackward_<gpu>);
-
-NNVM_REGISTER_OP(LocalSparseFilter)
-.set_attr<FCompute>("FCompute<gpu>", LocalSparseFilterForward_<gpu>);
-
-NNVM_REGISTER_OP(_backward_LocalSparseFilter)
-.set_attr<FCompute>("FCompute<gpu>", LocalSparseFilterBackward_<gpu>);
-
-NNVM_REGISTER_OP(BSN)
-.set_attr<FCompute>("FCompute<gpu>", BinaryStochasticNeuronCompute<gpu>);
-
-NNVM_REGISTER_OP(_backward_BSN)
-.set_attr<FCompute>("FCompute<gpu>", BinaryCompute<gpu, unary_bwd<mshadow_op::sigmoid_grad>>);
-
 
 
 template<typename DType>
@@ -139,5 +121,23 @@ void LocalSparseFilterForwardImpl(const mshadow::Tensor<gpu, 4, DType> &data,
   cudaError err = cudaPeekAtLastError();
   CHECK_EQ(err, cudaSuccess) << cudaGetErrorString(err);
 }
+
+NNVM_REGISTER_OP(LocalCorrelation)
+.set_attr<FCompute>("FCompute<gpu>", LocalCorrelationForward_<gpu>);
+
+NNVM_REGISTER_OP(_backward_LocalCorrelation)
+.set_attr<FCompute>("FCompute<gpu>", LocalCorrelationBackward_<gpu>);
+
+NNVM_REGISTER_OP(LocalSparseFilter)
+.set_attr<FCompute>("FCompute<gpu>", LocalSparseFilterForward_<gpu>);
+
+NNVM_REGISTER_OP(_backward_LocalSparseFilter)
+.set_attr<FCompute>("FCompute<gpu>", LocalSparseFilterBackward_<gpu>);
+
+NNVM_REGISTER_OP(BSN)
+.set_attr<FCompute>("FCompute<gpu>", BinaryStochasticNeuronCompute<gpu>);
+
+NNVM_REGISTER_OP(_backward_BSN)
+.set_attr<FCompute>("FCompute<gpu>", BinaryCompute<gpu, unary_bwd<mshadow_op::sigmoid_grad>>);
 }  // namespace op
 }  // namespace mxnet
