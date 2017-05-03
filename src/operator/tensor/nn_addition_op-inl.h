@@ -46,31 +46,6 @@ struct LocalCorrelationParam : public dmlc::Parameter<LocalCorrelationParam> {
   }
 };
 
-struct LocalFilterParam : public dmlc::Parameter<LocalFilterParam> {
-  TShape kernel;
-  TShape dilate;
-  TShape stride;
-  int pad_type;
-  uint64_t workspace;
-  DMLC_DECLARE_PARAMETER(LocalFilterParam) {
-    int shape[] = {1, 1};
-    DMLC_DECLARE_FIELD(kernel)
-    .describe("Size of the local filter kernel.");
-    DMLC_DECLARE_FIELD(dilate).set_default(TShape(shape, shape + 2))
-    .describe("Dilate for the local filters.");
-    DMLC_DECLARE_FIELD(stride).set_default(TShape(shape, shape + 2))
-    .describe("Stride for the local filters.");
-    DMLC_DECLARE_FIELD(pad_type).set_default(PadType::kValid)
-    .add_enum("valid", PadType::kValid)
-    .add_enum("same", PadType::kSame)
-    .describe("If pad_type is valid, the \"valid\" convolution will be used. "
-              "Otherwise the data will be padded to make sure that the output"
-              " will be have the same height/width as the input.");
-    DMLC_DECLARE_FIELD(workspace).set_default(1024).set_range(0, 8192)
-    .describe("Maximum tmp workspace allowed for convolution (MB).");
-  }
-};
-
 struct LocalSparseFilterParam : public dmlc::Parameter<LocalSparseFilterParam> {
   int num_filter;
   int L;
@@ -79,7 +54,7 @@ struct LocalSparseFilterParam : public dmlc::Parameter<LocalSparseFilterParam> {
   DMLC_DECLARE_PARAMETER(LocalSparseFilterParam) {
     DMLC_DECLARE_FIELD(L).set_lower_bound(1)
     .describe("Number of local kernels.");
-    DMLC_DECLARE_FIELD(L).set_lower_bound(1)
+    DMLC_DECLARE_FIELD(K).set_lower_bound(1)
     .describe("The neignborhood number of each local kernel.");
     DMLC_DECLARE_FIELD(num_filter).set_lower_bound(1)
     .describe("Number of filters.");
