@@ -9,7 +9,6 @@
 #include <mxnet/operator.h>
 #include <algorithm>
 #include <vector>
-#include< cuda.h> 
 #include "../mxnet_op.h"
 
 namespace mxnet {
@@ -50,7 +49,7 @@ __global__ void LocalSparseFilterForwardKernelBHWC(const int B, const int inC, c
   __shared__ int local_connection_ind[128];
   __shared__ float data_shared[TILE_SIZE];
   __shared__ float out_shared[TILE_SIZE];
-  __shared__ float weight_shared[TILE_SIZE][TILE_SIZE + 1];
+  __shared__ float weight_shared[TILE_SIZE][TILE_SIZE + 1]; // Add 1 to avoid bank conflict
   int tx = threadIdx.x, ty = threadIdx.y;
   int tid = tx + ty * blockDim.x;
   for (int index = blockIdx.x; index < B * H * W; index += gridDim.x) {
@@ -148,6 +147,54 @@ void LocalSparseFilterForwardImpl(const mshadow::Tensor<gpu, 4, DType> &data,
   cudaError err = cudaPeekAtLastError();
   CHECK_EQ(err, cudaSuccess) << cudaGetErrorString(err);
 }
+
+template<typename DType>
+__global__ void LocalSparseFilterBackwardKernelBHWC(const int B, const int inC, const int H, const int W,
+                                                    const int outC, const int L, const int K, const DType pad_val,
+                                                    DType* out,
+                                                    const DType* __restrict data,
+                                                    const DType* __restrict weight,
+                                                    const DType* __restrict bias,
+                                                    const DType* __restrict values,
+                                                    const DType* __restrict indices) {
+
+}
+
+template<typename need_data_grad, typename need_value_grad, typename need_weight_grad, typename DType>
+void LocalSparseFilterBackwardAccImpl(const mshadow::Tensor<gpu, 4, DType> &out_grad,
+                                      const mshadow::Tensor<gpu, 4, DType> &data,
+                                      const mshadow::Tensor<gpu, 3, DType> &weight,
+                                      const mshadow::Tensor<gpu, 5, DType> &values,
+                                      const mshadow::Tensor<gpu, 5, DType> &indices,
+                                      const mshadow::Tensor<gpu, 4, DType> &data_grad,
+                                      const mshadow::Tensor<gpu, 4, DType> &weight_grad,
+                                      const mshadow::Tensor<gpu, 4, DType> &values_grad,
+                                      const DType pad_val) {
+  using namespace mshadow;
+  using namespace mshadow::cuda;
+  int B = data.shape_[0];
+  // int inC = data.shape_[1];
+  // int H = data.shape_[2];
+  // int W = data.shape_[3];
+  int L = values.shape_[1];
+  int K = values.shape_[2];
+  int H = data.shape_[1];
+  int W = data.shape_[2];
+  int inC = data.shape_[3];
+  int outC = weight.shape_[0];
+  const int grid_dim_x = B * H * W;
+  // const int grid_dim_y = (outC + TILE_SIZE - 1) / TILE_SIZE;
+  CHECK_LT(L * K, 128);
+  dim3 dimGrid(grid_dim_x, 1);
+  dim3 dimBlock(TILE_SIZE, TILE_SIZE);
+  CheckLaunchParam(dimGrid, dimBlock, "LocalSparseFilterForward");
+  cudaStream_t stream = Stream<gpu>::GetStream(data.stream_);
+  LocalSparseFilterForwardKernelBHWC << <dimGrid, dimBlock, 0, stream >> >
+    (B, inC, H, W, outC, L, K, pad_val, out.dptr_, data.dptr_, weight.dptr_, bias.dptr_, values.dptr_, indices.dptr_);
+  cudaError err = cudaPeekAtLastError();
+  CHECK_EQ(err, cudaSuccess) << cudaGetErrorString(err);
+}
+
 }  // namespace op
 }  // namespace mxnet
 
