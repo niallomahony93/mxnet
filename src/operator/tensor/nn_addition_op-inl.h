@@ -366,9 +366,8 @@ void LocalSparseFilterBackward_(const nnvm::NodeAttrs& attrs,
   mshadow::Tensor<xpu, 4, real_t> out_grad = inputs[0].get<xpu, 4, real_t>(s);
   mshadow::Tensor<xpu, 4, real_t> data = inputs[1].get<xpu, 4, real_t>(s);
   mshadow::Tensor<xpu, 3, real_t> weight = inputs[2].get<xpu, 3, real_t>(s);
-  mshadow::Tensor<xpu, 1, real_t> bias = inputs[3].get<xpu, 1, real_t>(s);
-  mshadow::Tensor<xpu, 5, real_t> values = inputs[4].get<xpu, 5, real_t>(s);
-  mshadow::Tensor<xpu, 5, real_t> indices = inputs[5].get<xpu, 5, real_t>(s);
+  mshadow::Tensor<xpu, 5, real_t> values = inputs[3].get<xpu, 5, real_t>(s);
+  mshadow::Tensor<xpu, 5, real_t> indices = inputs[4].get<xpu, 5, real_t>(s);
   mshadow::Tensor<xpu, 4, real_t> data_grad = outputs[0].get<xpu, 4, real_t>(s);
   mshadow::Tensor<xpu, 3, real_t> weight_grad = outputs[0].get<xpu, 3, real_t>(s);
   mshadow::Tensor<xpu, 1, real_t> bias_grad = outputs[0].get<xpu, 1, real_t>(s);

@@ -70,8 +70,7 @@ NNVM_REGISTER_OP(LocalSparseFilter)
 .set_attr<nnvm::FGradient>("FGradient",
   [](const nnvm::NodePtr& n, const std::vector<nnvm::NodeEntry>& ograds) {
     auto ret = MakeNonlossGradNode("_backward_LocalSparseFilter", n, ograds,
-                                   {n->inputs[0], n->inputs[1], n->inputs[2],
-                                    n->inputs[3], n->inputs[4]}, n->attrs.dict);
+                                   {n->inputs[0], n->inputs[1], n->inputs[3], n->inputs[4]}, n->attrs.dict);
     auto p = MakeNode("zeros_like", n->attrs.name + "_index_backward",
                       {n->inputs[4]}, nullptr, &n);
     ret.emplace_back(nnvm::NodeEntry{p, 0, 0});
