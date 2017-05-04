@@ -68,7 +68,7 @@ __global__ void LocalSparseFilterForwardKernelBHWC(const int B, const int inC, c
     int w = index % W;
     int h = (index / W) % H;
     int b = index / W / H;
-    // Load the initial data + the local connection values and indices
+    // Load the local connection values and indices
     if (tid < L * K) {
       int address = ADDRESS_4D_BCHW(b, tid, h, w, L * K, H, W);
       local_connection_val[tid] = values[address];
@@ -97,7 +97,7 @@ __global__ void LocalSparseFilterForwardKernelBHWC(const int B, const int inC, c
           if (ty == 0) {
             data_shared[tx] = 0.0f;
             if (ic < inC) {
-              // Load the local connection data into shared memory. TODO, accelerate this part using Parallel Reduce.
+              // Load the local used data into shared memory. TODO, accelerate this part using Parallel Reduce.
               for (int k = 0; k < K; ++k) {
                 if (local_connection_ind[l * K + k] >= 0 && local_connection_ind[l * K + k] < H * W) {
                   int address = ADDRESS_3D_BHWC(b, local_connection_ind[l * K + k], ic, H * W, inC);
@@ -143,9 +143,6 @@ void LocalSparseFilterForwardImpl(const mshadow::Tensor<gpu, 4, DType> &data,
   using namespace mshadow;
   using namespace mshadow::cuda;
   int B = data.shape_[0];
-  // int inC = data.shape_[1];
-  // int H = data.shape_[2];
-  // int W = data.shape_[3];
   int L = values.shape_[1];
   int K = values.shape_[2];
   int H = data.shape_[1];
@@ -175,7 +172,76 @@ __global__ void LocalSparseFilterBackwardAccKernelBHWC(const int B, const int in
                                                        const DType* __restrict weight,
                                                        const DType* __restrict values,
                                                        const DType* __restrict indices) {
-
+  //TODO Use extern instead
+  __shared__ bool need_data_grad_dev;
+  __shared__ bool need_weight_grad_dev;
+  __shared__ bool need_values_grad_dev;
+  __shared__ float local_connection_val[128];
+  __shared__ int local_connection_ind[128];
+  __shared__ float data_shared[TILE_SIZE][TILE_SIZE + 1];
+  __shared__ volatile float weight_shared[TILE_SIZE][TILE_SIZE + 1]; // Add 1 to avoid bank conflict
+  __shared__ float out_grad_shared[TILE_SIZE];
+  __shared__ volatile float val_grad_mem_shared[TILE_SIZE][TILE_SIZE + 1]; // Used to calculate the gradient for values
+  __shared__ volatile float data_grad_mem_shared[TILE_SIZE][TILE_SIZE + 1]; // Used to calculate the gradient for data
+  __shared__ volatile float weight_grad_mem_shared[TILE_SIZE][TILE_SIZE + 1]; // Used to calculate the gradient for weight
+  int tx = threadIdx.x, ty = threadIdx.y;
+  int tid = tx + ty * blockDim.x;
+  if (tx == 0) {
+    weight_shared[ty][TILE_SIZE] = 0.0f;
+  }
+  if (tx == 0 && ty == 0) {
+    // Copy the flags to device memory
+    need_data_grad_dev = need_data_grad;
+    need_weight_grad_dev = need_weight_grad;
+    need_values_grad_dev = need_values_grad;
+  }
+  __syncthreads();
+  for (int index = blockIdx.x; index < B * H * W; index += gridDim.x) {
+    int w = index % W;
+    int h = (index / W) % H;
+    int b = index / W / H;
+    // Load the initial data + the local connection values and indices
+    if (tid < L * K) {
+      int address = ADDRESS_4D_BCHW(b, tid, h, w, L * K, H, W);
+      local_connection_val[tid] = values[address];
+      local_connection_ind[tid] = __float2int_rn(indices[address]);
+    }
+    __syncthreads();
+#pragma unroll
+    for (int oc_base = 0; oc_base < outC; oc_base += TILE_SIZE) {
+      int oc = oc_base + ty;
+#pragma unroll
+      for (int l = 0; l < L; ++l) {
+        for (int ic_base = 0; ic_base < inC; ic_base += TILE_SIZE) {
+          int ic = ic_base + tx;
+          // Load the weight into shared memory
+          if (ic < inC && oc < outC) {
+            weight_shared[ty][tx] = weight[(l * outC + oc) * inC + ic];
+            data_grad_mem_shared[tx][ty] = weight_shared[ty][tx];
+          } else {
+            weight_shared[ty][tx] = 0.0f;
+            data_grad_mem_shared[tx][ty] = 0.0f;
+          }
+          if (tx + oc_base < outC && ty == TILE_SIZE) {
+            out_grad_shared[tx] = out_grad[ADDRESS_4D_BHWC(b, h, w, tx + oc_base, H, W, outC)];
+          }
+          // Load the local connected data into shared memory.
+          if (ic < inC && ty < K) {
+            if (local_connection_ind[l * K + ty] >= 0 && local_connection_ind[l * K + ty] < H * W) {
+              int address = ADDRESS_3D_BHWC(b, local_connection_ind[l * K + ty], ic, H * W, inC);
+              data_shared[ty][tx] = data[address];
+            } else {
+              data_shared[ty][tx] = pad_val;
+            }
+          } else {
+            data_shared[ty][tx] = 0;
+          }
+          // Calculate the gradient for value
+          val_grad_mem_shared[ty][tx] = data_shared[ty][tx];
+        }
+      }
+    }
+  }
 }
 
 template<typename DType>
@@ -203,6 +269,7 @@ void LocalSparseFilterBackwardAccImpl(const mshadow::Tensor<gpu, 4, DType> &out_
   const int grid_dim_x = B * H * W;
   // const int grid_dim_y = (outC + TILE_SIZE - 1) / TILE_SIZE;
   CHECK_LT(L * K, 128);
+  CHECK_LT(K, 32);
   dim3 dimGrid(grid_dim_x);
   dim3 dimBlock(TILE_SIZE, TILE_SIZE);
   CheckLaunchParam(dimGrid, dimBlock, "LocalSparseFilterForward");
