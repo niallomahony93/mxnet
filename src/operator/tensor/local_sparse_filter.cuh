@@ -97,7 +97,9 @@ __global__ void LocalSparseFilterForwardKernelBHWC(const int B, const int inC, c
           // Load the local connection data into shared memory.
           if (ic < inC && ty < K) {
             if (local_connection_ind[l * K + ty] >= 0 && local_connection_ind[l * K + ty] < H * W) {
+              data_shared[ty][tx] = local_connection_val[l * K + ty] * data[ADDRESS_3D_BHWC(b, local_connection_ind[l * K + ty], ic, H * W, inC)];
             } else {
+              data_shared[ty][tx] = local_connection_val[l * K + ty] * pad_val;
             }
           } else {
             data_shared[ty][tx] = 0;
