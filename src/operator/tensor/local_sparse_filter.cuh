@@ -71,7 +71,7 @@ __global__ void LocalSparseFilterForwardKernelBHWC(const int B, const int inC, c
     int b = index / W / H;
     // Load the local connection values and indices
     if (tid < L * K) {
-      int address = ADDRESS_4D_BCHW(b, tid, h, w, L * K, H, W);
+      int address = ADDRESS_4D_BHWC(b, h, w, tid, H, W, L * K);
       local_connection_val[tid] = values[address];
       local_connection_ind[tid] = __float2int_rn(indices[address]);
     }
@@ -143,8 +143,8 @@ void LocalSparseFilterForwardImpl(const mshadow::Tensor<gpu, 4, DType> &data,
   using namespace mshadow;
   using namespace mshadow::cuda;
   int B = data.shape_[0];
-  int L = values.shape_[1];
-  int K = values.shape_[2];
+  int L = values.shape_[3];
+  int K = values.shape_[4];
   int H = data.shape_[1];
   int W = data.shape_[2];
   int inC = data.shape_[3];
@@ -319,15 +319,15 @@ void LocalSparseFilterBackwardAccImpl(const mshadow::Tensor<gpu, 4, DType> &out_
   using namespace mshadow;
   using namespace mshadow::cuda;
   int B = data.shape_[0];
-  int L = values.shape_[1];
-  int K = values.shape_[2];
+  int L = values.shape_[3];
+  int K = values.shape_[4];
   int H = data.shape_[1];
   int W = data.shape_[2];
   int inC = data.shape_[3];
   int outC = out_grad.shape_[1];
   const int grid_dim_x = B * H * W;
   // const int grid_dim_y = (outC + TILE_SIZE - 1) / TILE_SIZE;
-  CHECK_LT(L * K, 128);
+  CHECK_LT(L, 32);
   CHECK_LT(K, 32);
   dim3 dimGrid(grid_dim_x);
   dim3 dimBlock(TILE_SIZE, TILE_SIZE);

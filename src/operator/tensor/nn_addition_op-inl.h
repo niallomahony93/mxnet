@@ -415,14 +415,14 @@ inline bool LocalSparseFilterShape(const nnvm::NodeAttrs& attrs,
   int inC = data_shape[1];
   int H = data_shape[2];
   int W = data_shape[3];
-  int L = values_shape[1];
-  int K = values_shape[2];
+  int L = values_shape[3];
+  int K = values_shape[4];
   int outC = param_.num_filter;
   SHAPE_ASSIGN_CHECK(*out_attrs, 0, mshadow::Shape4(B, outC, H, W));
   SHAPE_ASSIGN_CHECK(*in_attrs, 1, mshadow::Shape3(L, outC, inC));
   SHAPE_ASSIGN_CHECK(*in_attrs, 2, mshadow::Shape1(outC));
-  SHAPE_ASSIGN_CHECK(*in_attrs, 3, mshadow::Shape5(B, L, K, H, W));
-  SHAPE_ASSIGN_CHECK(*in_attrs, 4, mshadow::Shape5(B, L, K, H, W));
+  SHAPE_ASSIGN_CHECK(*in_attrs, 3, mshadow::Shape5(B, H, W, L, K));
+  SHAPE_ASSIGN_CHECK(*in_attrs, 4, mshadow::Shape5(B, H, W, L, K));
   return true;
 }
 

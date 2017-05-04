@@ -49,9 +49,9 @@ NNVM_REGISTER_OP(_backward_LocalCorrelation)
 
 NNVM_REGISTER_OP(LocalSparseFilter)
 .MXNET_DESCRIBE("The sparse local filter layer:"
-                " data will be of shape (B, inC, H, W), indices will be of shape (B, L, K, H, W),"
-                " values will be of shape (B, L, K, H, W)."
-                " weight will be of shape (outC, inC, L), bias will be of shape (outC,)."
+                " data will be of shape (B, inC, H, W), indices will be of shape (B, H, W, L, K),"
+                " values will be of shape (B, H, W, L, K)."
+                " weight will be of shape (L, outC, inC), bias will be of shape (outC,)."
                 " The output will have shape (B, outC, H, W).")
 .set_num_inputs(5)
 .set_num_outputs(1)
