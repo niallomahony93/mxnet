@@ -114,6 +114,7 @@ __global__ void LocalSparseFilterForwardKernelBHWC(const int B, const int inC, c
           // mshadow::cuda::Reduce1D<mshadow::red::sum, 5>(weight_shared[ty]);
           // __syncthreads();
           sumReduceShMem(weight_shared[ty]);
+          __syncthreads();
           // Write the result back to the shared output vector
           if (tx == 0) {
             out_shared[ty] += weight_shared[ty][0];
@@ -165,6 +166,7 @@ void LocalSparseFilterForwardImpl(const mshadow::Tensor<gpu, 4, DType> &data,
 template<typename need_data_grad, typename need_value_grad, typename need_weight_grad, typename DType>
 __global__ void LocalSparseFilterBackwardKernelBHWC(const int B, const int inC, const int H, const int W,
                                                     const int outC, const int L, const int K, const DType pad_val,
+                                                    bool need_data_grad, bool need_weight_grad, bool need_values_grad,
                                                     DType* data_grad, DType* weight_grad, DType* values_grad,
                                                     const DType* __restrict out_grad,
                                                     const DType* __restrict data,
@@ -174,7 +176,7 @@ __global__ void LocalSparseFilterBackwardKernelBHWC(const int B, const int inC, 
 
 }
 
-template<typename need_data_grad, typename need_value_grad, typename need_weight_grad, typename DType>
+template<typename DType>
 void LocalSparseFilterBackwardAccImpl(const mshadow::Tensor<gpu, 4, DType> &out_grad,
                                       const mshadow::Tensor<gpu, 4, DType> &data,
                                       const mshadow::Tensor<gpu, 3, DType> &weight,
@@ -206,8 +208,9 @@ void LocalSparseFilterBackwardAccImpl(const mshadow::Tensor<gpu, 4, DType> &out_
   dim3 dimBlock(TILE_SIZE, TILE_SIZE);
   CheckLaunchParam(dimGrid, dimBlock, "LocalSparseFilterForward");
   cudaStream_t stream = Stream<gpu>::GetStream(data.stream_);
-  LocalSparseFilterBackwardKernelBHWC<need_data_grad, need_value_grad, need_weight_grad> << <dimGrid, dimBlock, 0, stream >> >
-    (B, inC, H, W, outC, L, K, pad_val, data_grad.dptr_, weight_grad.dptr_, values_grad.dptr, 
+  LocalSparseFilterBackwardKernelBHWC << <dimGrid, dimBlock, 0, stream >> >
+    (B, inC, H, W, outC, L, K, pad_val, need_data_grad, need_weight_grad, need_values_grad,
+     data_grad.dptr_, weight_grad.dptr_, values_grad.dptr,
      out_grad.dptr_, data.dptr_, weight.dptr_, values.dptr_, indices.dptr_);
   cudaError err = cudaPeekAtLastError();
   CHECK_EQ(err, cudaSuccess) << cudaGetErrorString(err);
