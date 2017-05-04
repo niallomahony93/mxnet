@@ -60,6 +60,9 @@ __global__ void LocalSparseFilterForwardKernelBHWC(const int B, const int inC, c
   __shared__ volatile float weight_shared[TILE_SIZE][TILE_SIZE + 1]; // Add 1 to avoid bank conflict
   int tx = threadIdx.x, ty = threadIdx.y;
   int tid = tx + ty * blockDim.x;
+  if (tx == 0) {
+    weight_shared[ty][TILE_SIZE] = 0.0f;
+  }
   for (int index = blockIdx.x; index < B * H * W; index += gridDim.x) {
     int w = index % W;
     int h = (index / W) % H;
@@ -111,7 +114,6 @@ __global__ void LocalSparseFilterForwardKernelBHWC(const int B, const int inC, c
           // mshadow::cuda::Reduce1D<mshadow::red::sum, 5>(weight_shared[ty]);
           // __syncthreads();
           sumReduceShMem(weight_shared[ty]);
-          __syncthreads();
           // Write the result back to the shared output vector
           if (tx == 0) {
             out_shared[ty] += weight_shared[ty][0];
