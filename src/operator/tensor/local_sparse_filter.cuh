@@ -63,6 +63,7 @@ __global__ void LocalSparseFilterForwardKernelBHWC(const int B, const int inC, c
   if (tx == 0) {
     weight_shared[ty][TILE_SIZE] = 0.0f;
   }
+  __syncthreads();
   for (int index = blockIdx.x; index < B * H * W; index += gridDim.x) {
     int w = index % W;
     int h = (index / W) % H;
@@ -116,7 +117,7 @@ __global__ void LocalSparseFilterForwardKernelBHWC(const int B, const int inC, c
           sumReduceShMem(weight_shared[ty]);
           __syncthreads();
           // Write the result back to the shared output vector
-          if (tx == 0) {
+          if (tx == 0 && oc < outC) {
             out_shared[ty] += weight_shared[ty][0];
           }
         }
@@ -125,6 +126,7 @@ __global__ void LocalSparseFilterForwardKernelBHWC(const int B, const int inC, c
       if (tx == 0 && oc < outC) {
         out[ADDRESS_4D_BCHW(b, oc, h, w, outC, H, W)] = out_shared[ty];
       }
+      __syncthreads();
     }
   }
 }
@@ -163,16 +165,16 @@ void LocalSparseFilterForwardImpl(const mshadow::Tensor<gpu, 4, DType> &data,
   CHECK_EQ(err, cudaSuccess) << cudaGetErrorString(err);
 }
 
-template<typename need_data_grad, typename need_value_grad, typename need_weight_grad, typename DType>
-__global__ void LocalSparseFilterBackwardKernelBHWC(const int B, const int inC, const int H, const int W,
-                                                    const int outC, const int L, const int K, const DType pad_val,
-                                                    bool need_data_grad, bool need_weight_grad, bool need_values_grad,
-                                                    DType* data_grad, DType* weight_grad, DType* values_grad,
-                                                    const DType* __restrict out_grad,
-                                                    const DType* __restrict data,
-                                                    const DType* __restrict weight,
-                                                    const DType* __restrict values,
-                                                    const DType* __restrict indices) {
+template<typename DType>
+__global__ void LocalSparseFilterBackwardAccKernelBHWC(const int B, const int inC, const int H, const int W,
+                                                       const int outC, const int L, const int K, const DType pad_val,
+                                                       const bool need_data_grad, const bool need_weight_grad, const bool need_values_grad,
+                                                       DType* data_grad, DType* weight_grad, DType* values_grad,
+                                                       const DType* __restrict out_grad,
+                                                       const DType* __restrict data,
+                                                       const DType* __restrict weight,
+                                                       const DType* __restrict values,
+                                                       const DType* __restrict indices) {
 
 }
 
@@ -183,8 +185,8 @@ void LocalSparseFilterBackwardAccImpl(const mshadow::Tensor<gpu, 4, DType> &out_
                                       const mshadow::Tensor<gpu, 5, DType> &values,
                                       const mshadow::Tensor<gpu, 5, DType> &indices,
                                       const mshadow::Tensor<gpu, 4, DType> &data_grad,
-                                      const mshadow::Tensor<gpu, 4, DType> &weight_grad,
-                                      const mshadow::Tensor<gpu, 4, DType> &values_grad,
+                                      const mshadow::Tensor<gpu, 3, DType> &weight_grad,
+                                      const mshadow::Tensor<gpu, 5, DType> &values_grad,
                                       const bool need_data_grad,
                                       const bool need_weight_grad,
                                       const bool need_values_grad,
@@ -192,9 +194,6 @@ void LocalSparseFilterBackwardAccImpl(const mshadow::Tensor<gpu, 4, DType> &out_
   using namespace mshadow;
   using namespace mshadow::cuda;
   int B = data.shape_[0];
-  // int inC = data.shape_[1];
-  // int H = data.shape_[2];
-  // int W = data.shape_[3];
   int L = values.shape_[1];
   int K = values.shape_[2];
   int H = data.shape_[1];
@@ -208,9 +207,9 @@ void LocalSparseFilterBackwardAccImpl(const mshadow::Tensor<gpu, 4, DType> &out_
   dim3 dimBlock(TILE_SIZE, TILE_SIZE);
   CheckLaunchParam(dimGrid, dimBlock, "LocalSparseFilterForward");
   cudaStream_t stream = Stream<gpu>::GetStream(data.stream_);
-  LocalSparseFilterBackwardKernelBHWC << <dimGrid, dimBlock, 0, stream >> >
+  LocalSparseFilterBackwardAccKernelBHWC << <dimGrid, dimBlock, 0, stream >> >
     (B, inC, H, W, outC, L, K, pad_val, need_data_grad, need_weight_grad, need_values_grad,
-     data_grad.dptr_, weight_grad.dptr_, values_grad.dptr,
+     data_grad.dptr_, weight_grad.dptr_, values_grad.dptr_,
      out_grad.dptr_, data.dptr_, weight.dptr_, values.dptr_, indices.dptr_);
   cudaError err = cudaPeekAtLastError();
   CHECK_EQ(err, cudaSuccess) << cudaGetErrorString(err);

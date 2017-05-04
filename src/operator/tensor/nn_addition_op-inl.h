@@ -397,7 +397,7 @@ void LocalSparseFilterBackward_(const nnvm::NodeAttrs& attrs,
   if (req[3] == kWriteTo) {
     values_grad = scalar<real_t>(0.0f);
   }
-  LocalSparseFilterBackwardAccImpl(transposed_out_grad, transposed_data, weight, value, indices,
+  LocalSparseFilterBackwardAccImpl(transposed_out_grad, transposed_data, weight, values, indices,
                                    transposed_data_grad, weight_grad, values_grad,
                                    req[0] != kNullOp, req[1] != kNullOp, req[3] != kNullOp, param_.pad_val);
   LOG(FATAL) << "Not Implemented Error";

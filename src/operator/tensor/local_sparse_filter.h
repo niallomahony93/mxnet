@@ -21,6 +21,22 @@ void LocalSparseFilterForwardImpl(const mshadow::Tensor<cpu, 4, DType> &data,
                                   const DType pad_val) {
   LOG(FATAL) << "Not Implemented";
 }
+
+template<typename DType>
+void LocalSparseFilterBackwardAccImpl(const mshadow::Tensor<cpu, 4, DType> &out_grad,
+                                      const mshadow::Tensor<cpu, 4, DType> &data,
+                                      const mshadow::Tensor<cpu, 3, DType> &weight,
+                                      const mshadow::Tensor<cpu, 5, DType> &values,
+                                      const mshadow::Tensor<cpu, 5, DType> &indices,
+                                      const mshadow::Tensor<cpu, 4, DType> &data_grad,
+                                      const mshadow::Tensor<cpu, 3, DType> &weight_grad,
+                                      const mshadow::Tensor<cpu, 5, DType> &values_grad,
+                                      const bool need_data_grad,
+                                      const bool need_weight_grad,
+                                      const bool need_values_grad,
+                                      const DType pad_val) {
+  LOG(FATAL) << "Not Implemented";
+}
 }  // namespace op
 }  // namespace mxnet
 #ifdef __CUDACC__
