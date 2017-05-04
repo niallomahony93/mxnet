@@ -55,7 +55,8 @@ __global__ void LocalSparseFilterForwardKernelBHWC(const int B, const int inC, c
   //TODO Use extern instead
   __shared__ float local_connection_val[128];
   __shared__ int local_connection_ind[128];
-  __shared__ float data_shared[TILE_SIZE];
+  __shared__ float data_shared[TILE_SIZE][TILE_SIZE + 1];
+  __shared__ float data_acc_mem[TILE_SIZE][TILE_SIZE + 1];
   __shared__ float out_shared[TILE_SIZE];
   __shared__ volatile float weight_shared[TILE_SIZE][TILE_SIZE + 1]; // Add 1 to avoid bank conflict
   int tx = threadIdx.x, ty = threadIdx.y;
@@ -94,23 +95,20 @@ __global__ void LocalSparseFilterForwardKernelBHWC(const int B, const int inC, c
             weight_shared[ty][tx] = 0.0f;
           }
           // Load the local connection data into shared memory.
-          if (ty == 0) {
-            data_shared[tx] = 0.0f;
-            if (ic < inC) {
-              // Load the local used data into shared memory. TODO, accelerate this part using Parallel Reduce.
-              for (int k = 0; k < K; ++k) {
-                if (local_connection_ind[l * K + k] >= 0 && local_connection_ind[l * K + k] < H * W) {
-                  int address = ADDRESS_3D_BHWC(b, local_connection_ind[l * K + k], ic, H * W, inC);
-                  data_shared[tx] += local_connection_val[l * K + k] * data[address];
-                } else {
-                  data_shared[tx] += local_connection_val[l * K + k] * pad_val;
-                }
-              }
+          if (ic < inC && ty < K) {
+            if (local_connection_ind[l * K + ty] >= 0 && local_connection_ind[l * K + ty] < H * W) {
+            } else {
             }
+          } else {
+            data_shared[ty][tx] = 0;
           }
           __syncthreads();
+          data_acc_mem[tx][ty] = data_shared[ty][tx];
+          __syncthreads();
+          sumReduceShMem(data_acc_mem[ty]);
+          __syncthreads();
           // Calculate the result inplace in the weight matrix
-          weight_shared[ty][tx] *= data_shared[tx];
+          weight_shared[ty][tx] *= data_acc_mem[tx][0];
           __syncthreads();
           // mshadow::cuda::Reduce1D<mshadow::red::sum, 5>(weight_shared[ty]);
           // __syncthreads();
