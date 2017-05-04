@@ -57,25 +57,19 @@ __global__ void LocalSparseFilterForwardKernelBHWC(const int B, const int inC, c
     int w = index % W;
     int h = (index / W) % H;
     int b = index / W / H;
-    // int oc = blockIdx.y * TILE_SIZE + ty; // Enumerate the outC
     // Load the initial data + the local connection values and indices
-    //unsigned int t1 = clock();
     if (tid < L * K) {
       int address = ADDRESS_4D_BCHW(b, tid, h, w, L * K, H, W);
       local_connection_val[tid] = values[address];
       local_connection_ind[tid] = __float2int_rn(indices[address]);
-      // printf("b=%d, h=%d, w=%d, tid=%d, val=%g, ind=%d\n", b, h, w, tid, local_connection_val[tid], local_connection_ind[tid]);
     }
     __syncthreads();
-    //unsigned int t2 = clock();
-    // if (tx == 0 && ty == 0) {
-    //   printf("spent:%d\n", t2 - t1;);
-    // }
 #pragma unroll
     for (int oc_base = 0; oc_base < outC; oc_base += TILE_SIZE) {
       if (ty == 0 && oc_base + tx < outC) {
         out_shared[tx] = bias[oc_base + tx];
       }
+      __syncthreads();
       int oc = oc_base + ty;
 #pragma unroll
       for (int icl = 0; icl < inC * L; icl += TILE_SIZE) {
@@ -88,14 +82,16 @@ __global__ void LocalSparseFilterForwardKernelBHWC(const int B, const int inC, c
           weight_shared[ty][tx] = 0.0f;
         }
         // Load the local connection data into shared memory. TODO, accelerate this part using Parallel Reduce.
-        if (ic < inC && ty == 0) {
+        if (ty == 0) {
           data_shared[tx] = 0.0f;
-          for (int k = 0; k < K; ++k) {
-            if (local_connection_ind[l * K + k] >= 0 && local_connection_ind[l * K + k] < H * W) {
-              int address = ADDRESS_3D_BHWC(b, local_connection_ind[l * K + k], ic, H * W, inC);
-              data_shared[tx] += local_connection_val[l * K + k] * data[address];
-            } else {
-              data_shared[tx] += local_connection_val[l * K + k] * pad_val;
+          if (ic < inC) {
+            for (int k = 0; k < K; ++k) {
+              if (local_connection_ind[l * K + k] >= 0 && local_connection_ind[l * K + k] < H * W) {
+                int address = ADDRESS_3D_BHWC(b, local_connection_ind[l * K + k], ic, H * W, inC);
+                data_shared[tx] += local_connection_val[l * K + k] * data[address];
+              } else {
+                data_shared[tx] += local_connection_val[l * K + k] * pad_val;
+              }
             }
           }
         }
@@ -107,12 +103,13 @@ __global__ void LocalSparseFilterForwardKernelBHWC(const int B, const int inC, c
         // __syncthreads();
         sumReduceShMem(weight_shared[ty]);
         // Write the result back to the shared output vector
-        if (tx == 0 && oc < outC) {
+        if (tx == 0) {
           out_shared[ty] += weight_shared[ty][0];
         }
       }
+      __syncthreads();
       if (tx == 0 && oc < outC) {
-        out[ADDRESS_4D_BCHW(b, oc, h, w, H, W, outC)] = out_shared[ty];
+        out[ADDRESS_4D_BCHW(b, oc, h, w, outC, H, W)] = out_shared[ty];
       }
     }
   }
@@ -140,7 +137,7 @@ void LocalSparseFilterForwardImpl(const mshadow::Tensor<gpu, 4, DType> &data,
   int inC = data.shape_[3];
   int outC = weight.shape_[0];
   const int grid_dim_x = B * H * W;
-  const int grid_dim_y = (outC + TILE_SIZE - 1) / TILE_SIZE;
+  // const int grid_dim_y = (outC + TILE_SIZE - 1) / TILE_SIZE;
   CHECK_LT(L * K, 128);
   dim3 dimGrid(grid_dim_x, 1);
   dim3 dimBlock(TILE_SIZE, TILE_SIZE);
