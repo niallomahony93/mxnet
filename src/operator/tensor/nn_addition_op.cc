@@ -51,7 +51,7 @@ NNVM_REGISTER_OP(LocalSparseFilter)
 .MXNET_DESCRIBE("The sparse local filter layer:"
                 " data will be of shape (B, inC, H, W), indices will be of shape (B, L, K, H, W),"
                 " values will be of shape (B, L, K, H, W)."
-                " weight will be of shape (L, outC, inC), bias will be of shape (outC,)."
+                " weight will be of shape (outC, inC, L), bias will be of shape (outC,)."
                 " The output will have shape (B, outC, H, W).")
 .set_num_inputs(5)
 .set_num_outputs(1)
@@ -78,7 +78,7 @@ NNVM_REGISTER_OP(LocalSparseFilter)
     return ret;
   })
 .add_argument("data", "NDArray-or-Symbol", "The data input, shape (B, inC, H, W)")
-.add_argument("weight", "NDArray-or-Symbol", "The weight, shape (L, outC, inC)")
+.add_argument("weight", "NDArray-or-Symbol", "The weight, shape (outC, inC, L)")
 .add_argument("bias", "NDArray-or-Symbol", "The bias, shape (outC,)")
 .add_argument("values", "NDArray-or-Symbol", "The value of the corresponding indices, shape (B, L, K, H, W)")
 .add_argument("indices", "NDArray-or-Symbol", "The indices of the local connections, shape (B, L, K, H, W)");

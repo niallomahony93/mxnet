@@ -48,10 +48,13 @@ struct LocalCorrelationParam : public dmlc::Parameter<LocalCorrelationParam> {
 
 struct LocalSparseFilterParam : public dmlc::Parameter<LocalSparseFilterParam> {
   int num_filter;
+  float pad_val;
   uint64_t workspace;
   DMLC_DECLARE_PARAMETER(LocalSparseFilterParam) {
     DMLC_DECLARE_FIELD(num_filter).set_lower_bound(1)
     .describe("Number of filters.");
+    DMLC_DECLARE_FIELD(pad_val).set_default(1.0)
+    .describe("The padding value, indicates the state of the outside world.");
     DMLC_DECLARE_FIELD(workspace).set_default(512).set_range(0, 8192)
     .describe("Maximum tmp workspace allowed for sparse local filter (MB).");
   }
@@ -328,13 +331,24 @@ void LocalSparseFilterForward_(const nnvm::NodeAttrs& attrs,
   mshadow::Tensor<xpu, 5, real_t> values = inputs[3].get<xpu, 5, real_t>(s);
   mshadow::Tensor<xpu, 5, real_t> indices = inputs[4].get<xpu, 5, real_t>(s);
   mshadow::Tensor<xpu, 4, real_t> out = outputs[0].get<xpu, 4, real_t>(s);
-  CHECK_EQ(data.CheckContiguous(), true);
+  Tensor<xpu, 1, real_t> workspace =
+    ctx.requested[0].get_space_typed<xpu, 1, real_t>(Shape1(inputs[0].Size()), s);
+  Tensor<xpu, 4, real_t> transposed_data = Tensor<xpu, 4, real_t>(workspace.dptr_,
+    Shape4(data.shape_[0], data.shape_[2], data.shape_[3], data.shape_[1]), s);  // contain transposed data for coalescing access
+  transposed_data = transpose(data, Shape4(0, 2, 3, 1));
+  CHECK_EQ(transposed_data.CheckContiguous(), true);
   CHECK_EQ(weight.CheckContiguous(), true);
   CHECK_EQ(bias.CheckContiguous(), true);
   CHECK_EQ(values.CheckContiguous(), true);
   CHECK_EQ(indices.CheckContiguous(), true);
   CHECK_EQ(out.CheckContiguous(), true);
-  LocalSparseFilterForwardImpl<real_t>(data, weight, bias, values, indices, out);
+  if (req[0] == kNullOp) {
+    return;
+  } else if (req[0] == kWriteTo) {
+    LocalSparseFilterForwardImpl<real_t>(transposed_data, weight, bias, values, indices, out, param_.pad_val);
+  } else {
+    LOG(FATAL) << "Not implemented, req=" << req[0];
+  }
 }
 
 template<typename xpu>
@@ -371,7 +385,7 @@ inline bool LocalSparseFilterShape(const nnvm::NodeAttrs& attrs,
   int K = values_shape[2];
   int outC = param_.num_filter;
   SHAPE_ASSIGN_CHECK(*out_attrs, 0, mshadow::Shape4(B, outC, H, W));
-  SHAPE_ASSIGN_CHECK(*in_attrs, 1, mshadow::Shape3(L, outC, inC));
+  SHAPE_ASSIGN_CHECK(*in_attrs, 1, mshadow::Shape3(outC, inC, L));
   SHAPE_ASSIGN_CHECK(*in_attrs, 2, mshadow::Shape1(outC));
   SHAPE_ASSIGN_CHECK(*in_attrs, 3, mshadow::Shape5(B, L, K, H, W));
   SHAPE_ASSIGN_CHECK(*in_attrs, 4, mshadow::Shape5(B, L, K, H, W));

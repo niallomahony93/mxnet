@@ -17,7 +17,8 @@ void LocalSparseFilterForwardImpl(const mshadow::Tensor<cpu, 4, DType> &data,
                                   const mshadow::Tensor<cpu, 1, DType> &bias,
                                   const mshadow::Tensor<cpu, 5, DType> &values,
                                   const mshadow::Tensor<cpu, 5, DType> &indices,
-                                  const mshadow::Tensor<cpu, 4, DType> &out) {
+                                  const mshadow::Tensor<cpu, 4, DType> &out,
+                                  const DType pad_val) {
   LOG(FATAL) << "Not Implemented";
 }
 }  // namespace op
