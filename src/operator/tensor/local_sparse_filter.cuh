@@ -36,6 +36,14 @@ __device__ void sumReduceShMem(volatile float s[])
 }
 
 template<typename DType>
+__inline__ __device__
+int warpReduceSum(DType val) {
+  for (DType offset = warpSize/2; offset > 0; offset /= 2)
+    val += __shfl_down(val, offset);
+  return val;
+}
+
+template<typename DType>
 __global__ void LocalSparseFilterForwardKernelBHWC(const int B, const int inC, const int H, const int W,
                                                    const int outC, const int L, const int K, const DType pad_val,
                                                    DType* out,
@@ -49,7 +57,7 @@ __global__ void LocalSparseFilterForwardKernelBHWC(const int B, const int inC, c
   __shared__ int local_connection_ind[128];
   __shared__ float data_shared[TILE_SIZE];
   __shared__ float out_shared[TILE_SIZE];
-  __shared__ float weight_shared[TILE_SIZE][TILE_SIZE + 1]; // Add 1 to avoid bank conflict
+  __shared__ volatile float weight_shared[TILE_SIZE][TILE_SIZE + 1]; // Add 1 to avoid bank conflict
   int tx = threadIdx.x, ty = threadIdx.y;
   int tid = tx + ty * blockDim.x;
   for (int index = blockIdx.x; index < B * H * W; index += gridDim.x) {
@@ -71,39 +79,43 @@ __global__ void LocalSparseFilterForwardKernelBHWC(const int B, const int inC, c
       __syncthreads();
       int oc = oc_base + ty;
 #pragma unroll
-      for (int icl = 0; icl < inC * L; icl += TILE_SIZE) {
-        int l = (icl + tx) % L;
-        int ic = (icl + tx) / L;
-        // Load the weight into shared memory
-        if (icl + tx < inC * L && oc < outC) {
-          weight_shared[ty][tx] = weight[oc * inC * L + icl + tx];
-        } else {
-          weight_shared[ty][tx] = 0.0f;
-        }
-        // Load the local connection data into shared memory. TODO, accelerate this part using Parallel Reduce.
-        if (ty == 0) {
-          data_shared[tx] = 0.0f;
-          if (ic < inC) {
-            for (int k = 0; k < K; ++k) {
-              if (local_connection_ind[l * K + k] >= 0 && local_connection_ind[l * K + k] < H * W) {
-                int address = ADDRESS_3D_BHWC(b, local_connection_ind[l * K + k], ic, H * W, inC);
-                data_shared[tx] += local_connection_val[l * K + k] * data[address];
-              } else {
-                data_shared[tx] += local_connection_val[l * K + k] * pad_val;
+      for (int l = 0; l < L; ++l) {
+#pragma unroll
+        for (int ic_base = 0; ic_base < inC; ic_base += TILE_SIZE) {
+          int ic = ic_base + tx;
+          // Load the weight into shared memory
+          if (ic < inC && oc < outC) {
+            weight_shared[ty][tx] = weight[(l * outC + oc) * inC + ic];
+          } else {
+            weight_shared[ty][tx] = 0.0f;
+          }
+          // Load the local connection data into shared memory.
+          if (ty == 0) {
+            data_shared[tx] = 0.0f;
+            if (ic < inC) {
+              // Load the local connection data into shared memory. TODO, accelerate this part using Parallel Reduce.
+              for (int k = 0; k < K; ++k) {
+                if (local_connection_ind[l * K + k] >= 0 && local_connection_ind[l * K + k] < H * W) {
+                  int address = ADDRESS_3D_BHWC(b, local_connection_ind[l * K + k], ic, H * W, inC);
+                  data_shared[tx] += local_connection_val[l * K + k] * data[address];
+                } else {
+                  data_shared[tx] += local_connection_val[l * K + k] * pad_val;
+                }
               }
             }
           }
-        }
-        __syncthreads();
-        // Calculate the result inplace in the weight matrix
-        weight_shared[ty][tx] *= data_shared[tx];
-        __syncthreads();
-        // mshadow::cuda::Reduce1D<mshadow::red::sum, 5>(weight_shared[ty]);
-        // __syncthreads();
-        sumReduceShMem(weight_shared[ty]);
-        // Write the result back to the shared output vector
-        if (tx == 0) {
-          out_shared[ty] += weight_shared[ty][0];
+          __syncthreads();
+          // Calculate the result inplace in the weight matrix
+          weight_shared[ty][tx] *= data_shared[tx];
+          __syncthreads();
+          // mshadow::cuda::Reduce1D<mshadow::red::sum, 5>(weight_shared[ty]);
+          // __syncthreads();
+          sumReduceShMem(weight_shared[ty]);
+          __syncthreads();
+          // Write the result back to the shared output vector
+          if (tx == 0) {
+            out_shared[ty] += weight_shared[ty][0];
+          }
         }
       }
       __syncthreads();
@@ -134,11 +146,11 @@ void LocalSparseFilterForwardImpl(const mshadow::Tensor<gpu, 4, DType> &data,
   int H = data.shape_[1];
   int W = data.shape_[2];
   int inC = data.shape_[3];
-  int outC = weight.shape_[0];
+  int outC = out.shape_[1];
   const int grid_dim_x = B * H * W;
   // const int grid_dim_y = (outC + TILE_SIZE - 1) / TILE_SIZE;
   CHECK_LT(L * K, 128);
-  dim3 dimGrid(grid_dim_x, 1);
+  dim3 dimGrid(grid_dim_x);
   dim3 dimBlock(TILE_SIZE, TILE_SIZE);
   CheckLaunchParam(dimGrid, dimBlock, "LocalSparseFilterForward");
   cudaStream_t stream = Stream<gpu>::GetStream(data.stream_);
@@ -148,13 +160,13 @@ void LocalSparseFilterForwardImpl(const mshadow::Tensor<gpu, 4, DType> &data,
   CHECK_EQ(err, cudaSuccess) << cudaGetErrorString(err);
 }
 
-template<typename DType>
+template<typename need_data_grad, typename need_value_grad, typename need_weight_grad, typename DType>
 __global__ void LocalSparseFilterBackwardKernelBHWC(const int B, const int inC, const int H, const int W,
                                                     const int outC, const int L, const int K, const DType pad_val,
-                                                    DType* out,
+                                                    DType* data_grad, DType* weight_grad, DType* values_grad,
+                                                    const DType* __restrict out_grad,
                                                     const DType* __restrict data,
                                                     const DType* __restrict weight,
-                                                    const DType* __restrict bias,
                                                     const DType* __restrict values,
                                                     const DType* __restrict indices) {
 
@@ -169,6 +181,9 @@ void LocalSparseFilterBackwardAccImpl(const mshadow::Tensor<gpu, 4, DType> &out_
                                       const mshadow::Tensor<gpu, 4, DType> &data_grad,
                                       const mshadow::Tensor<gpu, 4, DType> &weight_grad,
                                       const mshadow::Tensor<gpu, 4, DType> &values_grad,
+                                      const bool need_data_grad,
+                                      const bool need_weight_grad,
+                                      const bool need_values_grad,
                                       const DType pad_val) {
   using namespace mshadow;
   using namespace mshadow::cuda;
@@ -181,16 +196,17 @@ void LocalSparseFilterBackwardAccImpl(const mshadow::Tensor<gpu, 4, DType> &out_
   int H = data.shape_[1];
   int W = data.shape_[2];
   int inC = data.shape_[3];
-  int outC = weight.shape_[0];
+  int outC = out_grad.shape_[1];
   const int grid_dim_x = B * H * W;
   // const int grid_dim_y = (outC + TILE_SIZE - 1) / TILE_SIZE;
   CHECK_LT(L * K, 128);
-  dim3 dimGrid(grid_dim_x, 1);
+  dim3 dimGrid(grid_dim_x);
   dim3 dimBlock(TILE_SIZE, TILE_SIZE);
   CheckLaunchParam(dimGrid, dimBlock, "LocalSparseFilterForward");
   cudaStream_t stream = Stream<gpu>::GetStream(data.stream_);
-  LocalSparseFilterForwardKernelBHWC << <dimGrid, dimBlock, 0, stream >> >
-    (B, inC, H, W, outC, L, K, pad_val, out.dptr_, data.dptr_, weight.dptr_, bias.dptr_, values.dptr_, indices.dptr_);
+  LocalSparseFilterBackwardKernelBHWC<need_data_grad, need_value_grad, need_weight_grad> << <dimGrid, dimBlock, 0, stream >> >
+    (B, inC, H, W, outC, L, K, pad_val, data_grad.dptr_, weight_grad.dptr_, values_grad.dptr, 
+     out_grad.dptr_, data.dptr_, weight.dptr_, values.dptr_, indices.dptr_);
   cudaError err = cudaPeekAtLastError();
   CHECK_EQ(err, cudaSuccess) << cudaGetErrorString(err);
 }

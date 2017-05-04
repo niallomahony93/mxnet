@@ -361,10 +361,44 @@ void LocalSparseFilterBackward_(const nnvm::NodeAttrs& attrs,
   using namespace mshadow::expr;
   mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
   const LocalSparseFilterParam& param_ = nnvm::get<LocalSparseFilterParam>(attrs.parsed);
+  CHECK_EQ(outputs[0].type_flag_, mshadow::kFloat32)
+    << "LocalSparseFilter only support 32 bit float so far";
+  mshadow::Tensor<xpu, 4, real_t> out_grad = inputs[0].get<xpu, 4, real_t>(s);
+  mshadow::Tensor<xpu, 4, real_t> data = inputs[1].get<xpu, 4, real_t>(s);
+  mshadow::Tensor<xpu, 3, real_t> weight = inputs[2].get<xpu, 3, real_t>(s);
+  mshadow::Tensor<xpu, 1, real_t> bias = inputs[3].get<xpu, 1, real_t>(s);
+  mshadow::Tensor<xpu, 5, real_t> values = inputs[4].get<xpu, 5, real_t>(s);
+  mshadow::Tensor<xpu, 5, real_t> indices = inputs[5].get<xpu, 5, real_t>(s);
+  mshadow::Tensor<xpu, 4, real_t> data_grad = outputs[0].get<xpu, 4, real_t>(s);
+  mshadow::Tensor<xpu, 3, real_t> weight_grad = outputs[0].get<xpu, 3, real_t>(s);
+  mshadow::Tensor<xpu, 1, real_t> bias_grad = outputs[0].get<xpu, 1, real_t>(s);
+  mshadow::Tensor<xpu, 5, real_t> values_grad = outputs[0].get<xpu, 5, real_t>(s);
   CHECK_NE(req[0], kWriteInplace);
   CHECK_NE(req[1], kWriteInplace);
   CHECK_NE(req[2], kWriteInplace);
   CHECK_NE(req[3], kWriteInplace);
+  Tensor<xpu, 1, real_t> workspace =
+    ctx.requested[0].get_space_typed<xpu, 1, real_t>(Shape1(inputs[1].Size() * 2 + inputs[0].Size()), s);
+  CHECK_LT(static_cast<uint64_t>(workspace.shape_.Size()) >> 20, param_.workspace);
+  Tensor<xpu, 4, real_t> transposed_data = Tensor<xpu, 4, real_t>(workspace.dptr_,
+    Shape4(data.shape_[0], data.shape_[2], data.shape_[3], data.shape_[1]), s);  // contain transposed data for coalescing access
+  Tensor<xpu, 4, real_t> transposed_data_grad = Tensor<xpu, 4, real_t>(workspace.dptr_,
+    Shape4(data.shape_[0], data.shape_[2], data.shape_[3], data.shape_[1]), s);  // contain transposed data for coalescing access
+  Tensor<xpu, 4, real_t> transposed_out_grad = Tensor<xpu, 4, real_t>(workspace.dptr_,
+    Shape4(out_grad.shape_[0], out_grad.shape_[2], out_grad.shape_[3], out_grad.shape_[1]), s);  // contain transposed data for coalescing access
+  transposed_data = transpose(data, Shape4(0, 2, 3, 1));
+  transposed_out_grad = transpose(out_grad, Shape4(0, 2, 3, 1));
+  Assign(bias_grad, req[2], sumall_except_dim<1>(data));
+  if (req[0] == kWriteTo) {
+    transposed_data_grad = scalar<real_t>(0.0f);
+  }
+  if (req[1] == kWriteTo) {
+    weight_grad = scalar<real_t>(0.0f);
+  }
+  if (req[3] == kWriteTo) {
+    values_grad = scalar<real_t>(0.0f);
+  }
+
   LOG(FATAL) << "Not Implemented Error";
 }
 
@@ -385,7 +419,7 @@ inline bool LocalSparseFilterShape(const nnvm::NodeAttrs& attrs,
   int K = values_shape[2];
   int outC = param_.num_filter;
   SHAPE_ASSIGN_CHECK(*out_attrs, 0, mshadow::Shape4(B, outC, H, W));
-  SHAPE_ASSIGN_CHECK(*in_attrs, 1, mshadow::Shape3(outC, inC, L));
+  SHAPE_ASSIGN_CHECK(*in_attrs, 1, mshadow::Shape3(L, outC, inC));
   SHAPE_ASSIGN_CHECK(*in_attrs, 2, mshadow::Shape1(outC));
   SHAPE_ASSIGN_CHECK(*in_attrs, 3, mshadow::Shape5(B, L, K, H, W));
   SHAPE_ASSIGN_CHECK(*in_attrs, 4, mshadow::Shape5(B, L, K, H, W));
