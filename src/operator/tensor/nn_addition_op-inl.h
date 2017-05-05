@@ -14,6 +14,7 @@
 #include "../elemwise_op_common.h"
 #include "../mxnet_op.h"
 #include "./local_sparse_filter.h"
+#include "./argsort_last.h"
 
 namespace mxnet {
 namespace op {
@@ -57,6 +58,14 @@ struct LocalSparseFilterParam : public dmlc::Parameter<LocalSparseFilterParam> {
     .describe("The padding value, indicates the state of the outside world.");
     DMLC_DECLARE_FIELD(workspace).set_default(512).set_range(0, 8192)
     .describe("Maximum tmp workspace allowed for sparse local filter (MB).");
+  }
+};
+
+struct ArgSortLastParam : public dmlc::Parameter<ArgSortLastParam> {
+  bool is_ascend;
+  DMLC_DECLARE_PARAMETER(ArgSortLastParam) {
+    DMLC_DECLARE_FIELD(is_ascend).set_default(true)
+      .describe("Whether to sort in ascending or descending order.");
   }
 };
 
@@ -464,6 +473,35 @@ void BinaryStochasticNeuronCompute(const nnvm::NodeAttrs& attrs,
       ASSIGN_DISPATCH(bsn_out, req[0], F<mshadow_op::round>(sigmoid_out));
     });
   }
+}
+
+template<typename xpu>
+void ArgSortLast(const nnvm::NodeAttrs& attrs,
+                 const OpContext& ctx,
+                 const std::vector<TBlob>& inputs,
+                 const std::vector<OpReqType>& req,
+                 const std::vector<TBlob>& outputs) {
+  using namespace mshadow;
+  const ArgSortLastParam& param = nnvm::get<ArgSortLastParam>(attrs.parsed);
+  Stream<xpu> *s = ctx.get_stream<xpu>();
+  mshadow::Tensor<xpu, 1, real_t> data = inputs[0].get_with_shape<xpu, 1, real_t>(Shape1(inputs[0].Size()), s);
+  mshadow::Tensor<xpu, 1, real_t> out = outputs[0].get_with_shape<xpu, 1, real_t>(Shape1(outputs[0].Size()), s);
+  mshadow::Tensor<xpu, 1, int> d_offsets = outputs[1].get_with_shape<xpu, 1, int>(Shape1(outputs[1].Size()), s);
+  int batch_num = inputs[0].shape_.ProdShape(0, inputs[0].shape_.ndim() - 1);
+  d_offsets = mshadow::expr::range<int>(0, float(batch_num) + 0.5);
+  ArgSortLastImpl(data, out, d_offsets, param.is_ascend, batch_num, ctx.requested[0]);
+}
+
+inline bool ArgsortLastShape(const nnvm::NodeAttrs& attrs,
+                             std::vector<TShape> *in_attrs,
+                             std::vector<TShape> *out_attrs) {
+  CHECK_EQ(in_attrs->size(), 1);
+  CHECK_EQ(out_attrs->size(), 2);
+  TShape& data_shape = (*in_attrs)[0];
+  int batch_num = data_shape.ProdShape(0, data_shape.ndim() - 1);
+  SHAPE_ASSIGN_CHECK(*out_attrs, 0, data_shape);
+  SHAPE_ASSIGN_CHECK(*out_attrs, 1, mshadow::Shape1(batch_num + 1));
+  return true;
 }
 
 }  // namespace op

@@ -13,6 +13,7 @@ namespace op {
 DMLC_REGISTER_PARAMETER(LocalCorrelationParam);
 DMLC_REGISTER_PARAMETER(LocalSparseFilterParam);
 DMLC_REGISTER_PARAMETER(BinaryStochasticNeuronParam);
+DMLC_REGISTER_PARAMETER(ArgSortLastParam);
 
 NNVM_REGISTER_OP(LocalCorrelation)
 .MXNET_DESCRIBE("Calculate the inner product between the vector lhs_{:, i, j} and rhs_{:, N(i), N(j)}."
@@ -128,5 +129,42 @@ NNVM_REGISTER_OP(BSN)
 MXNET_OPERATOR_REGISTER_BINARY(_backward_BSN)
 .set_attr<FCompute>("FCompute<cpu>", BinaryCompute<cpu, unary_bwd<mshadow_op::sigmoid_grad>>);
 
+NNVM_REGISTER_OP(argsort_last)
+.describe(R"code(Returns the indices that would sort an input array along the last axis (equivalent to axis=-1).
+
+Examples::
+
+  x = [[ 0.3,  0.2,  0.4],
+       [ 0.1,  0.3,  0.2]]
+
+  // sort along axis -1
+  argsort_last(x) = [[ 1.,  0.,  2.],
+                [ 0.,  2.,  1.]]
+)code" ADD_FILELINE)
+.set_num_inputs(1)
+.set_num_outputs(2)
+.set_attr<nnvm::FNumVisibleOutputs>("FNumVisibleOutputs",
+  [](const NodeAttrs& attrs) {
+  return 1;
+})
+.set_attr_parser(ParamParser<ArgSortLastParam>)
+.set_attr<nnvm::FInferShape>("FInferShape", ArgsortLastShape)
+.set_attr<nnvm::FInferType>("FInferType",
+  [](const nnvm::NodeAttrs& attrs,
+    std::vector<int> *in_type,
+    std::vector<int> *out_type) {
+  out_type->clear();
+  out_type->push_back((*in_type)[0]);
+  out_type->push_back(mshadow::kInt32);
+  return true;
+})
+.set_attr<FCompute>("FCompute<cpu>", ArgSortLast<cpu>)
+.set_attr<nnvm::FGradient>("FGradient", MakeZeroGradNodes)
+.set_attr<FResourceRequest>("FResourceRequest",
+  [](const NodeAttrs& attrs) {
+  return std::vector<ResourceRequest>{ResourceRequest::kTempSpace};
+})
+.add_argument("data", "NDArray-or-Symbol", "The input array")
+.add_arguments(ArgSortLastParam::__FIELDS__());
 }  // namespace op
 }  // namespace mxnet
