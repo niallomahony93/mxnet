@@ -10,23 +10,25 @@
 
 namespace mxnet {
 namespace op {
-
 NNVM_REGISTER_OP(LocalCorrelation)
 .set_attr<FCompute>("FCompute<gpu>", LocalCorrelationForward_<gpu>);
 
 NNVM_REGISTER_OP(_backward_LocalCorrelation)
 .set_attr<FCompute>("FCompute<gpu>", LocalCorrelationBackward_<gpu>);
 
-NNVM_REGISTER_OP(LocalFilter)
-.set_attr<FCompute>("FCompute<gpu>", LocalFilterForward_<gpu>);
+NNVM_REGISTER_OP(LocalSparseFilter)
+.set_attr<FCompute>("FCompute<gpu>", LocalSparseFilterForward_<gpu>);
 
-NNVM_REGISTER_OP(_backward_LocalFilter)
-.set_attr<FCompute>("FCompute<gpu>", LocalFilterBackward_<gpu>);
+NNVM_REGISTER_OP(_backward_LocalSparseFilter)
+.set_attr<FCompute>("FCompute<gpu>", LocalSparseFilterBackward_<gpu>);
 
 NNVM_REGISTER_OP(BSN)
 .set_attr<FCompute>("FCompute<gpu>", BinaryStochasticNeuronCompute<gpu>);
 
 NNVM_REGISTER_OP(_backward_BSN)
 .set_attr<FCompute>("FCompute<gpu>", BinaryCompute<gpu, unary_bwd<mshadow_op::sigmoid_grad>>);
+
+NNVM_REGISTER_OP(argsort_last)
+.set_attr<FCompute>("FCompute<gpu>", ArgSortLast<gpu>);
 }  // namespace op
 }  // namespace mxnet
