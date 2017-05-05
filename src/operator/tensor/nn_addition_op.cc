@@ -83,7 +83,7 @@ NNVM_REGISTER_OP(LocalSparseFilter)
 .add_argument("indices", "NDArray-or-Symbol", "The indices of the local connections, shape (B, L, K, H, W)");
 
 NNVM_REGISTER_OP(_backward_LocalSparseFilter)
-.set_num_inputs(6)
+.set_num_inputs(5)
 .set_num_outputs(4)
 .set_attr_parser(ParamParser<LocalSparseFilterParam>)
 .set_attr<FResourceRequest>("FResourceRequest",

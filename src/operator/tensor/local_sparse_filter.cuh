@@ -176,24 +176,19 @@ __global__ void LocalSparseFilterBackwardAccKernelBHWC(const int B, const int in
   __shared__ bool need_data_grad_dev;
   __shared__ bool need_weight_grad_dev;
   __shared__ bool need_values_grad_dev;
-  __shared__ float local_connection_val[TILE_SIZE][TILE_SIZE + 1];
-  __shared__ int local_connection_ind[TILE_SIZE][TILE_SIZE + 1];
-  __shared__ float data_shared[TILE_SIZE][TILE_SIZE + 1];
+  __shared__ volatile float local_connection_val[TILE_SIZE][TILE_SIZE + 1];
+  __shared__ volatile int local_connection_ind[TILE_SIZE][TILE_SIZE + 1];
+  __shared__ volatile float data_shared[TILE_SIZE][TILE_SIZE + 1];
   __shared__ volatile float weight_shared[TILE_SIZE][TILE_SIZE + 1]; // Add 1 to avoid bank conflict
   __shared__ float out_grad_shared[TILE_SIZE];
-  __shared__ float temp_mat[TILE_SIZE][TILE_SIZE + 1];
-  __shared__ volatile float temp_vec[TILE_SIZE]; // Temporal vector
-  __shared__ volatile float data_grad_mem_shared[TILE_SIZE][TILE_SIZE + 1]; // Used to calculate the gradient for data
-  __shared__ volatile float weight_grad_mem_shared[TILE_SIZE][TILE_SIZE + 1]; // Used to calculate the gradient for weight
+  __shared__ volatile float temp_mat[TILE_SIZE][TILE_SIZE + 1];
+  __shared__ float temp_vec[TILE_SIZE]; // Temporal vector
   int tx = threadIdx.x, ty = threadIdx.y;
-  int tid = tx + ty * blockDim.x;
   // Initailize the padded region to zero
   local_connection_val[ty][tx + 1] = 0.0f;
   data_shared[ty][tx + 1] = 0.0f;
   weight_shared[ty][tx + 1] = 0.0f;
   temp_mat[ty][tx + 1] = 0.0f;
-  data_grad_mem_shared[ty][tx + 1] = 0.0f;
-  weight_grad_mem_shared[ty][tx + 1] = 0.0f;
   if (tx == 0 && ty == 0) {
     // Copy the flags to device memory
     need_data_grad_dev = need_data_grad;
@@ -207,7 +202,7 @@ __global__ void LocalSparseFilterBackwardAccKernelBHWC(const int B, const int in
     int b = index / W / H;
     // Load the initial data + the local connection values and indices
     if (ty < L && tx < K) {
-      int address = ADDRESS_4D_BCHW(b, tid, h, w, L * K, H, W);
+      int address = ADDRESS_4D_BHWC(b, h, w, ty * K + tx, H, W, L * K);
       local_connection_val[ty][tx] = values[address];
       local_connection_ind[ty][tx] = __float2int_rn(indices[address]);
     } else {
@@ -217,7 +212,6 @@ __global__ void LocalSparseFilterBackwardAccKernelBHWC(const int B, const int in
 #pragma unroll
     for (int oc_base = 0; oc_base < outC; oc_base += TILE_SIZE) {
       int oc = oc_base + ty;
-#pragma unroll
       for (int l = 0; l < L; ++l) {
         for (int ic_base = 0; ic_base < inC; ic_base += TILE_SIZE) {
           int ic = ic_base + tx;
@@ -227,14 +221,16 @@ __global__ void LocalSparseFilterBackwardAccKernelBHWC(const int B, const int in
           } else {
             weight_shared[ty][tx] = 0.0f;
           }
-          if (tx + oc_base < outC && ty == TILE_SIZE) {
+          __syncthreads();
+          // Load the output gradient into shared memory
+          if (tx + oc_base < outC && ty == 0) {
             out_grad_shared[tx] = out_grad[ADDRESS_4D_BHWC(b, h, w, tx + oc_base, H, W, outC)];
           }
+          __syncthreads();
           // Load the local connected data into shared memory.
           if (ic < inC && ty < K) {
             if (local_connection_ind[l][ty] >= 0 && local_connection_ind[l][ty] < H * W) {
-              int address = ADDRESS_3D_BHWC(b, local_connection_ind[l][ty], ic, H * W, inC);
-              data_shared[ty][tx] = data[address];
+              data_shared[ty][tx] = data[ADDRESS_3D_BHWC(b, local_connection_ind[l][ty], ic, H * W, inC)];
             } else {
               data_shared[ty][tx] = pad_val;
             }
@@ -252,12 +248,16 @@ __global__ void LocalSparseFilterBackwardAccKernelBHWC(const int B, const int in
             __syncthreads();
             temp_vec[tx] = temp_mat[tx][0];
             __syncthreads();
-            temp_mat[ty][tx] = temp_vec[tx] * data_shared[ty][tx]; // (k, ic)
+            if (ty < K && tx + ic_base < inC) {
+              temp_mat[ty][tx] = temp_vec[tx] * data_shared[ty][tx]; // (k, ic)
+            } else {
+              temp_mat[ty][tx] = 0;
+            }
             __syncthreads();
             sumReduceShMem(temp_mat[ty]); // (k, 1)
             __syncthreads();
-            if (tx < K) {
-              values_grad[ADDRESS_4D_BCHW(b, l * K + tx, h, w, L * K, H, W)] += temp_mat[tx][0];
+            if (ty == 0 && tx < K) {
+              values_grad[ADDRESS_4D_BHWC(b, h, w, l * K + tx, H, W, L * K)] += temp_mat[tx][0];
             }
           }
           // Calculate the gradient for weight
@@ -265,8 +265,8 @@ __global__ void LocalSparseFilterBackwardAccKernelBHWC(const int B, const int in
           // We will first sum the data and then do the multiplication
           // TODO accelerate this part
           if (need_weight_grad_dev) {
-            if (ty < K) {
-              temp_mat[tx][ty] = local_connection_ind[l][ty] * data_shared[ty][tx]; // (ic, k)
+            if (ic < inC && ty < K) {
+              temp_mat[tx][ty] = local_connection_val[l][ty] * data_shared[ty][tx]; // (ic, k)
             } else {
               temp_mat[tx][ty] = 0;
             }
@@ -274,7 +274,7 @@ __global__ void LocalSparseFilterBackwardAccKernelBHWC(const int B, const int in
             sumReduceShMem(temp_mat[ty]);  // (ic, 1)
             __syncthreads();
             if (ic < inC && oc < outC) {
-              weight_grad[(l * outC + oc) * inC + ic] += out_grad_shared[ty] * temp_mat[tx][0];
+              atomicAdd(&weight_grad[(l * outC + oc) * inC + ic], out_grad_shared[ty] * temp_mat[tx][0]);
             }
           }
           // Calculate the gradient for data
@@ -288,12 +288,10 @@ __global__ void LocalSparseFilterBackwardAccKernelBHWC(const int B, const int in
             __syncthreads();
             sumReduceShMem(temp_mat[ty]);  // (ic, 1)
             __syncthreads();
-            temp_vec[tx] = temp_mat[tx][0];
-            __syncthreads();
             if (ic < inC && ty < K) {
               if (local_connection_ind[l][ty] >= 0 && local_connection_ind[l][ty] < H * W) {
                 atomicAdd(data_grad + ADDRESS_3D_BHWC(b, local_connection_ind[l][ty], ic, H * W, inC),
-                  local_connection_ind[l][ty] * temp_vec[tx]);
+                  local_connection_val[l][ty] * temp_mat[tx][0]);
               }
             }
           }
@@ -319,12 +317,13 @@ void LocalSparseFilterBackwardAccImpl(const mshadow::Tensor<gpu, 4, DType> &out_
   using namespace mshadow;
   using namespace mshadow::cuda;
   int B = data.shape_[0];
-  int L = values.shape_[3];
-  int K = values.shape_[4];
   int H = data.shape_[1];
   int W = data.shape_[2];
   int inC = data.shape_[3];
-  int outC = out_grad.shape_[1];
+
+  int L = values.shape_[3];
+  int K = values.shape_[4];
+  int outC = out_grad.shape_[3];
   const int grid_dim_x = B * H * W;
   // const int grid_dim_y = (outC + TILE_SIZE - 1) / TILE_SIZE;
   CHECK_LT(L, 32);

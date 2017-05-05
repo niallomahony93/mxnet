@@ -369,9 +369,9 @@ void LocalSparseFilterBackward_(const nnvm::NodeAttrs& attrs,
   mshadow::Tensor<xpu, 5, real_t> values = inputs[3].get<xpu, 5, real_t>(s);
   mshadow::Tensor<xpu, 5, real_t> indices = inputs[4].get<xpu, 5, real_t>(s);
   mshadow::Tensor<xpu, 4, real_t> data_grad = outputs[0].get<xpu, 4, real_t>(s);
-  mshadow::Tensor<xpu, 3, real_t> weight_grad = outputs[0].get<xpu, 3, real_t>(s);
-  mshadow::Tensor<xpu, 1, real_t> bias_grad = outputs[0].get<xpu, 1, real_t>(s);
-  mshadow::Tensor<xpu, 5, real_t> values_grad = outputs[0].get<xpu, 5, real_t>(s);
+  mshadow::Tensor<xpu, 3, real_t> weight_grad = outputs[1].get<xpu, 3, real_t>(s);
+  mshadow::Tensor<xpu, 1, real_t> bias_grad = outputs[2].get<xpu, 1, real_t>(s);
+  mshadow::Tensor<xpu, 5, real_t> values_grad = outputs[3].get<xpu, 5, real_t>(s);
   CHECK_NE(req[0], kWriteInplace);
   CHECK_NE(req[1], kWriteInplace);
   CHECK_NE(req[2], kWriteInplace);
@@ -381,13 +381,13 @@ void LocalSparseFilterBackward_(const nnvm::NodeAttrs& attrs,
   CHECK_LT(static_cast<uint64_t>(workspace.shape_.Size()) >> 20, param_.workspace);
   Tensor<xpu, 4, real_t> transposed_data = Tensor<xpu, 4, real_t>(workspace.dptr_,
     Shape4(data.shape_[0], data.shape_[2], data.shape_[3], data.shape_[1]), s);  // contain transposed data for coalescing access
-  Tensor<xpu, 4, real_t> transposed_data_grad = Tensor<xpu, 4, real_t>(workspace.dptr_,
+  Tensor<xpu, 4, real_t> transposed_data_grad = Tensor<xpu, 4, real_t>(workspace.dptr_ + inputs[1].Size(),
     Shape4(data.shape_[0], data.shape_[2], data.shape_[3], data.shape_[1]), s);  // contain transposed data for coalescing access
-  Tensor<xpu, 4, real_t> transposed_out_grad = Tensor<xpu, 4, real_t>(workspace.dptr_,
+  Tensor<xpu, 4, real_t> transposed_out_grad = Tensor<xpu, 4, real_t>(workspace.dptr_ + 2* inputs[1].Size(),
     Shape4(out_grad.shape_[0], out_grad.shape_[2], out_grad.shape_[3], out_grad.shape_[1]), s);  // contain transposed data for coalescing access
   transposed_data = transpose(data, Shape4(0, 2, 3, 1));
   transposed_out_grad = transpose(out_grad, Shape4(0, 2, 3, 1));
-  Assign(bias_grad, req[2], sumall_except_dim<1>(data));
+  Assign(bias_grad, req[2], sumall_except_dim<1>(out_grad));
   transposed_data_grad = scalar<real_t>(0.0f);
   if (req[1] == kWriteTo) {
     weight_grad = scalar<real_t>(0.0f);
@@ -399,7 +399,6 @@ void LocalSparseFilterBackward_(const nnvm::NodeAttrs& attrs,
                                    transposed_data_grad, weight_grad, values_grad,
                                    req[0] != kNullOp, req[1] != kNullOp, req[3] != kNullOp, param_.pad_val);
   Assign(data_grad, req[0], transpose(transposed_data_grad, Shape4(0, 3, 1, 2)));
-  LOG(FATAL) << "Not Implemented Error";
 }
 
 inline bool LocalSparseFilterShape(const nnvm::NodeAttrs& attrs,
