@@ -177,12 +177,12 @@ __global__ void LocalSparseFilterBackwardAccKernelBHWC(const int B, const int in
   __shared__ bool need_weight_grad_dev;
   __shared__ bool need_values_grad_dev;
   __shared__ volatile float local_connection_val[TILE_SIZE][TILE_SIZE + 1];
-  __shared__ volatile int local_connection_ind[TILE_SIZE][TILE_SIZE + 1];
+  __shared__ int local_connection_ind[TILE_SIZE][TILE_SIZE + 1];
   __shared__ volatile float data_shared[TILE_SIZE][TILE_SIZE + 1];
   __shared__ volatile float weight_shared[TILE_SIZE][TILE_SIZE + 1]; // Add 1 to avoid bank conflict
-  __shared__ float out_grad_shared[TILE_SIZE];
+  __shared__ volatile float out_grad_shared[TILE_SIZE];
   __shared__ volatile float temp_mat[TILE_SIZE][TILE_SIZE + 1];
-  __shared__ float temp_vec[TILE_SIZE]; // Temporal vector
+  __shared__ volatile float temp_vec[TILE_SIZE]; // Temporal vector
   int tx = threadIdx.x, ty = threadIdx.y;
   // Initailize the padded region to zero
   local_connection_val[ty][tx + 1] = 0.0f;
@@ -221,7 +221,6 @@ __global__ void LocalSparseFilterBackwardAccKernelBHWC(const int B, const int in
           } else {
             weight_shared[ty][tx] = 0.0f;
           }
-          __syncthreads();
           // Load the output gradient into shared memory
           if (tx + oc_base < outC && ty == 0) {
             out_grad_shared[tx] = out_grad[ADDRESS_4D_BHWC(b, h, w, tx + oc_base, H, W, outC)];
