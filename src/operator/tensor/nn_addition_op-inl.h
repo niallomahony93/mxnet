@@ -488,7 +488,8 @@ void ArgSortLast(const nnvm::NodeAttrs& attrs,
   mshadow::Tensor<xpu, 1, real_t> out = outputs[0].get_with_shape<xpu, 1, real_t>(Shape1(outputs[0].Size()), s);
   mshadow::Tensor<xpu, 1, int> d_offsets = outputs[1].get_with_shape<xpu, 1, int>(Shape1(outputs[1].Size()), s);
   int batch_num = inputs[0].shape_.ProdShape(0, inputs[0].shape_.ndim() - 1);
-  d_offsets = mshadow::expr::range<int>(0, float(batch_num) + 0.5);
+  int col_size = inputs[0].shape_[inputs[0].ndim() - 1];
+  d_offsets = mshadow::expr::range<int>(0, float(batch_num) + 0.5) * col_size;
   ArgSortLastImpl(data, out, d_offsets, param.is_ascend, batch_num, ctx.requested[0]);
 }
 
