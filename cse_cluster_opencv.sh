@@ -15,6 +15,6 @@
 #$ -m be
 source ~/.cshrc_user
 cd /project/dygroup2/xingjian/opencv-3.2.0/build
-rm -r *
-cmake -D BUILD_opencv_gpu=OFF -D WITH_CUDA=OFF -D WITH_1394=OFF -D CMAKE_BUILD_TYPE=RELEASE -D CMAKE_INSTALL_PREFIX=/project/dygroup2/xingjian/.local ..
+#rm -r *
+#cmake -D BUILD_opencv_gpu=OFF -D WITH_CUDA=OFF -D WITH_1394=OFF -D CMAKE_BUILD_TYPE=RELEASE -D CMAKE_INSTALL_PREFIX=/project/dygroup2/xingjian/.local ..
 make -j64
