@@ -15,4 +15,5 @@
 # completed (e)
 #$ -m be
 source ~/.cshrc_user
+cd /project/dygroup2/xingjian/opencv-3.2.0/build
 make -j64
