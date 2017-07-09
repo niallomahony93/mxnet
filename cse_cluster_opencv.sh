@@ -6,7 +6,7 @@
 # specify the working path
 #$ -wd /project/dygroup2/xingjian/opencv-3.2.0/build
 
-#$ -l h=client111
+#$ -l h=client112
 
 # email me with this address...
 #$ -M xshiab@connect.ust.hk
