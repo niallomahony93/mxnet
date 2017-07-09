@@ -1,7 +1,7 @@
 #!/bin/csh
 
 # specify where the output file should be put
-#$ -o /project/dygroup2/xingjian/mxnet
+#$ -oe /project/dygroup2/xingjian/mxnet
 
 # specify the working path
 #$ -wd /project/dygroup2/xingjian/opencv-3.2.0/build
