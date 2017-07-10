@@ -16,4 +16,4 @@
 #$ -m be
 source ~/.cshrc_user
 cd tests/python/gpu
-nosetests test_operator_gpu.py
+python3 -m "nose" test_operator_gpu.py
