@@ -4,11 +4,26 @@ In this tutorial we'll walk through how one can implement *linear regression* us
 
 The function we are trying to learn is: *y = x<sub>1</sub>  +  2x<sub>2</sub>*, where *(x<sub>1</sub>,x<sub>2</sub>)* are input features and *y* is the corresponding label.
 
+## Prerequisites
+
+To complete this tutorial, we need:  
+
+- MXNet. See the instructions for your operating system in [Setup and Installation](http://mxnet.io/get_started/install.html).  
+
+- [Jupyter Notebook](http://jupyter.org/index.html).
+
+```
+$ pip install jupyter
+```
+
 To begin, the following code imports the necessary packages we'll need for this exercise.
 
 ```python
 import mxnet as mx
 import numpy as np
+
+import logging
+logging.getLogger().setLevel(logging.DEBUG)
 ```
 
 ## Preparing the Data
@@ -141,7 +156,8 @@ parameters of the model to fit the training data. This is accomplished using the
 ```python
 model.fit(train_iter, eval_iter,
             optimizer_params={'learning_rate':0.005, 'momentum': 0.9},
-            num_epoch=1000,
+            num_epoch=50,
+            eval_metric='mse',
             batch_end_callback = mx.callback.Speedometer(batch_size, 2))
 ```
 
