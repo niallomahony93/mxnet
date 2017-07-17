@@ -1,9 +1,10 @@
 # pylint: skip-file
+from __future__ import print_function
 import numpy as np
 import mxnet as mx
 import random
 import itertools
-from numpy.testing import assert_allclose
+from numpy.testing import assert_allclose, assert_array_equal
 from mxnet.test_utils import *
 
 def np_softmax(x, axis=-1):
@@ -1422,7 +1423,7 @@ def test_broadcast():
         test_broadcasting_ele(sym_bcast_to)
 
 def test_transpose():
-    for ndim in range(1, 6):
+    for ndim in range(1, 7):
         for t in range(5):
             dims = list(np.random.randint(1, 10, size=ndim))
             axes = list(range(ndim))
@@ -1633,7 +1634,7 @@ def test_dot(ctx=default_context()):
 
 def test_batch_dot():
     dtypes = ['float32', 'float64']
-    
+
     for data_type in dtypes:
         for batch_size in range(1, 5):
             for m in range(1, 5):
@@ -2058,6 +2059,69 @@ def test_sequence_mask():
     shape2 = (1, 2, 2, 3, 1, 1)
     check_sequence_mask(shape1, default_context(), 2.1)
     check_sequence_mask(shape2, default_context(), 0.1)
+
+def check_sequence_reverse(xpu):
+
+    # sample data
+    arr = np.array(
+        [[[  1.,   2.,   3.],
+          [  4.,   5.,   6.]],
+         [[  7.,   8.,   9.],
+          [ 10.,  11.,  12.]],
+         [[ 13.,  14.,   15.],
+          [ 16.,  17.,   18.]]])
+
+    arr1 = np.array(
+        [[[  13.,   14.,   15.],
+          [  16.,   17.,   18.]],
+         [[  7.,   8.,   9.],
+          [ 10.,  11.,  12.]],
+         [[ 1.,  2.,   3.],
+          [ 4.,  5.,   6.]]])
+
+    arr2 = np.array(
+        [[[  7.,   8.,   9.],
+          [  10.,   11.,   12.]],
+         [[  1.,   2.,   3.],
+          [ 4.,  5.,   6.]],
+         [[ 13.,  14.,   15.],
+          [ 16.,  17.,   18.]]])
+
+    arr3 = np.array(
+        [[[  7.,   8.,   9.],
+          [  16.,   17.,   18.]],
+         [[  1.,   2.,   3.],
+          [ 10.,  11.,  12.]],
+         [[ 13.,  14.,   15.],
+          [ 4.,  5.,   6.]]])
+
+    def test_wrapper(arr, xpu, sequence_length=None, use_sequence_length=False):
+        # MxNet symbol creation
+        seq = mx.sym.Variable('seq')
+        if sequence_length and use_sequence_length:
+            seq_len = mx.sym.Variable('seq_len')
+        else:
+           # ensure that both are disabled, not just one
+           seq_len=None
+           use_sequence_length=False
+        rev = mx.sym.SequenceReverse(data=seq, sequence_length=seq_len, use_sequence_length=use_sequence_length)
+        # MxNet symbol execution
+        if sequence_length:
+            bound = rev.bind(xpu, {'seq': mx.nd.array(arr), 'seq_len': mx.nd.array(sequence_length)})
+        else:
+            bound = rev.bind(xpu, {'seq': mx.nd.array(arr)})
+        fwd = bound.forward()
+        return fwd[0].asnumpy()
+
+    # test cases
+    assert_array_equal(test_wrapper(arr, xpu, use_sequence_length=False), arr1)
+    assert_array_equal(test_wrapper(arr, xpu, sequence_length=[3, 3], use_sequence_length=True), arr1)
+    assert_array_equal(test_wrapper(arr, xpu, sequence_length=[2, 2], use_sequence_length=True), arr2)
+    assert_array_equal(test_wrapper(arr, xpu, sequence_length=[2, 3], use_sequence_length=True), arr3)
+
+
+def test_sequence_reverse():
+    check_sequence_reverse(mx.cpu())
 
 def mathematical_core_binary(name,
                              forward_mxnet_call,
@@ -3242,6 +3306,11 @@ def test_custom_op():
     op = mx.symbol.cast(op, dtype='float32')
     x = mx.nd.array(np.random.uniform(-1, 1, size=(4, 10)))
     check_numeric_gradient(op, [x])
+    dx = mx.nd.zeros_like(x)
+    mx.contrib.autograd.mark_variables([x], [dx])
+    with mx.contrib.autograd.train_section():
+        y = mx.nd.Custom(x, op_type='sqr')
+        y.backward()
 
 def test_global_norm():
     a = mx.sym.var('a')
@@ -3336,10 +3405,10 @@ def test_deformable_psroipooling():
                     im_data_var = mx.symbol.Variable(name="im_data")
                     rois_data_var = mx.symbol.Variable(name="rois_data")
                     offset_data_var = mx.symbol.Variable(name="offset_data")
-                    op = mx.contrib.sym.DeformablePSROIPooling(data=im_data_var, rois=rois_data_var, 
-                                                               trans=offset_data_var, spatial_scale=spatial_scale, 
-                                                               sample_per_part=4, group_size=num_group, 
-                                                               pooled_size=num_group, output_dim=num_classes, 
+                    op = mx.contrib.sym.DeformablePSROIPooling(data=im_data_var, rois=rois_data_var,
+                                                               trans=offset_data_var, spatial_scale=spatial_scale,
+                                                               sample_per_part=4, group_size=num_group,
+                                                               pooled_size=num_group, output_dim=num_classes,
                                                                trans_std=0.1, no_trans=False, name='test_op')
                     if grad_nodes[0] == 'offset_data':
                         # wider tolerance needed for coordinate differential
@@ -3354,6 +3423,7 @@ def test_deformable_psroipooling():
 
 
 def test_laop():
+    return
 
     # Currently no support for GPU. Will be added soon
     # so keep these tests here in this file and activate
