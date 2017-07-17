@@ -81,12 +81,12 @@ class EvalMetric(object):
         if self.output_names is not None:
             pred = [pred[name] for name in self.output_names]
         else:
-            pred = pred.values()
+            pred = list(pred.values())
 
         if self.label_names is not None:
             label = [label[name] for name in self.label_names]
         else:
-            label = label.values()
+            label = list(label.values())
 
         self.update(label, pred)
 
@@ -251,7 +251,7 @@ class CompositeEvalMetric(EvalMetric):
             return ValueError("Metric index {} is out of range 0 and {}".format(
                 index, len(self.metrics)))
 
-    def update_dict(self, labels, preds):
+    def update_dict(self, labels, preds): # pylint: disable=arguments-differ
         if self.label_names is not None:
             labels = OrderedDict([i for i in labels.items()
                                   if i[0] in self.label_names])
