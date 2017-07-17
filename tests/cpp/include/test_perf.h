@@ -8,7 +8,8 @@
 #ifndef TESTS_CPP_INCLUDE_TEST_PERF_H_
 #define TESTS_CPP_INCLUDE_TEST_PERF_H_
 
-#include <sys/time.h>
+#include <time.h>
+#include <Windows.h>
 #include <dmlc/logging.h>
 #include <iomanip>
 #include <iostream>

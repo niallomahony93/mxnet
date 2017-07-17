@@ -26,6 +26,7 @@ if(GTEST_FOUND)
 
   file(GLOB_RECURSE UNIT_TEST_SOURCE "cpp/*.cc" "cpp/*.h")
 
+  include_directories(${GTEST_INCLUDE_DIRS})
   include_directories(cpp/include)
 
   add_executable(${PROJECT_NAME}_unit_tests ${UNIT_TEST_SOURCE})
