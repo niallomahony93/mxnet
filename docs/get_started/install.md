@@ -102,16 +102,22 @@ After activating the environment, you should see the prompt as below.
 Installing *MXNet* with pip requires a latest version of `pip`. Install the latest version of `pip` by issuing the following command.
 
 ```bash
-(mxnet)$ pip install --upgrade pip
+$ pip install --upgrade pip
 ```
 
 Install *MXNet* with OpenBLAS acceleration.
 
 ```bash
-(mxnet)$ pip install mxnet
+$ pip install mxnet
 ```
 
-**Step 4**  Validate the installation by running simple *MXNet* code described [here](#validate-mxnet-installation).
+**Step 4**  Install [Graphviz](http://www.graphviz.org/). (Optional, needed for graph visualization using `mxnet.viz` package).
+```bash
+sudo apt-get install graphviz
+pip install graphviz
+```
+
+**Step 5**  Validate the installation by running simple *MXNet* code described [here](#validate-mxnet-installation).
 
 **Note**  You can read more about virtualenv [here](https://virtualenv.pypa.io/en/stable/userguide/).
 
@@ -136,7 +142,13 @@ $ wget https://bootstrap.pypa.io/get-pip.py && sudo python get-pip.py
 $ pip install mxnet
 ```
 
-**Step 3**  Validate the installation by running simple MXNet code described [here](#validate-mxnet-installation).
+**Step 3**  Install [Graphviz](http://www.graphviz.org/). (Optional, needed for graph visualization using `mxnet.viz` package).
+```bash
+sudo apt-get install graphviz
+pip install graphviz
+```
+
+**Step 4**  Validate the installation by running simple MXNet code described [here](#validate-mxnet-installation).
 
 </div>
 
@@ -197,9 +209,9 @@ $ sudo apt-get install -y build-essential git
 
 **Step 2** Install OpenBLAS.
 
-*MXNet* uses [BLAS](https://en.wikipedia.org/wiki/Basic_Linear_Algebra_Subprograms) library for accelerated numerical computations on CPU machine. There are several flavors of BLAS libraries - [OpenBLAS](http://www.openblas.net/), [ATLAS](http://math-atlas.sourceforge.net/) and [MKL](https://software.intel.com/en-us/intel-mkl). In this step we install OpenBLAS. You can choose to install ATLAS or MKL.
+*MXNet* uses [BLAS](https://en.wikipedia.org/wiki/Basic_Linear_Algebra_Subprograms) and [LAPACK](https://en.wikipedia.org/wiki/LAPACK) libraries for accelerated numerical computations on CPU machine. There are several flavors of BLAS/LAPACK libraries - [OpenBLAS](http://www.openblas.net/), [ATLAS](http://math-atlas.sourceforge.net/) and [MKL](https://software.intel.com/en-us/intel-mkl). In this step we install OpenBLAS. You can choose to install ATLAS or MKL.
 ```bash
-$ sudo apt-get install -y libopenblas-dev
+$ sudo apt-get install -y libopenblas-dev liblapack-dev
 ```
 
 **Step 3** Install OpenCV.
@@ -223,20 +235,29 @@ $ make -j $(nproc) USE_OPENCV=1 USE_BLAS=openblas
 
 **Build the MXNet Python binding**
 
-**Step 1** Install prerequisites - python setup tools and numpy.
+**Step 1** Install prerequisites - python, setup-tools, python-pip and numpy.
 
 ```bash
-$ sudo apt-get install -y python-dev python-setuptools python-numpy
+$ sudo apt-get install -y python-dev python-setuptools python-numpy python-pip
 ```
 
-**Step 2** Build the MXNet Python binding.
+**Step 2** Install the MXNet Python binding.
 
 ```bash
 $ cd python
-$ sudo python setup.py install
+$ pip install --upgrade pip
+$ pip install -e .
 ```
 
-**Step 3** Validate the installation by running simple MXNet code described [here](#validate-mxnet-installation).
+Note that the `-e` flag is optional. It is equivalent to `--editable` and means that if you edit the source files, these changes will be reflected in the package installed.
+
+**Step 3**  Install [Graphviz](http://www.graphviz.org/). (Optional, needed for graph visualization using `mxnet.viz` package).
+```bash
+sudo apt-get install graphviz
+pip install graphviz
+```
+
+**Step 4** Validate the installation by running simple MXNet code described [here](#validate-mxnet-installation).
 
 </div>
 
@@ -284,7 +305,13 @@ $ wget https://bootstrap.pypa.io/get-pip.py && sudo python get-pip.py
 $ pip install mxnet-cu80
 ```
 
-**Step 3**  Validate the installation by running simple MXNet code described [here](#validate-mxnet-installation).
+**Step 3**  Install [Graphviz](http://www.graphviz.org/). (Optional, needed for graph visualization using `mxnet.viz` package).
+```bash
+sudo apt-get install graphviz
+pip install graphviz
+```
+
+**Step 4**  Validate the installation by running simple MXNet code described [here](#validate-mxnet-installation).
 
 </div>
 
@@ -333,7 +360,13 @@ Install *MXNet* with GPU support using CUDA 8.0.
 (mxnet)$ pip install mxnet-cu80
 ```
 
-**Step 4**  Validate the installation by running simple *MXNet* code described [here](#validate-mxnet-installation).
+**Step 4**  Install [Graphviz](http://www.graphviz.org/). (Optional, needed for graph visualization using `mxnet.viz` package).
+```bash
+sudo apt-get install graphviz
+pip install graphviz
+```
+
+**Step 5**  Validate the installation by running simple *MXNet* code described [here](#validate-mxnet-installation).
 
 **Note**  You can read more about virtualenv [here](https://virtualenv.pypa.io/en/stable/userguide/).
 
@@ -399,9 +432,9 @@ $ sudo apt-get install -y build-essential git
 ```
 **Step 2** Install OpenBLAS.
 
-*MXNet* uses [BLAS](https://en.wikipedia.org/wiki/Basic_Linear_Algebra_Subprograms) library for accelerated numerical computations. There are several flavors of BLAS libraries - [OpenBLAS](http://www.openblas.net/), [ATLAS](http://math-atlas.sourceforge.net/) and [MKL](https://software.intel.com/en-us/intel-mkl). In this step we install OpenBLAS. You can choose to install ATLAS or MKL.
+*MXNet* uses [BLAS](https://en.wikipedia.org/wiki/Basic_Linear_Algebra_Subprograms) and [LAPACK](https://en.wikipedia.org/wiki/LAPACK) libraries for accelerated numerical computations on CPU machine. There are several flavors of BLAS/LAPACK libraries - [OpenBLAS](http://www.openblas.net/), [ATLAS](http://math-atlas.sourceforge.net/) and [MKL](https://software.intel.com/en-us/intel-mkl). In this step we install OpenBLAS. You can choose to install ATLAS or MKL.
 ```bash
-$ sudo apt-get install -y libopenblas-dev
+$ sudo apt-get install -y libopenblas-dev liblapack-dev
 ```
 
 **Step 3** Install OpenCV.
@@ -423,22 +456,31 @@ $ make -j $(nproc) USE_OPENCV=1 USE_BLAS=openblas USE_CUDA=1 USE_CUDA_PATH=/usr/
 
 <br/>
 
-**Build the MXNet Python binding**
+**Install the MXNet Python binding**
 
-**Step 1** Install prerequisites - python setup tools and numpy.
+**Step 1** Install prerequisites - python, setup-tools, python-pip and numpy.
 
 ```bash
-$ sudo apt-get install -y python-dev python-setuptools python-numpy
+$ sudo apt-get install -y python-dev python-setuptools python-numpy python-pip
 ```
 
-**Step 2** Build the MXNet Python binding.
+**Step 2** Install the MXNet Python binding.
 
 ```bash
 $ cd python
-$ sudo python setup.py install
+$ pip install --upgrade pip
+$ pip install -e .
 ```
 
-**Step 3** Validate the installation by running simple MXNet code described [here](#validate-mxnet-installation).
+Note that the `-e` flag is optional. It is equivalent to `--editable` and means that if you edit the source files, these changes will be reflected in the package installed.
+
+**Step 3**  Install [Graphviz](http://www.graphviz.org/). (Optional, needed for graph visualization using `mxnet.viz` package).
+```bash
+sudo apt-get install graphviz
+pip install graphviz
+```
+
+**Step 4** Validate the installation by running simple MXNet code described [here](#validate-mxnet-installation).
 </div>
 
 </div>
@@ -456,7 +498,7 @@ The following installation instructions have been tested on OSX Sierra and El Ca
 
 **Prerequisites**
 
-If not already installed, [download and install Xcode](https://developer.apple.com/xcode/) for macOS. [Xcode](https://en.wikipedia.org/wiki/Xcode) is an integrated development environment for macOS containing a suite of software development tools like C/C++ compilers, BLAS library and more.
+If not already installed, [download and install Xcode](https://developer.apple.com/xcode/) (or [insall it from the App Store](https://itunes.apple.com/us/app/xcode/id497799835)) for macOS. [Xcode](https://en.wikipedia.org/wiki/Xcode) is an integrated development environment for macOS containing a suite of software development tools like C/C++ compilers, BLAS library and more.
 
 <div class="virtualenv">
 <br/>
@@ -513,7 +555,13 @@ Install *MXNet* with OpenBLAS acceleration.
 (mxnet)$ pip install mxnet
 ```
 
-**Step 5**  Validate the installation by running simple *MXNet* code described [here](#validate-mxnet-installation).
+**Step 5**  Install [Graphviz](http://www.graphviz.org/). (Optional, needed for graph visualization using `mxnet.viz` package).
+```bash
+$ brew install graphviz
+(mxnet)$ pip install graphviz
+```
+
+**Step 6**  Validate the installation by running simple *MXNet* code described [here](#validate-mxnet-installation).
 
 **Note**  You can read more about virtualenv [here](https://virtualenv.pypa.io/en/stable/userguide/).
 
@@ -546,7 +594,13 @@ $ pip install --upgrade setuptools
 $ pip install mxnet
 ```
 
-**Step 3**  Validate the installation by running simple MXNet code described [here](#validate-mxnet-installation).
+**Step 3**  Install [Graphviz](http://www.graphviz.org/). (Optional, needed for graph visualization using `mxnet.viz` package).
+```bash
+$ brew install graphviz
+$ pip install graphviz
+```
+
+**Step 4**  Validate the installation by running simple MXNet code described [here](#validate-mxnet-installation).
 
 </div>
 
@@ -658,8 +712,9 @@ You could also run distributed deeplearning with *MXNet* on AWS using [Cloudform
 The CPU version of MXNet R package can be installed in R like other packages
 
 ```r
-install.packages("drat")
-drat::addRepo("dmlc")
+cran <- getOption("repos")
+cran["dmlc"] <- "https://s3-us-west-2.amazonaws.com/apache-mxnet/R/CRAN/"
+options(repos = cran)
 install.packages("mxnet")
 ```
 
@@ -703,9 +758,9 @@ $ sudo apt-get install -y build-essential git
 
 **Step 2** Install OpenBLAS.
 
-*MXNet* uses [BLAS](https://en.wikipedia.org/wiki/Basic_Linear_Algebra_Subprograms) library for accelerated numerical computations on CPU machine. There are several flavors of BLAS libraries - [OpenBLAS](http://www.openblas.net/), [ATLAS](http://math-atlas.sourceforge.net/) and [MKL](https://software.intel.com/en-us/intel-mkl). In this step we install OpenBLAS. You can choose to install ATLAS or MKL.
+*MXNet* uses [BLAS](https://en.wikipedia.org/wiki/Basic_Linear_Algebra_Subprograms) and [LAPACK](https://en.wikipedia.org/wiki/LAPACK) libraries for accelerated numerical computations on CPU machine. There are several flavors of BLAS/LAPACK libraries - [OpenBLAS](http://www.openblas.net/), [ATLAS](http://math-atlas.sourceforge.net/) and [MKL](https://software.intel.com/en-us/intel-mkl). In this step we install OpenBLAS. You can choose to install ATLAS or MKL.
 ```bash
-$ sudo apt-get install -y libopenblas-dev
+$ sudo apt-get install -y libopenblas-dev liblapack-dev
 ```
 
 **Step 3** Install OpenCV.
@@ -775,9 +830,9 @@ $ sudo apt-get install -y build-essential git
 ```
 **Step 2** Install OpenBLAS.
 
-*MXNet* uses [BLAS](https://en.wikipedia.org/wiki/Basic_Linear_Algebra_Subprograms) library for accelerated numerical computations. There are several flavors of BLAS libraries - [OpenBLAS](http://www.openblas.net/), [ATLAS](http://math-atlas.sourceforge.net/) and [MKL](https://software.intel.com/en-us/intel-mkl). In this step we install OpenBLAS. You can choose to install ATLAS or MKL.
+*MXNet* uses [BLAS](https://en.wikipedia.org/wiki/Basic_Linear_Algebra_Subprograms) and [LAPACK](https://en.wikipedia.org/wiki/LAPACK) libraries for accelerated numerical computations on CPU machine. There are several flavors of BLAS/LAPACK libraries - [OpenBLAS](http://www.openblas.net/), [ATLAS](http://math-atlas.sourceforge.net/) and [MKL](https://software.intel.com/en-us/intel-mkl). In this step we install OpenBLAS. You can choose to install ATLAS or MKL.
 ```bash
-$ sudo apt-get install -y libopenblas-dev
+$ sudo apt-get install -y libopenblas-dev liblapack-dev
 ```
 
 **Step 3** Install OpenCV.
@@ -822,23 +877,35 @@ The CPU version of MXNet R package can be installed in R like other packages
 
 
 ```r
-install.packages("drat")
-drat::addRepo("dmlc")
+cran <- getOption("repos")
+cran["dmlc"] <- "https://s3-us-west-2.amazonaws.com/apache-mxnet/R/CRAN/"
+options(repos = cran)
 install.packages("mxnet")
 ```
 
-
-</div>
-
-<div class="gpu">
-
-Will be available soon.
-
-</div>
-</div>
 </div>
 
 <!-- END - Windows R CPU Installation Instructions -->
+
+<div class="gpu">
+
+The GPU version of MXNet R package can be installed in R like other packages
+
+
+```r
+cran <- getOption("repos")
+cran["dmlc"] <- "https://s3-us-west-2.amazonaws.com/apache-mxnet/R/CRAN/GPU"
+options(repos = cran)
+install.packages("mxnet")
+```
+
+Alternatively, You can also follow the installation instructions [in this guide](./windows_setup.md) to build MXNet from source.
+
+</div>
+</div>
+</div>
+
+<!-- END - Windows R GPU Installation Instructions -->
 
 <div class="linux">
   <div class="scala julia perl">
@@ -939,8 +1006,11 @@ To install python bindings run the following commands in the MXNet directory:
 
 ```bash
     cd python
-    sudo python setup.py install
+    pip install --upgrade pip
+    pip install -e .
 ```
+
+Note that the `-e` flag is optional. It is equivalent to `--editable` and means that if you edit the source files, these changes will be reflected in the package installed.
 
 You are now ready to run MXNet on your Raspberry Pi device. You can get started by following the tutorial on [Real-time Object Detection with MXNet On The Raspberry Pi](http://mxnet.io/tutorials/embedded/wine_detector.html).
 
@@ -1018,7 +1088,15 @@ To install python bindings run the following commands in the MXNet directory:
 
 ```bash
     cd python
-    sudo python setup.py install
+    pip install --upgrade pip
+    pip install -e .
+```
+
+Note that the `-e` flag is optional. It is equivalent to `--editable` and means that if you edit the source files, these changes will be reflected in the package installed.
+
+Add the mxnet folder to the path:
+
+```bash
     cd ..
     export MXNET_HOME=$(pwd)                       
     echo "export PYTHONPATH=$MXNET_HOME/python:$PYTHONPATH" >> ~/.bashrc
@@ -1309,7 +1387,7 @@ array([[ 3.,  3.,  3.],
   <div class="r">
     <div class="cpu">
 
-Run a short *MXNet* python program to create a 2X3 matrix of ones, multiply each element in the matrix by 2 followed by adding 1. We expect the output to be a 2X3 matrix with all elements being 3.
+Run a short *MXNet* R program to create a 2X3 matrix of ones, multiply each element in the matrix by 2 followed by adding 1. We expect the output to be a 2X3 matrix with all elements being 3.
 
 ```r
 library(mxnet)
@@ -1328,7 +1406,7 @@ b
   <div class="r">
     <div class="gpu">
 
-Run a short *MXNet* python program to create a 2X3 matrix of ones *a* on a *GPU*, multiply each element in the matrix by 2 followed by adding 1. We expect the output to be a 2X3 matrix with all elements being 3. We use *mx.gpu()*, to set *MXNet* context to be GPUs.
+Run a short *MXNet* R program to create a 2X3 matrix of ones *a* on a *GPU*, multiply each element in the matrix by 2 followed by adding 1. We expect the output to be a 2X3 matrix with all elements being 3. We use *mx.gpu()*, to set *MXNet* context to be GPUs.
 
 ```r
 library(mxnet)

@@ -4,7 +4,6 @@
  * \brief threaded engine tests
 */
 #include <time.h>
-#include <unistd.h>
 #include <dmlc/logging.h>
 #include <gtest/gtest.h>
 #include <mxnet/engine.h>
@@ -28,7 +27,7 @@ struct Workload {
   int time;
 };
 
-static u_int32_t seed_ = 0xdeadbeef;
+static uint32_t seed_ = 0xdeadbeef;
 
 /**
  * generate a list of workloads
