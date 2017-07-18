@@ -8,8 +8,7 @@
 #ifndef TEST_PERF_H_
 #define TEST_PERF_H_
 
-#include <time.h>
-#include <Windows.h>
+#include <sys/time.h>
 #include <dmlc/logging.h>
 #include <iomanip>
 #include <iostream>
