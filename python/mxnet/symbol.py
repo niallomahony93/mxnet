@@ -2182,7 +2182,7 @@ def global_norm(t_list, name=None):
             if ret is None:
                 ret = square(norm(t))
             else:
-                ret += square(norm(t))
+                ret = ret + square(norm(t))
     ret = sqrt(ret, name=name)
     return ret
 # pylint: enable=undefined-variable
