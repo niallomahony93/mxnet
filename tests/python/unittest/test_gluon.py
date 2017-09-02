@@ -19,6 +19,7 @@ import mxnet as mx
 from mxnet import gluon
 from mxnet.gluon import nn
 import numpy as np
+from nose.tools import raises
 
 
 def test_parameter():
@@ -323,7 +324,7 @@ def check_split_data(x, num_slice, batch_axis, **kwargs):
 
 
 def test_split_data():
-    x = mx.nd.random_uniform(shape=(128, 33, 64))
+    x = mx.nd.random.uniform(shape=(128, 33, 64))
 
     check_split_data(x, 8, 0)
     check_split_data(x, 3, 1)
@@ -367,6 +368,38 @@ def test_trainer():
     trainer.step(1)
 
     assert (x.data(mx.cpu(1)).asnumpy() == -3).all()
+
+def test_block_attr_hidden():
+    b = gluon.Block()
+
+    # regular attributes can change types
+    b.a = None
+    b.a = 1
+
+@raises(TypeError)
+def test_block_attr_block():
+    b = gluon.Block()
+
+    # regular variables can't change types
+    b.b = gluon.Block()
+    b.b = (2,)
+
+@raises(TypeError)
+def test_block_attr_param():
+    b = gluon.Block()
+
+    # regular variables can't change types
+    b.b = gluon.Parameter()
+    b.b = (2,)
+
+def test_block_attr_regular():
+    b = gluon.Block()
+
+    # set block attribute also sets _children
+    b.c = gluon.Block()
+    c2 = gluon.Block()
+    b.c = c2
+    assert b.c is c2 and b._children[0] is c2
 
 
 if __name__ == '__main__':
