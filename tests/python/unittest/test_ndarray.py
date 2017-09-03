@@ -678,7 +678,7 @@ def test_global_norm():
         npy_norm += np.square(data_npy).sum()
         nd_list.append(mx.nd.array(data_npy))
     npy_norm = np.sqrt(npy_norm)
-    nd_val = mx.nd.global_norm(nd_list).asscalar()
+    nd_val = mx.nd.contrib.global_norm(nd_list).asscalar()
     assert_allclose(nd_val, npy_norm)
 
 def test_cached():

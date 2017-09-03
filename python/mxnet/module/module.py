@@ -693,11 +693,12 @@ class Module(BaseModule):
             >>> norm_val = net.global_grad_norm()
             >>> print(norm_val)
         """
+        import mxnet.ndarray as nd
         assert self.binded and self.params_initialized and self.optimizer_initialized
         # The code in the following will cause the estimated norm to be different for multiple gpus
         norm_val = 0.0
         for exe in self._exec_group.execs:
-            norm_val += nd.global_norm(exe.grad_arrays).asscalar()
+            norm_val += nd.contrib.global_norm(exe.grad_arrays).asscalar()
         norm_val /= float(len(self._exec_group.execs))
         norm_val *= self._optimizer.rescale_grad
         return norm_val

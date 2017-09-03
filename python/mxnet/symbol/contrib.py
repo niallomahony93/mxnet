@@ -50,13 +50,14 @@ def global_norm(t_list, name=None):
     >>> ret.eval()[0].asscalar()
     7.74597
     """
+    import mxnet as mx
     ret = None
     for t in t_list:
         if t is not None:
             if ret is None:
-                ret = square(norm(t))
+                ret = mx.sym.square(mx.sym.norm(t))
             else:
-                ret = ret + square(norm(t))
-    ret = sqrt(ret, name=name)
+                ret = ret + mx.sym.square(mx.sym.norm(t))
+    ret = mx.sym.sqrt(ret, name=name)
     return ret
 # pylint: enable=undefined-variable

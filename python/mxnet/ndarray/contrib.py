@@ -50,13 +50,14 @@ def global_norm(t_list):
     >>> print(ret.asscalar())
     7.74597
     """
+    import mxnet.ndarray as nd
     ret = None
     for arr in t_list:
         if arr is not None:
             if ret is None:
-                ret = square(norm(arr))
+                ret = nd.square(nd.norm(arr))
             else:
-                ret += square(norm(arr))
-    ret = sqrt(ret)
+                ret += nd.square(nd.norm(arr))
+    ret = nd.sqrt(ret)
     return ret
 # pylint: disable=too-many-locals, invalid-name

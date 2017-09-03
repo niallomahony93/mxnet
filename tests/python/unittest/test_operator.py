@@ -3482,7 +3482,7 @@ def test_global_norm():
     a = mx.sym.var('a')
     b = mx.sym.var('b')
     c = mx.sym.var('c')
-    d = mx.sym.global_norm([a, b, c])
+    d = mx.sym.contrib.global_norm([a, b, c])
     a_npy = np.random.normal(0, 1, (2, 4))
     b_npy = np.random.normal(0, 1, (3, 3))
     c_npy = np.random.normal(0, 1, (3, 1, 2, 3))
