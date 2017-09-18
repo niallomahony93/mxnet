@@ -1521,6 +1521,7 @@ def test_reduce():
                         outgrad.reshape(keepdim_shape) * (np.equal(data, outdata.reshape(keepdim_shape)).astype(np.float)),
                       mx.symbol.min)
 
+
 def test_broadcast():
     sample_num = 200
     for i in range(sample_num):
@@ -2183,7 +2184,6 @@ def sequence_mask_numpy(array, lengths, value):
         arrayMask[int(lengths[i]):, i] = value
     return arrayMask
 
-
 def check_sequence_mask(shape, xpu, mask_value):
     # bind with label
     X = mx.symbol.Variable('X')
@@ -2191,14 +2191,11 @@ def check_sequence_mask(shape, xpu, mask_value):
     Y = mx.symbol.SequenceMask(data=X, use_sequence_length=True, sequence_length=L, value=mask_value)
     x = mx.random.uniform(-1, 1, shape, ctx=mx.cpu()).copyto(xpu)
     l = mx.nd.array(np.random.randint(1, shape[0] + 1, shape[1]), ctx=mx.cpu()).copyto(xpu)
-
     # numpy result
     np_out = sequence_mask_numpy(x.asnumpy(), l.asnumpy(), mask_value)
     # mxnet result
-    gradX = mx.nd.empty(shape, ctx = xpu)
-    gradL = mx.nd.empty((shape[1]), ctx = xpu)
-    exec1 = Y.bind(xpu, args = [x, l], grad_req={'X':'write', 'L':'null'}, args_grad = {'X':gradX, 'L':gradL})
-    exec1.forward(is_train=True)
+    exec1 = Y.bind(xpu, args = [x, l], grad_req={'X':'null', 'L':'null'})
+    exec1.forward()
     out = exec1.outputs[0].asnumpy()
     # compare numpy + mxnet
     assert_almost_equal(out, np_out, rtol=1e-5)
@@ -2206,16 +2203,15 @@ def check_sequence_mask(shape, xpu, mask_value):
     check_numeric_gradient(Y, [x.asnumpy(), l.asnumpy()], grad_nodes={'X':'write'},
         numeric_eps=1e-3, rtol=1e-2)
 
-
 def test_sequence_mask():
     shape1 = (4, 2, 2, 3)
     shape2 = (1, 2, 2, 3, 1, 1)
     check_sequence_mask(shape1, default_context(), 2.1)
     check_sequence_mask(shape2, default_context(), 0.1)
+    check_sequence_mask((3, 4), default_context(), 0.14)
 
 
 def check_sequence_reverse(xpu):
-
     # sample data
     arr = np.array(
         [[[  1.,   2.,   3.],
@@ -2249,6 +2245,11 @@ def check_sequence_reverse(xpu):
          [[ 13.,  14.,   15.],
           [ 4.,  5.,   6.]]])
 
+    # test for matrix case
+    seq_len_1 = [1, 2, 2]
+    arr_4 = np.array([[7., 8., 9.], [16., 17., 5.4]], dtype=np.float32)
+    arr_5 = np.array([[7., 17., 5.4], [16., 8., 9.]], dtype=np.float32)
+
     def test_wrapper(arr, xpu, sequence_length=None, use_sequence_length=False):
         # MxNet symbol creation
         seq = mx.sym.Variable('seq')
@@ -2272,7 +2273,7 @@ def check_sequence_reverse(xpu):
     assert_array_equal(test_wrapper(arr, xpu, sequence_length=[3, 3], use_sequence_length=True), arr1)
     assert_array_equal(test_wrapper(arr, xpu, sequence_length=[2, 2], use_sequence_length=True), arr2)
     assert_array_equal(test_wrapper(arr, xpu, sequence_length=[2, 3], use_sequence_length=True), arr3)
-
+    assert_array_equal(test_wrapper(arr_4, xpu, sequence_length=seq_len_1, use_sequence_length=True), arr_5)
 
 def test_sequence_reverse():
     check_sequence_reverse(mx.cpu())
@@ -3409,6 +3410,89 @@ def test_ctc_loss():
     check_ctc_loss(acts2, labels2, true_loss)
 
 
+def test_ctc_loss_grad():
+    def check_ctc_loss_grad(blank_label): # from tf
+        vocab_size = 5
+        max_label_len = 5
+        padding_mask = -1+ (blank_label=='first')
+
+        targets_0 = [0, 1, 2, 1, 0]
+        loss_log_prob_0 = -3.34211
+        input_prob_matrix_0 = np.asarray(
+            [[0.633766, 0.221185, 0.0917319, 0.0129757, 0.0142857, 0.0260553],
+             [0.111121, 0.588392, 0.278779, 0.0055756, 0.00569609, 0.010436],
+             [0.0357786, 0.633813, 0.321418, 0.00249248, 0.00272882, 0.0037688],
+             [0.0663296, 0.643849, 0.280111, 0.00283995, 0.0035545, 0.00331533],
+             [0.458235, 0.396634, 0.123377, 0.00648837, 0.00903441, 0.00623107]],
+            dtype=np.float32)
+        gradient_log_prob_0 = np.asarray(
+            [[-0.366234, 0.221185, 0.0917319, 0.0129757, 0.0142857, 0.0260553],
+             [0.111121, -0.411608, 0.278779, 0.0055756, 0.00569609, 0.010436],
+             [0.0357786, 0.633813, -0.678582, 0.00249248, 0.00272882, 0.0037688],
+             [0.0663296, -0.356151, 0.280111, 0.00283995, 0.0035545, 0.00331533],
+             [-0.541765, 0.396634, 0.123377, 0.00648837, 0.00903441, 0.00623107]],
+            dtype=np.float32)
+
+        targets_1 = [0, 1, 1, 0]
+        loss_log_prob_1 = -5.42262
+        input_prob_matrix_1 = np.asarray(
+            [[0.30176, 0.28562, 0.0831517, 0.0862751, 0.0816851, 0.161508],
+             [0.24082, 0.397533, 0.0557226, 0.0546814, 0.0557528, 0.19549],
+             [0.230246, 0.450868, 0.0389607, 0.038309, 0.0391602, 0.202456],
+             [0.280884, 0.429522, 0.0326593, 0.0339046, 0.0326856, 0.190345],
+             [0.423286, 0.315517, 0.0338439, 0.0393744, 0.0339315, 0.154046]],
+            dtype=np.float32)
+        gradient_log_prob_1 = np.asarray(
+            [[-0.69824, 0.28562, 0.0831517, 0.0862751, 0.0816851, 0.161508],
+             [0.24082, -0.602467, 0.0557226, 0.0546814, 0.0557528, 0.19549],
+             [0.230246, 0.450868, 0.0389607, 0.038309, 0.0391602, -0.797544],
+             [0.280884, -0.570478, 0.0326593, 0.0339046, 0.0326856, 0.190345],
+             [-0.576714, 0.315517, 0.0338439, 0.0393744, 0.0339315, 0.154046]],
+            dtype=np.float32)
+
+        inputs = [
+            np.vstack(
+                [input_prob_matrix_0[t, :], input_prob_matrix_1[t, :]])
+            for t in range(5)
+        ] + 2 * [np.nan * np.ones((2, vocab_size+1), np.float32)]
+        inputs = np.log(np.asarray(inputs, dtype=np.float32))
+
+        grad_truth = np.array([
+            np.vstack(
+                [gradient_log_prob_0[t, :], gradient_log_prob_1[t, :]])
+            for t in range(5)
+        ] + 2 * [np.zeros((2, vocab_size+1), np.float32)])
+
+        if blank_label == 'first':
+            inputs = np.roll(inputs, 1, axis=2)
+            grad_truth = np.roll(grad_truth, 1, axis=2)
+
+        labels = (np.asarray([x + [padding_mask]*(max_label_len-len(x))
+                             for x in [targets_0, targets_1]])+(blank_label == 'first'))
+
+        seq_lens = np.array([5, 5], dtype=np.int32)
+        label_lens = np.array([5, 4], dtype=np.int32)
+        loss_truth = np.array([-loss_log_prob_0, -loss_log_prob_1], np.float32)
+
+        with default_context():
+            data = mx.nd.array(inputs)
+            label = mx.nd.array(labels)
+            data.attach_grad()
+            with mx.autograd.record():
+                l = mx.contrib.ndarray.CTCLoss(data, label,
+                                               use_data_lengths=True,
+                                               use_label_lengths=True,
+                                               data_lengths=mx.nd.array(seq_lens),
+                                               label_lengths=mx.nd.array(label_lens),
+                                               blank_label=blank_label)
+                l.backward()
+            assert_almost_equal(l.asnumpy(), loss_truth, atol=1e-5, rtol=1e-5)
+            assert_almost_equal(data.grad.asnumpy(), grad_truth, atol=1e-5, rtol=1e-5)
+
+    check_ctc_loss_grad('first')
+    check_ctc_loss_grad('last')
+
+
 def test_quantization_op():
     min0 = mx.nd.array([0.0])
     max0 = mx.nd.array([1.0])
@@ -3902,9 +3986,6 @@ def _gelqf_second_output(a):
     return mx.sym.broadcast_add(l, bogus_scal)
 
 def test_laop_2():
-    # Operators implemented for CPU only currently
-    if default_context() != mx.cpu():
-        return
     np.random.seed(1896893923)
     dtype = np.float64
     rtol_fw = 1e-7
@@ -3953,6 +4034,11 @@ def test_laop_2():
             check_grad(test_syrk2, [a_batch])
 
     # Tests for linalg_gelqf
+    # Currently disabled on GPU as they need cuda8
+    # and MxNet builds use cuda 7.5
+    if default_context() != mx.cpu():
+        return
+ 
     test_gelqf2 = _gelqf_combined_symbol(data1)  # Outputs (dot(Q, Q.T), dot(L, Q))
     test_gelqf_q = _gelqf_first_output(data1)  # Output Q (L is not dangling)
     test_gelqf_l = _gelqf_second_output(data1)  # Output L (Q is not dangling)
@@ -4031,6 +4117,34 @@ def test_dropout():
     assert exe.outputs[0].asnumpy().min() == 0
     exe.backward([mx.nd.ones((10, 10))], is_train=False)
     assert (exe.grad_arrays[0].asnumpy() == exe.outputs[0].asnumpy()).all()
+
+
+def test_scatter_gather_nd():
+    def check(data, idx):
+        data.attach_grad()
+        with mx.autograd.record():
+            y = mx.nd.gather_nd(data, idx)
+            y.backward(y)
+        npidx = tuple(i.asnumpy() for i in idx)
+        assert (data.asnumpy()[npidx] == y.asnumpy()).all()
+        npdata = np.zeros_like(data.asnumpy())
+        npdata[npidx] = y.asnumpy()
+        assert (npdata == data.grad.asnumpy()).all()
+        assert (mx.nd.scatter_nd(y, idx, shape=data.shape).asnumpy() == data.grad.asnumpy()).all()
+
+    data = mx.nd.arange(360, dtype='int32').reshape((3,4,5,6))
+    idx = mx.nd.array([[1,1,2], [3, 3, 0], [3,2,1]], dtype='int32')
+
+    check(data, idx)
+
+    idx = mx.nd.array([[1,1,2], [3,3,0], [3,2,1], [5,2,4]], dtype='int32')
+
+    check(data, idx)
+
+    data = mx.nd.array([2, 3, 0])
+    idx = mx.nd.array([[1, 1, 0], [0, 1, 0]])
+
+    assert (mx.nd.scatter_nd(data, idx, shape=(2, 2)).asnumpy() == [[0, 0], [2, 3]]).all()
 
 
 if __name__ == '__main__':
