@@ -127,7 +127,7 @@ NNVM_REGISTER_OP(BSN)
 .add_arguments(BinaryStochasticNeuronParam::__FIELDS__());
 
 MXNET_OPERATOR_REGISTER_BINARY(_backward_BSN)
-.set_attr<FCompute>("FCompute<cpu>", BinaryCompute<cpu, unary_bwd<mshadow_op::sigmoid_grad>>);
+.set_attr<FCompute>("FCompute<cpu>", ElemwiseBinaryOp::Compute<cpu, unary_bwd<mshadow_op::sigmoid_grad>>);
 
 NNVM_REGISTER_OP(argsort_last)
 .describe(R"code(Returns the indices that would sort an input array along the last axis (equivalent to axis=-1).
