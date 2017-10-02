@@ -19,6 +19,7 @@ import os
 import mxnet as mx
 import numpy as np
 import pickle as pkl
+import unittest 
 from mxnet.test_utils import *
 from numpy.testing import assert_allclose
 
@@ -684,6 +685,7 @@ def test_global_norm():
     nd_val = mx.nd.contrib.global_norm(nd_list).asscalar()
     assert_allclose(nd_val, npy_norm)
 
+@unittest.skip("test fails intermittently. temporarily disabled till it gets fixed. tracked at https://github.com/apache/incubator-mxnet/issues/8049")
 def test_cached():
     sym = mx.sym.Convolution(kernel=(3, 3), num_filter=10) + 2
     op = mx.nd.CachedOp(sym)
