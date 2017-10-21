@@ -105,14 +105,6 @@ inline void RangeParamParser(nnvm::NodeAttrs* attrs) {
     param.stop = param.start;
     param.start = 0;
   }
-  if (param.dtype == mshadow::kUint8 ||
-      param.dtype == mshadow::kInt8 ||
-      param.dtype == mshadow::kInt32 ||
-      param.dtype == mshadow::kInt64) {
-    param.start = round(param.start);
-    param.stop = round(param.stop.value());
-    param.step = round(param.step);
-  }
   attrs->parsed = std::move(param);
 }
 
@@ -289,22 +281,27 @@ void FillComputeZerosEx(const nnvm::NodeAttrs& attrs,
   }
 }
 
+struct range_fwd {
+  template<typename DType>
+  MSHADOW_XINLINE static void Map(int i, int repeat, DType start, DType step,
+                                  int req, DType* out) {
+    KERNEL_ASSIGN(out[i], req, start + (i/repeat) * step);
+  }
+};
+
 template<typename xpu>
 void RangeCompute(const nnvm::NodeAttrs& attrs,
                   const OpContext& ctx,
                   const std::vector<TBlob>& inputs,
                   const std::vector<OpReqType>& req,
                   const std::vector<TBlob>& outputs) {
-  using namespace mshadow;
-  using namespace mshadow::expr;
+  using namespace mxnet_op;
   Stream<xpu> *s = ctx.get_stream<xpu>();
   const RangeParam& param = nnvm::get<RangeParam>(attrs.parsed);
   MSHADOW_TYPE_SWITCH(outputs[0].type_flag_, DType, {
-    Tensor<xpu, 1, DType> out = outputs[0].FlatTo1D<xpu, DType>(s);
-    ASSIGN_DISPATCH(out, req[0], range<DType>(static_cast<DType>(param.start),
-                                              static_cast<DType>(param.stop.value()),
-                                              static_cast<DType>(param.step),
-                                              param.repeat));
+    Kernel<range_fwd, xpu>::Launch(s, outputs[0].Size(),
+        static_cast<int>(param.repeat), static_cast<DType>(param.start),
+        static_cast<DType>(param.step), req[0], outputs[0].dptr<DType>());
   });
 }
 
@@ -321,19 +318,17 @@ inline bool RangeShape(const nnvm::NodeAttrs& attrs,
     << "Range only supports repeat > 0, received " << param.repeat;
   if (param.step > 0) {
     CHECK(param.start < param.stop.value())
-      << "Range does not support (start, stop, step) = "
+      << "Invalid range (start, stop, step) = "
       << "(" << param.start << "," << param.stop.value() << "," << param.step << ")";
   } else {
     CHECK(param.start > param.stop.value())
-      << "Range does not support (start, stop, step)= "
+      << "Invalid range (start, stop, step)= "
       << "(" << param.start << "," << param.stop.value() << "," << param.step << ")";
   }
   MSHADOW_TYPE_SWITCH(param.dtype, DType, {
-    DType start = static_cast<DType>(param.start);
-    DType stop = static_cast<DType>(param.stop.value());
-    DType step = static_cast<DType>(param.step);
-    int out_size = mshadow::expr::RangeOutSize(start, stop, step, param.repeat);
-    SHAPE_ASSIGN_CHECK(*out_attrs, 0, mshadow::Shape1(out_size));
+    double out_size = std::ceil((param.stop.value() - param.start) / param.step)
+                      * param.repeat;
+    SHAPE_ASSIGN_CHECK(*out_attrs, 0, TShape({static_cast<nnvm::dim_t>(out_size)}));
   });
   return true;
 }
