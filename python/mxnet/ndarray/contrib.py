@@ -15,7 +15,14 @@
 # specific language governing permissions and limitations
 # under the License.
 
+# coding: utf-8
+# pylint: disable=wildcard-import, unused-wildcard-import
 """Contrib NDArray API of MXNet."""
+try:
+    from .gen_contrib import *
+except ImportError:
+    pass
+
 __all__ = []
 
 def global_norm(t_list):
