@@ -19,3 +19,18 @@ cmake -G "Visual Studio 14 2015 Win64" ^
 -DPROTOBUF_INCLUDE_DIR="D:\\HKUST\\protobuf\\src" ^
 
 -DEXTRA_OPERATORS=D:\\HKUST\\2-2\\dist_train\\mxnet-extension ^
+
+
+cmake -G "Visual Studio 14 2015 Win64" ^
+-DCMAKE_BUILD_TYPE=Release ^
+-DCMAKE_CONFIGURATION_TYPES="Release" ^
+-DCUDA_ARCH_NAME="Maxwell" ^
+-DMKL_INCLUDE_DIR="C:\\Program Files (x86)\\IntelSWTools\\compilers_and_libraries_2018\\windows\\mkl\\include" ^
+-DMKL_RT_LIBRARY="C:\\Program Files (x86)\\IntelSWTools\\compilers_and_libraries_2018\\windows\\mkl\\lib\\intel64\\mkl_rt.lib" ^
+-DOpenCV_DIR="C:\\Users\xingjs\Documents\opencv\opencv\build\x64\vc14\lib" ^
+-DCUDNN_INCLUDE="C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v8.0\\include" ^
+-DCUDNN_ROOT="C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v8.0\\lib\\x64" ^
+-DUSE_MKL_IF_AVAILABLE=OFF ^
+-DGTEST_INCLUDE_DIRS="C:\\Users\xingjs\AppData\Local\Continuum\anaconda3\Library\include" ^
+-DGTEST_LIBRARIES="C:\\Users\xingjs\AppData\Local\Continuum\anaconda3\Library\bin" ^
+-DBLAS=MKL ..
