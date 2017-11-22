@@ -290,11 +290,65 @@ static void RandomColorJitter(const nnvm::NodeAttrs &attrs,
                               const std::vector<TBlob> &outputs) {
 }
 
+struct RandomLightingParam : public dmlc::Parameter<RandomLightingParam> {
+  float alphastd;
+  nnvm::Tuple<float> eigval;
+  nnvm::Tuple<float> eigvec;
+  DMLC_DECLARE_PARAMETER(RandomLightingParam) {
+    DMLC_DECLARE_FIELD(alphastd)
+    .set_default(0.05)
+    .describe("Level of the lighting noise.");
+    DMLC_DECLARE_FIELD(eigval)
+    .describe("Eigen value.")
+    .set_default({ 55.46, 4.794, 1.148 });
+    DMLC_DECLARE_FIELD(eigvec)
+    .describe("Eigen vector.")
+    .set_default({ -0.5675,  0.7192,  0.4009,
+                   -0.5808, -0.0045, -0.8140,
+                   -0.5808, -0.0045, -0.8140 });
+  }
+};
+
+
 static void RandomLighting(const nnvm::NodeAttrs &attrs,
                            const OpContext &ctx,
                            const std::vector<TBlob> &inputs,
                            const std::vector<OpReqType> &req,
                            const std::vector<TBlob> &outputs) {
+    using namespace mshadow;
+    const RandomLightingParam &param = nnvm::get<RandomLightingParam>(attrs.parsed);
+    CHECK_EQ(param.eigval.ndim(), 3) << "There should be 3 numbers in the eigval.";
+    CHECK_EQ(param.eigvec.ndim(), 9) << "There should be 9 numbers in the eigvec.";
+    CHECK_EQ(inputs[0].size(0), 3);
+    CHECK_EQ(inputs[0].ndim(), 3);
+    int H = inputs[0].size(1);
+    int W = inputs[0].size(2);
+    Stream<cpu> *s = ctx.get_stream<cpu>();
+    Random<cpu> *prnd = ctx.requested[0].get_random<cpu, real_t>(s);
+    std::normal_distribution<float> dist(0, param.alphastd);
+    float alpha_r = dist(prnd->GetRndEngine());
+    float alpha_g = dist(prnd->GetRndEngine());
+    float alpha_b = dist(prnd->GetRndEngine());
+    alpha_r *= param.eigval[0];
+    alpha_g *= param.eigval[1];
+    alpha_b *= param.eigval[2];
+    float pca_r = alpha_r * param.eigvec[0] + alpha_g * param.eigvec[1] + alpha_b * param.eigvec[2];
+    float pca_g = alpha_r * param.eigvec[3] + alpha_g * param.eigvec[4] + alpha_b * param.eigvec[5];
+    float pca_b = alpha_r * param.eigvec[6] + alpha_g * param.eigvec[7] + alpha_b * param.eigvec[8];
+    for(int i = 0; i < H; i++) {
+        for(int j = 0; j < W; j++) {
+            int base_ind = i * W + j;
+            float in_r = static_cast<float>(inputs[0].dptr<uint8_t>()[base_ind]);
+            float in_g = static_cast<float>(inputs[0].dptr<uint8_t>()[base_ind + H * W]);
+            float in_b = static_cast<float>(inputs[0].dptr<uint8_t>()[base_ind + 2 * H * W]);
+            outputs[0].dptr<uint8_t>()[base_ind] =
+                std::min(255, std::max(0, static_cast<int>(in_r + pca_r)));
+            outputs[0].dptr<uint8_t>()[base_ind + H * W] =
+                std::min(255, std::max(0, static_cast<int>(in_g + pca_g)));
+            outputs[0].dptr<uint8_t>()[base_ind + 2 * H * W] =
+                std::min(255, std::max(0, static_cast<int>(in_b + pca_b)));
+        }
+    }
 }
 
 
