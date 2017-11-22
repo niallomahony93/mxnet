@@ -13,10 +13,10 @@ if __name__ == '__main__':
     BS = 100
 
     dataset = gl.data.vision.ImageFolderDataset('256_ObjectCategories')
-    transform = transforms.Compose([transforms.ToTensor(),
-                                    transforms.RandomBrightness(1.0),
+    transform = transforms.Compose([transforms.RandomBrightness(1.0),
                                     transforms.RandomContrast(1.0),
                                     transforms.RandomSaturation(1.0),
+                                    transforms.ToTensor(),
                                     transforms.Normalize([0, 0, 0], [1, 1, 1])])
     dataset = dataset.transform_first(lambda x: transform(mx.image.center_crop(x, (224, 224))[0]))
     data_loader = gl.data.DataLoader(dataset, BS, shuffle=True, num_workers=M)
