@@ -136,7 +136,7 @@ NNVM_REGISTER_OP(_image_adjust_lighting)
 .set_attr<nnvm::FGradient>("FGradient", ElemwiseGradUseNone{ "_copy" })
 .add_argument("data", "NDArray-or-Symbol", "The input.")
 .add_arguments(AdjustLightingParam::__FIELDS__());
-  
+
 DMLC_REGISTER_PARAMETER(RandomLightingParam);
 NNVM_REGISTER_OP(_image_random_lighting)
 .describe(R"code(Randomly add PCA noise. Follow the AlexNet style.)code" ADD_FILELINE)

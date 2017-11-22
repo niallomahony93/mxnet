@@ -26,6 +26,7 @@
 #define MXNET_OPERATOR_IMAGE_IMAGE_RANDOM_INL_H_
 
 #include <mxnet/base.h>
+#include <algorithm>
 #include <vector>
 #include <opencv2/opencv.hpp>
 #include <opencv2/core/mat.hpp>
@@ -328,16 +329,18 @@ struct RandomLightingParam : public dmlc::Parameter<RandomLightingParam> {
   }
 };
 
-void AdjustLightingImpl(uint8_t* dst, const uint8_t* src, float alpha_r, float alpha_g, float alpha_b,
-                        const nnvm::Tuple<float> eigval, const nnvm::Tuple<float> eigvec, int H, int W) {
+void AdjustLightingImpl(uint8_t* dst, const uint8_t* src,
+                        float alpha_r, float alpha_g, float alpha_b,
+                        const nnvm::Tuple<float> eigval, const nnvm::Tuple<float> eigvec,
+                        int H, int W) {
     alpha_r *= eigval[0];
     alpha_g *= eigval[1];
     alpha_b *= eigval[2];
     float pca_r = alpha_r * eigvec[0] + alpha_g * eigvec[1] + alpha_b * eigvec[2];
     float pca_g = alpha_r * eigvec[3] + alpha_g * eigvec[4] + alpha_b * eigvec[5];
     float pca_b = alpha_r * eigvec[6] + alpha_g * eigvec[7] + alpha_b * eigvec[8];
-    for(int i = 0; i < H; i++) {
-        for(int j = 0; j < W; j++) {
+    for (int i = 0; i < H; i++) {
+        for (int j = 0; j < W; j++) {
             int base_ind = 3 * (i * W + j);
             float in_r = static_cast<float>(src[base_ind]);
             float in_g = static_cast<float>(src[base_ind + 1]);
