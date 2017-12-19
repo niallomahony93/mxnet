@@ -301,7 +301,7 @@ def test_multinomial_generator():
     buckets = list(range(6))
     for dtype in ['float16', 'float32', 'float64']:
         print("ctx=%s, dtype=%s" %(ctx, dtype))
-        generator_mx = lambda x: mx.nd.random.multinomial(data=mx.nd.array(np.array(probs), ctx=ctx),
+        generator_mx = lambda x: mx.nd.random.multinomial(data=mx.nd.array(np.array(probs), ctx=ctx, type=dtype),
                                                           shape=sample_num).asnumpy()
         verify_generator(generator_mx, buckets, probs)
 
