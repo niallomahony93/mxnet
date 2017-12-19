@@ -180,6 +180,21 @@ class Block(object):
 
     def __setattr__(self, name, value):
         """Registers parameters."""
+        def _find_block_in_nested(data):
+            if isinstance(data, (list, tuple)):
+                for ele in data:
+                    if _find_block_in_nested(ele):
+                        return True
+                return False
+            elif isinstance(data, dict):
+                for _, v in data.items():
+                    if _find_block_in_nested(v):
+                        return True
+                return False
+            elif isinstance(data, Block):
+                return True
+            else:
+                return False
 
         if hasattr(self, name):
             existing = getattr(self, name)
@@ -196,6 +211,11 @@ class Block(object):
                 self.register_child(value)
         elif isinstance(value, Block):
             self.register_child(value)
+        elif isinstance(value, (list, tuple, dict)):
+            if _find_block_in_nested(value):
+                raise UserWarning('The Blocks inside the list or dict will not be registered '
+                                  'automatically! Make sure to register them manually using '
+                                  'block.register_child().')
 
         super(Block, self).__setattr__(name, value)
 
