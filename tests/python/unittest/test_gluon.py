@@ -464,6 +464,27 @@ def test_block_attr_regular():
     b.c = c2
     assert b.c is c2 and b._children[0] is c2
 
+def test_block_attr_list_of_block():
+    class Model1(gluon.Block):
+        def __init__(self, **kwargs):
+            super(Model1, self).__init__(**kwargs)
+            with self.name_scope():
+                self.layers = [nn.Dense(i * 10) for i in range(6)]
+
+    class Model2(gluon.Block):
+        def __init__(self, **kwargs):
+            super(Model2, self).__init__(**kwargs)
+            with self.name_scope():
+                self.layers = nn.Sequential()
+                self.layers.add(*[nn.Dense(i * 10) for i in range(6)])
+
+    with warnings.catch_warnings(record=True) as w:
+        model1 = Model1()
+        assert len(w) == 1
+    with warnings.catch_warnings(record=True) as w:
+        model2 = Model2()
+        assert len(w) == 0
+
 def test_sequential_warning():
     with warnings.catch_warnings(record=True) as w:
         b = gluon.nn.Sequential()

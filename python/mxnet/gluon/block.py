@@ -181,6 +181,7 @@ class Block(object):
     def __setattr__(self, name, value):
         """Registers parameters."""
         def _find_block_in_nested(data):
+            # Find whether a nested structure contains Blocks
             if isinstance(data, (list, tuple)):
                 for ele in data:
                     if _find_block_in_nested(ele):
@@ -215,7 +216,7 @@ class Block(object):
             if _find_block_in_nested(value):
                 warnings.warn('Blocks inside the list or dict will not be registered '
                               'automatically! Make sure to register them using '
-                              'block.register_child().')
+                              'register_child() or use nn.Sequential instead.')
 
         super(Block, self).__setattr__(name, value)
 
