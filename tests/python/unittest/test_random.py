@@ -231,17 +231,17 @@ def test_normal_generator():
             generator_mx = lambda x: mx.nd.random.normal(mu, sigma, shape=x, ctx=ctx, dtype=dtype).asnumpy()
             verify_generator(generator=generator_mx, buckets=buckets, probs=probs)
 
-def test_uniform():
+def test_uniform_generator():
     print("Uniform Distribution Test:")
     ctx = mx.context.current_context()
     for dtype in ['float16', 'float32', 'float64']:
-        for low, high in [(-1.0, 1.0), (1.0, 5.0)]:
+        for low, high in [(-1.0, 1.0), (1.0, 3.0)]:
             print("ctx=%s, dtype=%s, Low=%g, High=%g:" % (ctx, dtype, low, high))
             buckets, probs = gen_buckets_probs_with_ppf(lambda x: ss.uniform.ppf(x, loc=low, scale=high - low), 5)
             generator_mx = lambda x: mx.nd.random.uniform(low, high, shape=x, ctx=ctx, dtype=dtype).asnumpy()
             verify_generator(generator=generator_mx, buckets=buckets, probs=probs)
 
-def test_gamma():
+def test_gamma_generator():
     print("Gamma Distribution Test:")
     ctx = mx.context.current_context()
     for dtype in ['float16', 'float32', 'float64']:
@@ -251,7 +251,7 @@ def test_gamma():
             generator_mx = lambda x: mx.nd.random.gamma(kappa, theta, shape=x, ctx=ctx, dtype=dtype).asnumpy()
             verify_generator(generator=generator_mx, buckets=buckets, probs=probs)
 
-def test_exponential():
+def test_exponential_generator():
     print("Exponential Distribution Test:")
     ctx = mx.context.current_context()
     for dtype in ['float16', 'float32', 'float64']:
@@ -261,7 +261,7 @@ def test_exponential():
             generator_mx = lambda x: mx.nd.random.exponential(scale, shape=x, ctx=ctx, dtype=dtype).asnumpy()
             verify_generator(generator=generator_mx, buckets=buckets, probs=probs)
 
-def test_poisson():
+def test_poisson_generator():
     print("Poisson Distribution Test:")
     ctx = mx.context.current_context()
     for dtype in ['float16', 'float32', 'float64']:
@@ -272,7 +272,7 @@ def test_poisson():
             generator_mx = lambda x: mx.nd.random.poisson(lam, shape=x, ctx=ctx, dtype=dtype).asnumpy()
             verify_generator(generator=generator_mx, buckets=buckets, probs=probs)
 
-def test_negative_binomial():
+def test_negative_binomial_generator():
     print('Negative Binomial Distribution Test:')
     ctx = mx.context.current_context()
     for dtype in ['float16', 'float32', 'float64']:
@@ -293,7 +293,7 @@ def test_negative_binomial():
                                                                             shape=x, ctx=ctx, dtype=dtype).asnumpy()
         verify_generator(generator=generator_mx, buckets=buckets, probs=probs)
 
-def test_multinomial(dtype):
+def test_multinomial_generator():
     print('Multinomial Distribution Test:')
     ctx = mx.context.current_context()
     probs = [0.1, 0.2, 0.3, 0.05, 0.15, 0.2]
