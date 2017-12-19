@@ -475,14 +475,32 @@ def test_block_attr_list_of_block():
         def __init__(self, **kwargs):
             super(Model2, self).__init__(**kwargs)
             with self.name_scope():
+                self.layers = {'a': [nn.Dense(10), nn.Dense(10)], 'b': 123}
+
+    class Model3(gluon.Block):
+        def __init__(self, **kwargs):
+            super(Model3, self).__init__(**kwargs)
+            with self.name_scope():
                 self.layers = nn.Sequential()
                 self.layers.add(*[nn.Dense(i * 10) for i in range(6)])
 
+    class Model4(gluon.Block):
+        def __init__(self, **kwargs):
+            super(Model4, self).__init__(**kwargs)
+            with self.name_scope():
+                self.data = {'a': '4', 'b': 123}
+
     with warnings.catch_warnings(record=True) as w:
-        model1 = Model1()
-        assert len(w) == 1
+        model = Model1()
+        assert len(w) > 0
     with warnings.catch_warnings(record=True) as w:
-        model2 = Model2()
+        model = Model2()
+        assert len(w) > 0
+    with warnings.catch_warnings(record=True) as w:
+        model = Model3()
+        assert len(w) == 0
+    with warnings.catch_warnings(record=True) as w:
+        model = Model4()
         assert len(w) == 0
 
 def test_sequential_warning():
