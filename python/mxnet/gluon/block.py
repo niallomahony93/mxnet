@@ -213,9 +213,9 @@ class Block(object):
             self.register_child(value)
         elif isinstance(value, (list, tuple, dict)):
             if _find_block_in_nested(value):
-                raise UserWarning('The Blocks inside the list or dict will not be registered '
-                                  'automatically! Make sure to register them manually using '
-                                  'block.register_child().')
+                warnings.warn('Blocks inside the list or dict will not be registered '
+                              'automatically! Make sure to register them using '
+                              'block.register_child().')
 
         super(Block, self).__setattr__(name, value)
 
