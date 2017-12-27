@@ -134,6 +134,10 @@ def test_concat():
                         shapes.append((a, merge[i]))
                     check_concat_with_shape(shapes,dimension,True)
                     check_concat_with_shape(shapes,dimension,False)
+                    # Test negative dim
+                    check_concat_with_shape(shapes, dimension - 2, True)
+                    check_concat_with_shape(shapes, dimension - 2, False)
+
         #test 3D
         if dimension<3:
             for dim in range(2, 6):
@@ -147,6 +151,9 @@ def test_concat():
                         shapes.append((a,b,merge[i]))
                 check_concat_with_shape(shapes,dimension,True)
                 check_concat_with_shape(shapes,dimension,False)
+                # Test negative dim
+                check_concat_with_shape(shapes, dimension - 3, True)
+                check_concat_with_shape(shapes, dimension - 3, False)
         # test 4D
         for dim in range(2, 6):
             shapes = []
@@ -161,8 +168,9 @@ def test_concat():
                     shapes.append((a,b,c,merge[i]))
             check_concat_with_shape(shapes,dimension,True)
             check_concat_with_shape(shapes,dimension,False)
-    check_concat_with_shape([(5, 3), (5, 4), (5, 13)], -1, True)
-    check_concat_with_shape([(2, 5, 3), (2, 5, 4), (2, 5, 13)], -1, False)
+            # Test negative dim
+            check_concat_with_shape(shapes, dimension - 4, True)
+            check_concat_with_shape(shapes, dimension - 4, False)
 
 def test_slice_channel():
     def check_slice_channel(data_ndim, axis, num_outputs, squeeze_axis):
@@ -4316,23 +4324,21 @@ def test_scatter_gather_nd():
         npdata = np.zeros_like(data.asnumpy())
         npdata[npidx] = y.asnumpy()
         assert (npdata == data.grad.asnumpy()).all()
-        assert (mx.nd.scatter_nd_acc(y, idx, shape=data.shape).asnumpy() == data.grad.asnumpy()).all()
-    for dtype in ['int32', 'float16', 'float32', 'float64']:
-        data = mx.nd.arange(360, dtype=dtype).reshape((3,4,5,6))
-        idx = mx.nd.array([[1,1,2], [3, 3, 0], [3,2,1]], dtype='int32')
-        check(data, idx)
+        assert (mx.nd.scatter_nd(y, idx, shape=data.shape).asnumpy() == data.grad.asnumpy()).all()
 
-        idx = mx.nd.array([[1,1,2], [3,3,0], [3,2,1], [5,2,4]], dtype='int32')
+    data = mx.nd.arange(360, dtype='int32').reshape((3,4,5,6))
+    idx = mx.nd.array([[1,1,2], [3, 3, 0], [3,2,1]], dtype='int32')
 
-        check(data, idx)
+    check(data, idx)
 
-        data = mx.nd.array([2, 3, 0], dtype=dtype)
-        idx = mx.nd.array([[1, 1, 0], [0, 1, 0]], dtype=dtype)
-        assert (mx.nd.scatter_nd(data, idx, shape=(2, 2)).asnumpy() == [[0, 0], [2, 3]]).all()
+    idx = mx.nd.array([[1,1,2], [3,3,0], [3,2,1], [5,2,4]], dtype='int32')
 
-        data = mx.nd.array([2, -3, 0], dtype=dtype)
-        idx = mx.nd.array([[1, 1, 0], [1, 1, 0]], dtype=dtype)
-        assert (mx.nd.scatter_nd_acc(data, idx, shape=(2, 2)).asnumpy() == [[0, 0], [0, -1]]).all()
+    check(data, idx)
+
+    data = mx.nd.array([2, 3, 0])
+    idx = mx.nd.array([[1, 1, 0], [0, 1, 0]])
+
+    assert (mx.nd.scatter_nd(data, idx, shape=(2, 2)).asnumpy() == [[0, 0], [2, 3]]).all()
 
 def compare_forw_backw_unary_op(
         name, forward_mxnet_call, forward_numpy_call,
