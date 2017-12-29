@@ -222,7 +222,6 @@ def test_sample_multinomial():
 
 # Test the generators with the chi-square testing
 def test_normal_generator():
-    print("Normal Distribution Test:")
     ctx = mx.context.current_context()
     for dtype in ['float16', 'float32', 'float64']:
         for mu, sigma in [(0.0, 1.0), (1.0, 5.0)]:
@@ -230,9 +229,13 @@ def test_normal_generator():
             buckets, probs = gen_buckets_probs_with_ppf(lambda x: ss.norm.ppf(x, mu, sigma), 5)
             generator_mx = lambda x: mx.nd.random.normal(mu, sigma, shape=x, ctx=ctx, dtype=dtype).asnumpy()
             verify_generator(generator=generator_mx, buckets=buckets, probs=probs)
+            generator_mx_same_seed =\
+                lambda x: np.concatenate(
+                    [mx.nd.random.normal(mu, sigma, shape=x // 10, ctx=ctx, dtype=dtype).asnumpy()
+                     for _ in range(10)])
+            verify_generator(generator=generator_mx_same_seed, buckets=buckets, probs=probs)
 
 def test_uniform_generator():
-    print("Uniform Distribution Test:")
     ctx = mx.context.current_context()
     for dtype in ['float16', 'float32', 'float64']:
         for low, high in [(-1.0, 1.0), (1.0, 3.0)]:
@@ -240,9 +243,13 @@ def test_uniform_generator():
             buckets, probs = gen_buckets_probs_with_ppf(lambda x: ss.uniform.ppf(x, loc=low, scale=high - low), 5)
             generator_mx = lambda x: mx.nd.random.uniform(low, high, shape=x, ctx=ctx, dtype=dtype).asnumpy()
             verify_generator(generator=generator_mx, buckets=buckets, probs=probs)
+            generator_mx_same_seed = \
+                lambda x: np.concatenate(
+                    [mx.nd.random.uniform(low, high, shape=x // 10, ctx=ctx, dtype=dtype).asnumpy()
+                     for _ in range(10)])
+            verify_generator(generator=generator_mx_same_seed, buckets=buckets, probs=probs)
 
 def test_gamma_generator():
-    print("Gamma Distribution Test:")
     ctx = mx.context.current_context()
     for dtype in ['float16', 'float32', 'float64']:
         for kappa, theta in [(0.5, 1.0), (1.0, 5.0)]:
@@ -250,9 +257,13 @@ def test_gamma_generator():
             buckets, probs = gen_buckets_probs_with_ppf(lambda x: ss.gamma.ppf(x, a=kappa, loc=0, scale=theta), 5)
             generator_mx = lambda x: mx.nd.random.gamma(kappa, theta, shape=x, ctx=ctx, dtype=dtype).asnumpy()
             verify_generator(generator=generator_mx, buckets=buckets, probs=probs)
+            generator_mx_same_seed = \
+                lambda x: np.concatenate(
+                    [mx.nd.random.gamma(kappa, theta, shape=x // 10, ctx=ctx, dtype=dtype).asnumpy()
+                     for _ in range(10)])
+            verify_generator(generator=generator_mx_same_seed, buckets=buckets, probs=probs)
 
 def test_exponential_generator():
-    print("Exponential Distribution Test:")
     ctx = mx.context.current_context()
     for dtype in ['float16', 'float32', 'float64']:
         for scale in [0.1, 1.0]:
@@ -260,9 +271,13 @@ def test_exponential_generator():
             buckets, probs = gen_buckets_probs_with_ppf(lambda x: ss.expon.ppf(x, loc=0, scale=scale), 5)
             generator_mx = lambda x: mx.nd.random.exponential(scale, shape=x, ctx=ctx, dtype=dtype).asnumpy()
             verify_generator(generator=generator_mx, buckets=buckets, probs=probs)
+            generator_mx_same_seed = \
+                lambda x: np.concatenate(
+                    [mx.nd.random.exponential(scale, shape=x // 10, ctx=ctx, dtype=dtype).asnumpy()
+                     for _ in range(10)])
+            verify_generator(generator=generator_mx_same_seed, buckets=buckets, probs=probs)
 
 def test_poisson_generator():
-    print("Poisson Distribution Test:")
     ctx = mx.context.current_context()
     for dtype in ['float16', 'float32', 'float64']:
         for lam in [1, 10]:
@@ -271,9 +286,13 @@ def test_poisson_generator():
             probs = [ss.poisson.cdf(bucket[1], lam) - ss.poisson.cdf(bucket[0], lam) for bucket in buckets]
             generator_mx = lambda x: mx.nd.random.poisson(lam, shape=x, ctx=ctx, dtype=dtype).asnumpy()
             verify_generator(generator=generator_mx, buckets=buckets, probs=probs)
+            generator_mx_same_seed = \
+                lambda x: np.concatenate(
+                    [mx.nd.random.poisson(lam, shape=x // 10, ctx=ctx, dtype=dtype).asnumpy()
+                     for _ in range(10)])
+            verify_generator(generator=generator_mx_same_seed, buckets=buckets, probs=probs)
 
 def test_negative_binomial_generator():
-    print('Negative Binomial Distribution Test:')
     ctx = mx.context.current_context()
     for dtype in ['float16', 'float32', 'float64']:
         success_num = 2
@@ -285,6 +304,11 @@ def test_negative_binomial_generator():
         generator_mx = lambda x: mx.nd.random.negative_binomial(success_num, success_prob,
                                                                 shape=x, ctx=ctx, dtype=dtype).asnumpy()
         verify_generator(generator=generator_mx, buckets=buckets, probs=probs)
+        generator_mx_same_seed = \
+            lambda x: np.concatenate(
+                [mx.nd.random.negative_binomial(success_num, success_prob, shape=x // 10, ctx=ctx, dtype=dtype).asnumpy()
+                 for _ in range(10)])
+        verify_generator(generator=generator_mx_same_seed, buckets=buckets, probs=probs)
         # Also test the Gamm-Poisson Mixture
         print('Gamm-Poisson Mixture Test:')
         alpha = 1.0 / success_num
@@ -292,18 +316,27 @@ def test_negative_binomial_generator():
         generator_mx = lambda x: mx.nd.random.generalized_negative_binomial(mu, alpha,
                                                                             shape=x, ctx=ctx, dtype=dtype).asnumpy()
         verify_generator(generator=generator_mx, buckets=buckets, probs=probs)
+        generator_mx_same_seed = \
+            lambda x: np.concatenate(
+                [mx.nd.random.generalized_negative_binomial(mu, alpha, shape=x // 10, ctx=ctx, dtype=dtype).asnumpy()
+                 for _ in range(10)])
+        verify_generator(generator=generator_mx_same_seed, buckets=buckets, probs=probs)
 
 def test_multinomial_generator():
-    print('Multinomial Distribution Test:')
     ctx = mx.context.current_context()
     probs = [0.1, 0.2, 0.3, 0.05, 0.15, 0.2]
-    sample_num = 1000000
     buckets = list(range(6))
     for dtype in ['float16', 'float32', 'float64']:
         print("ctx=%s, dtype=%s" %(ctx, dtype))
-        generator_mx = lambda x: mx.nd.random.multinomial(data=mx.nd.array(np.array(probs), ctx=ctx, type=dtype),
-                                                          shape=sample_num).asnumpy()
+        generator_mx = lambda x: mx.nd.random.multinomial(data=mx.nd.array(np.array(probs), ctx=ctx, dtype=dtype),
+                                                          shape=x).asnumpy()
         verify_generator(generator_mx, buckets, probs)
+        generator_mx_same_seed = \
+            lambda x: np.concatenate(
+                [mx.nd.random.multinomial(data=mx.nd.array(np.array(probs), ctx=ctx, dtype=dtype),
+                                                          shape=x // 10).asnumpy()
+                 for _ in range(10)])
+        verify_generator(generator=generator_mx_same_seed, buckets=buckets, probs=probs)
 
 
 if __name__ == '__main__':

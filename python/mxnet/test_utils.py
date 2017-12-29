@@ -34,7 +34,10 @@ from contextlib import contextmanager
 import numpy as np
 import numpy.testing as npt
 import numpy.random as rnd
-import scipy.stats as ss
+try:
+    import scipy.stats as ss
+except ImportError:
+    ss = None
 try:
     import requests
 except ImportError:
@@ -1596,12 +1599,14 @@ class DummyIter(mx.io.DataIter):
         return self.the_batch
 
 def gen_buckets_probs_with_ppf(ppf, nbuckets):
-    """Generate the buckets and probabilities for chi_square test when the ppf (Quantile function) is specified.
+    """Generate the buckets and probabilities for chi_square test when the ppf (Quantile function)
+     is specified.
 
     Parameters
     ----------
     ppf : function
-        The Quantile function that takes a probability and maps it back to a value. It's the inverse of the cdf function
+        The Quantile function that takes a probability and maps it back to a value.
+        It's the inverse of the cdf function
     nbuckets : int
         size of the buckets
 
@@ -1697,14 +1702,15 @@ def var_check(generator, sigma, nsamples=1000000):
 
 def chi_square_check(generator, buckets, probs, nsamples=1000000):
     """Run the chi-square test for the generator. The generator can be both continuous and discrete.
-    If the generator is continuous, the buckets should contain tuples of (range_min, range_max) and the probs should be
-     the corresponding ideal probability within the specific ranges.
-    Otherwise, the buckets should be the possible output of the discrete distribution and the probs should be
-     groud-truth probability.
+    If the generator is continuous, the buckets should contain tuples of (range_min, range_max) and
+     the probs should be the corresponding ideal probability within the specific ranges.
+    Otherwise, the buckets should be the possible output of the discrete distribution and the probs
+     should be groud-truth probability.
 
     Usually the user is required to specify the probs parameter.
 
-    After obtatining the p value, we could further use the standard p > 0.05 threshold to get the final result.
+    After obtatining the p value, we could further use the standard p > 0.05 threshold to get
+     the final result.
 
     Examples::
         buckets, probs = gen_buckets_probs_with_ppf(lambda x: ss.norm.ppf(x, 0, 1), 5)
@@ -1718,9 +1724,9 @@ def chi_square_check(generator, buckets, probs, nsamples=1000000):
         A function that is assumed to generate i.i.d samples from a specific distribution.
         generator(N) should generate N random samples.
     buckets: list of tuple or list of number
-        The buckets to run the chi-square the test. Make sure that the buckets cover the whole range of
-         the distribution. Also, the buckets must be in ascending order and have no
-         intersection
+        The buckets to run the chi-square the test. Make sure that the buckets cover
+         the whole range of the distribution. Also, the buckets must be in ascending order and have
+         no intersection
     probs: list or tuple
         The ground-truth probability of the random value fall in a specific bucket.
     nsamples:int
@@ -1728,9 +1734,17 @@ def chi_square_check(generator, buckets, probs, nsamples=1000000):
 
     Returns
     -------
-    probability : float
+    p : float
         p value that the generator has the expected distribution.
+        A higher value indicates a larger confidence
+    obs_freq : list
+        Observed frequency of buckets
+    expected_freq : list
+        The expected (ground-truth) frequency of the buckets
     """
+    if not ss:
+        raise ImportError("scipy is not available."
+                          " Please check if the scipy python bindings are installed.")
     assert isinstance(buckets, list)
     samples = generator(nsamples)
     assert len(probs) == len(buckets)
@@ -1738,7 +1752,7 @@ def chi_square_check(generator, buckets, probs, nsamples=1000000):
         # Check whether the buckets are valid and fill them into a npy array
         continuous_dist = True
         buckets_npy = np.zeros((len(buckets) * 2, ), dtype=np.float32)
-        for i in range(len(buckets)):
+        for i, _ in enumerate(buckets):
             assert(buckets[i][0] <= buckets[i][1])
             if i < len(buckets) - 1:
                 assert(buckets[i][1] <= buckets[i + 1][0])
@@ -1763,7 +1777,8 @@ def chi_square_check(generator, buckets, probs, nsamples=1000000):
 def verify_generator(generator, buckets, probs, nsamples=1000000, nrepeat=5, success_rate=0.25):
     """Verify whether the generator is correct using chi-square testing.
 
-    The test is repeated for "nrepeat" times and we check if the success rate is above the threshold (25% by default).
+    The test is repeated for "nrepeat" times and we check if the success rate is
+     above the threshold (25% by default).
 
     Parameters
     ----------
@@ -1771,9 +1786,9 @@ def verify_generator(generator, buckets, probs, nsamples=1000000, nrepeat=5, suc
         A function that is assumed to generate i.i.d samples from a specific distribution.
             generator(N) should generate N random samples.
     buckets: list of tuple or list of number
-        The buckets to run the chi-square the test. Make sure that the buckets cover the whole range of
-         the distribution. Also, the buckets must be in ascending order and have no
-         intersection
+        The buckets to run the chi-square the test. Make sure that the buckets cover
+         the whole range of the distribution. Also, the buckets must be in ascending order and
+         have no intersection
     probs: list or tuple
         The ground-truth probability of the random value fall in a specific bucket.
     nsamples: int
@@ -1785,7 +1800,8 @@ def verify_generator(generator, buckets, probs, nsamples=1000000, nrepeat=5, suc
 
     Returns
     -------
-
+    cs_ret_l: list
+        The p values of the chi-square test.
     """
     cs_ret_l = []
     obs_freq_l = []
@@ -1800,5 +1816,6 @@ def verify_generator(generator, buckets, probs, nsamples=1000000, nrepeat=5, suc
     if success_num < nrepeat * success_rate:
         raise AssertionError("Generator test fails, Chi-square p=%s, obs_freq=%s, expected_freq=%s."
                              "\nbuckets=%s, probs=%s"
-                             % (str(cs_ret_l), str(obs_freq_l), str(expected_freq_l), str(buckets), str(probs)))
+                             % (str(cs_ret_l), str(obs_freq_l), str(expected_freq_l),
+                                str(buckets), str(probs)))
     return cs_ret_l
