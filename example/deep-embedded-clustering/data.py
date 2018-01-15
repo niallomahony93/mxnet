@@ -15,10 +15,26 @@
 # specific language governing permissions and limitations
 # under the License.
 
-# coding: utf-8
-
-"""Read text files and load embeddings."""
-from __future__ import absolute_import
+# pylint: disable=missing-docstring
 from __future__ import print_function
 
-UNKNOWN_IDX = 0
+import os
+import numpy as np
+from sklearn.datasets import fetch_mldata
+
+
+def get_mnist():
+    """ Gets MNIST dataset """
+
+    np.random.seed(1234) # set seed for deterministic ordering
+    data_path = os.path.dirname(os.path.abspath(os.path.expanduser(__file__)))
+    data_path = os.path.join(data_path, '../../data')
+    mnist = fetch_mldata('MNIST original', data_home=data_path)
+    p = np.random.permutation(mnist.data.shape[0])
+    X = mnist.data[p].astype(np.float32)*0.02
+    Y = mnist.target[p]
+    return X, Y
+
+
+
+

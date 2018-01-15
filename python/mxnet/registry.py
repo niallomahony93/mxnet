@@ -30,12 +30,12 @@ _REGISTRY = {}
 
 
 def get_registry(base_class):
-    """Get registrator.
+    """Get a copy of the registry.
 
     Parameters
     ----------
     base_class : type
-        base class for classes that will be registered
+        base class for classes that will be registered.
 
     Returns
     -------

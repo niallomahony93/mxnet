@@ -486,7 +486,8 @@ def test_block_attr_list_of_block():
         def __init__(self, **kwargs):
             super(Model2, self).__init__(**kwargs)
             with self.name_scope():
-                self.layers = {'a': [nn.Dense(10), nn.Dense(10)], 'b': 123}
+                self.layers = dict()
+                self.layers['a'] = [nn.Dense(10), nn.Dense(10)]
 
     class Model3(gluon.Block):
         def __init__(self, **kwargs):
@@ -503,15 +504,19 @@ def test_block_attr_list_of_block():
 
     with warnings.catch_warnings(record=True) as w:
         model = Model1()
+        model.collect_params()
         assert len(w) > 0
     with warnings.catch_warnings(record=True) as w:
         model = Model2()
+        model.collect_params()
         assert len(w) > 0
     with warnings.catch_warnings(record=True) as w:
         model = Model3()
+        model.collect_params()
         assert len(w) == 0
     with warnings.catch_warnings(record=True) as w:
         model = Model4()
+        model.collect_params()
         assert len(w) == 0
 
 def test_sequential_warning():
