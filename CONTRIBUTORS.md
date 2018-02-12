@@ -153,3 +153,6 @@ List of Contributors
 * [Marco de Abreu](https://github.com/marcoabreu)
  - Marco is the creator of the current MXNet CI.
 * [Julian Salazar](https://github.com/JulianSlzr)
+* [Meghna Baijal](https://github.com/mbaijal)
+* [Tao Hu](https://github.com/dongzhuoyao)
+* [Sorokin Evgeniy](https://github.com/TheTweak)
