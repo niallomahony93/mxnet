@@ -34,6 +34,7 @@ from test_optimizer import *
 from test_random import *
 from test_gluon import *
 from test_loss import *
+from test_exc_handling import *
 #from test_rnn import *
 from test_gluon_rnn import *
 from test_sparse_ndarray import test_create_csr, test_create_row_sparse, test_sparse_nd_slice
@@ -1076,6 +1077,13 @@ def test_activation_with_type():
                 {'ctx': mx.cpu(0), 'act_data': (2, 2, 10, 10), 'type_dict': {'act_data': np.float64}},
                 {'ctx': mx.cpu(0), 'act_data': (2, 2, 10, 10), 'type_dict': {'act_data': np.float32}},
                 {'ctx': mx.cpu(0), 'act_data': (2, 2, 10, 10), 'type_dict': {'act_data': np.float16}}]
+    check_consistency(sym, ctx_list)
+
+
+def test_lrn():
+    sym = mx.sym.LRN(alpha=0.0001, beta=0.75, knorm=2, nsize=5, name='lrn')
+    ctx_list = [{'ctx': mx.gpu(0), 'lrn_data': (2, 6, 10, 10), 'type_dict': {'lrn_data': np.float32}},
+                {'ctx': mx.cpu(0), 'lrn_data': (2, 6, 10, 10), 'type_dict': {'lrn_data': np.float32}}]
     check_consistency(sym, ctx_list)
 
 
