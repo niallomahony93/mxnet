@@ -27,6 +27,7 @@ import numpy
 
 from .base import numeric_types, string_types
 from . import ndarray
+from . import context
 from . import registry
 
 
@@ -500,25 +501,29 @@ class _BinaryClassificationMetrics(object):
             The labels of the data. Shape is (nsample,)
 
         pred : `NDArray`
-            Predicted values. Shape is (nsample,) or (nsample, 2)
+            Predicted values. Shape is (nsample, 2)
         """
-        if pred.ndim == 2:
-            pred_label = ndarray.argmax(pred, axis=1)
-        elif pred.ndim == 1:
-            pred_label = pred
-        else:
-            raise NotImplementedError("pred should either have shape (nsample,) or (nsample, 2),"
-                                      " received %s" % pred.shape)
-
         check_label_shapes(label, pred)
-        if ndarray.max(label).asscalar() > 1 or ndarray.min(label).asscalar() < 0:
-            raise ValueError("%s currently only supports binary classification."
-                             " All labels should be either 0 or 1."
-                             % self.__class__.__name__)
-        self.true_positives += ndarray.sum((pred_label == 1) * (label == 1)).asscalar()
-        self.false_positives += ndarray.sum((pred_label == 1) * (label == 0)).asscalar()
-        self.false_negatives += ndarray.sum((pred_label == 0) * (label == 1)).asscalar()
-        self.true_negatives += ndarray.sum((pred_label == 0) * (label == 0)).asscalar()
+        if label.context != context.cpu() and pred.context == label.context:
+            pred_label = ndarray.argmax(pred, axis=1)
+            self.true_positives += ndarray.sum((pred_label == 1) * (label == 1)).asscalar()
+            self.false_positives += ndarray.sum((pred_label == 1) * (label == 0)).asscalar()
+            self.false_negatives += ndarray.sum((pred_label == 0) * (label == 1)).asscalar()
+            self.true_negatives += ndarray.sum((pred_label == 0) * (label == 0)).asscalar()
+        else:
+            pred = pred.asnumpy()
+            label = label.asnumpy().astype('int32')
+            pred_label = numpy.argmax(pred, axis=1)
+            self.true_positives += numpy.sum((pred_label == 1) * (label == 1))
+            self.false_positives += numpy.sum((pred_label == 1) * (label == 0))
+            self.false_negatives += numpy.sum((pred_label == 0) * (label == 1))
+            self.true_negatives += numpy.sum((pred_label == 0) * (label == 0))
+
+        # if ndarray.max(label).asscalar() > 1 or ndarray.min(label).asscalar() < 0:
+        #     raise ValueError("%s currently only supports binary classification."
+        #                      " All labels should be either 0 or 1."
+        #                      % self.__class__.__name__)
+
 
     @property
     def precision(self):
