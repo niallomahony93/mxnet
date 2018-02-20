@@ -505,8 +505,8 @@ class _BinaryClassificationMetrics(object):
         """
         check_label_shapes(label, pred)
         if label.context != context.cpu() and pred.context == label.context:
-            label = label.astype(np.float32)
-            pred = pred.astype(np.float32)
+            label = label.astype(numpy.float32)
+            pred = pred.astype(numpy.float32)
             pred_label = ndarray.argmax(pred, axis=1)
             self.true_positives += ndarray.sum((pred_label == 1) * (label == 1)).asscalar()
             self.false_positives += ndarray.sum((pred_label == 1) * (label == 0)).asscalar()
