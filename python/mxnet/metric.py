@@ -27,7 +27,6 @@ import numpy
 
 from .base import numeric_types, string_types
 from . import ndarray
-from . import context
 from . import registry
 
 
@@ -498,46 +497,35 @@ class _BinaryClassificationMetrics(object):
         Parameters
         ----------
         label : `NDArray`
-            The labels of the data. Shape is (nsample,)
+            The labels of the data.
 
         pred : `NDArray`
-            Predicted values. Shape is (nsample, 2)
+            Predicted values.
         """
+        pred = pred.asnumpy()
+        label = label.asnumpy().astype('int32')
+        pred_label = numpy.argmax(pred, axis=1)
+
         check_label_shapes(label, pred)
-        if label.context != context.cpu() and pred.context == label.context:
-            label = label.astype(numpy.float32)
-            pred = pred.astype(numpy.float32)
-            pred_label = ndarray.argmax(pred, axis=1)
-            self.true_positives += ndarray.sum((pred_label == 1) * (label == 1)).asscalar()
-            self.false_positives += ndarray.sum((pred_label == 1) * (label == 0)).asscalar()
-            self.false_negatives += ndarray.sum((pred_label == 0) * (label == 1)).asscalar()
-            self.true_negatives += ndarray.sum((pred_label == 0) * (label == 0)).asscalar()
-        else:
-            pred = pred.asnumpy()
-            label = label.asnumpy().astype('int32')
-            pred_label = numpy.argmax(pred, axis=1)
-            self.true_positives += numpy.sum((pred_label == 1) * (label == 1))
-            self.false_positives += numpy.sum((pred_label == 1) * (label == 0))
-            self.false_negatives += numpy.sum((pred_label == 0) * (label == 1))
-            self.true_negatives += numpy.sum((pred_label == 0) * (label == 0))
-
-        # if ndarray.max(label).asscalar() > 1 or ndarray.min(label).asscalar() < 0:
-        #     raise ValueError("%s currently only supports binary classification."
-        #                      " All labels should be either 0 or 1."
-        #                      % self.__class__.__name__)
-
+        if len(numpy.unique(label)) > 2:
+            raise ValueError("%s currently only supports binary classification."
+                             % self.__class__.__name__)
+        self.true_positives += ((pred_label == 1) * (label == 1)).sum()
+        self.false_positives += ((pred_label == 1) * (label == 0)).sum()
+        self.false_negatives += ((pred_label == 0) * (label == 1)).sum()
+        self.true_negatives += ((pred_label == 0) * (label == 0)).sum()
 
     @property
     def precision(self):
         if self.true_positives + self.false_positives > 0:
-            return float(self.true_positives) / (self.true_positives + self.false_positives)
+            return self.true_positives / (self.true_positives + self.false_positives)
         else:
             return 0.
 
     @property
     def recall(self):
         if self.true_positives + self.false_negatives > 0:
-            return float(self.true_positives) / (self.true_positives + self.false_negatives)
+            return self.true_positives / (self.true_positives + self.false_negatives)
         else:
             return 0.
 
@@ -598,9 +586,6 @@ class F1(EvalMetric):
     >>> predicts = [mx.nd.array([[0.3, 0.7], [0., 1.], [0.4, 0.6]])]
     >>> labels   = [mx.nd.array([0., 1., 1.])]
     >>> f1 = mx.metric.F1()
-    >>> f1.update(preds = predicts, labels = labels)
-    >>> predicts = [mx.nd.array([1.0, 0.0, 1.0])]
-    >>> labels   = [mx.nd.array([0., 1., 1.])]
     >>> f1.update(preds = predicts, labels = labels)
     >>> print f1.get()
     ('f1', 0.8)
