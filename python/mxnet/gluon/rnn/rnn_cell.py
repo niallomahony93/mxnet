@@ -163,7 +163,8 @@ class RecurrentCell(Block):
             states.append(state)
         return states
 
-    def unroll(self, length, inputs, begin_state=None, layout='NTC', merge_outputs=None):
+    def unroll(self, length, inputs, begin_state=None, layout='NTC', merge_outputs=None,
+               valid_length=None):
         """Unrolls an RNN cell across time steps.
 
         Parameters
@@ -193,6 +194,14 @@ class RecurrentCell(Block):
             (batch_size, length, ...) if layout is 'NTC',
             or (length, batch_size, ...) if layout is 'TNC'.
             If `None`, output whatever is faster.
+        valid_length : Symbol, NDArray or None
+            `valid_length` specifies the length of the sequences in the batch without padding.
+            This option is especially useful for building sequence-to-sequence models where
+            the input and output sequences would potentially be padded.
+            If `valid_length` is None, all sequences are assumed to have the same length.
+            If `valid_length` is a Symbol or NDArray, it should have shape (batch_size,).
+            The ith element will be the length of the ith sequence in the batch.
+            Also, `valid_length` must be smaller or equal to `length`.
 
         Returns
         -------
@@ -212,10 +221,17 @@ class RecurrentCell(Block):
 
         states = begin_state
         outputs = []
+        all_states = []
         for i in range(length):
             output, states = self(inputs[i], states)
             outputs.append(output)
-
+            if valid_length is not None:
+                all_states.append(states)
+        if valid_length is not None:
+            states = [F.SequenceLast(F.stack(*ele_list, axis=0),
+                                     sequence_length=valid_length,
+                                     use_sequence_length=True)
+                      for ele_list in zip(*all_states)]
         outputs, _, _, _ = _format_sequence(length, outputs, layout, merge_outputs)
 
         return outputs, states
@@ -645,7 +661,8 @@ class SequentialRNNCell(RecurrentCell):
             next_states.append(state)
         return inputs, sum(next_states, [])
 
-    def unroll(self, length, inputs, begin_state=None, layout='NTC', merge_outputs=None):
+    def unroll(self, length, inputs, begin_state=None, layout='NTC', merge_outputs=None,
+               valid_length=None):
         self.reset()
 
         inputs, _, F, batch_size = _format_sequence(length, inputs, layout, None)
@@ -658,8 +675,10 @@ class SequentialRNNCell(RecurrentCell):
             n = len(cell.state_info())
             states = begin_state[p:p+n]
             p += n
-            inputs, states = cell.unroll(length, inputs=inputs, begin_state=states, layout=layout,
-                                         merge_outputs=None if i < num_cells-1 else merge_outputs)
+            inputs, states = cell.unroll(length, inputs=inputs, begin_state=states,
+                                         layout=layout,
+                                         merge_outputs=None if i < num_cells-1 else merge_outputs,
+                                         valid_length=valid_length)
             next_states.extend(states)
 
         return inputs, next_states
@@ -713,7 +732,8 @@ class DropoutCell(HybridRecurrentCell):
             inputs = F.Dropout(data=inputs, p=self.rate, name='t%d_fwd'%self._counter)
         return inputs, states
 
-    def unroll(self, length, inputs, begin_state=None, layout='NTC', merge_outputs=None):
+    def unroll(self, length, inputs, begin_state=None, layout='NTC', merge_outputs=None,
+               valid_length=None):
         self.reset()
 
         inputs, _, F, _ = _format_sequence(length, inputs, layout, merge_outputs)
@@ -722,7 +742,7 @@ class DropoutCell(HybridRecurrentCell):
         else:
             return super(DropoutCell, self).unroll(
                 length, inputs, begin_state=begin_state, layout=layout,
-                merge_outputs=merge_outputs)
+                merge_outputs=merge_outputs, valid_length=valid_length)
 
 
 class ModifierCell(HybridRecurrentCell):
@@ -827,12 +847,14 @@ class ResidualCell(ModifierCell):
         output = F.elemwise_add(output, inputs, name='t%d_fwd'%self._counter)
         return output, states
 
-    def unroll(self, length, inputs, begin_state=None, layout='NTC', merge_outputs=None):
+    def unroll(self, length, inputs, begin_state=None, layout='NTC', merge_outputs=None,
+               valid_length=None):
         self.reset()
 
         self.base_cell._modified = False
         outputs, states = self.base_cell.unroll(length, inputs=inputs, begin_state=begin_state,
-                                                layout=layout, merge_outputs=merge_outputs)
+                                                layout=layout, merge_outputs=merge_outputs,
+                                                valid_length=valid_length)
         self.base_cell._modified = True
 
         merge_outputs = isinstance(outputs, tensor_types) if merge_outputs is None else \
@@ -880,21 +902,33 @@ class BidirectionalCell(HybridRecurrentCell):
             "cell cannot be called directly. Call the modifier cell instead."
         return _cells_begin_state(self._children, **kwargs)
 
-    def unroll(self, length, inputs, begin_state=None, layout='NTC', merge_outputs=None):
+    def unroll(self, length, inputs, begin_state=None, layout='NTC', merge_outputs=None,
+               valid_length=None):
         self.reset()
 
         inputs, axis, F, batch_size = _format_sequence(length, inputs, layout, False)
+        if valid_length is None:
+            reversed_inputs = list(reversed(inputs))
+        else:
+            reversed_inputs = F.SequenceReverse(F.stack(*inputs, axis=0),
+                                                sequence_length=valid_length,
+                                                use_sequence_length=True)
+            reversed_inputs = F.split(reversed_inputs, axis=0, num_outputs=length,
+                                      squeeze_axis=True)
+            reversed_inputs = [reversed_inputs[i] for i in range(length)]
         begin_state = _get_begin_state(self, F, begin_state, inputs, batch_size)
 
         states = begin_state
         l_cell, r_cell = self._children
         l_outputs, l_states = l_cell.unroll(length, inputs=inputs,
                                             begin_state=states[:len(l_cell.state_info(batch_size))],
-                                            layout=layout, merge_outputs=merge_outputs)
+                                            layout=layout, merge_outputs=merge_outputs,
+                                            valid_length=valid_length)
         r_outputs, r_states = r_cell.unroll(length,
-                                            inputs=list(reversed(inputs)),
+                                            inputs=reversed_inputs,
                                             begin_state=states[len(l_cell.state_info(batch_size)):],
-                                            layout=layout, merge_outputs=merge_outputs)
+                                            layout=layout, merge_outputs=merge_outputs,
+                                            valid_length=valid_length)
 
         if merge_outputs is None:
             merge_outputs = (isinstance(l_outputs, tensor_types)
