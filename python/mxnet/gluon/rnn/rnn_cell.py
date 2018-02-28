@@ -83,8 +83,7 @@ def _format_sequence(length, inputs, layout, merge, in_layout=None):
             F = ndarray
             batch_size = inputs[0].shape[batch_axis]
         if merge is True:
-            inputs = [F.expand_dims(i, axis=axis) for i in inputs]
-            inputs = F.concat(*inputs, dim=axis)
+            inputs = F.stack(*inputs, axis=axis)
             in_axis = axis
 
     if isinstance(inputs, tensor_types) and axis != in_axis:
