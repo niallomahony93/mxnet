@@ -969,11 +969,15 @@ class BidirectionalCell(HybridRecurrentCell):
             reversed_r_outputs = F.stack(*reversed_r_outputs, axis=axis)
             outputs = F.concat(l_outputs, reversed_r_outputs, dim=2,
                                name='%sout'%self._output_prefix)
-
+            if valid_length is not None:
+                outputs = _mask_sequence_variable_length(F, outputs, length, valid_length, axis,
+                                                         merge_outputs)
         else:
             outputs = [F.concat(l_o, r_o, dim=1, name='%st%d'%(self._output_prefix, i))
                        for i, (l_o, r_o) in enumerate(zip(l_outputs, reversed_r_outputs))]
-        outputs = _mask_sequence_variable_length(F, outputs, length, valid_length, axis,
-                                                 merge_outputs)
+            if valid_length is not None:
+                outputs = [_mask_sequence_variable_length(F, ele, length, valid_length, axis,
+                                                          merge_outputs) for ele in outputs]
+
         states = l_states + r_states
         return outputs, states
