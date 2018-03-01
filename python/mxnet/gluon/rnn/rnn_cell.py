@@ -91,6 +91,19 @@ def _format_sequence(length, inputs, layout, merge, in_layout=None):
 
     return inputs, axis, F, batch_size
 
+def _mask_sequence_variable_length(F, data, length, valid_length, time_axis, merge):
+    if isinstance(data, tensor_types):
+        outputs = F.SequenceMask(data, sequence_length=valid_length, use_sequence_length=True,
+                                 axis=time_axis)
+    else:
+        outputs = F.SequenceMask(F.stack(*data, axis=time_axis),
+                                 sequence_length=valid_length,
+                                 use_sequence_length=True,
+                                 axis=time_axis)
+    if not merge:
+        outputs = F.split(outputs, num_outputs=length, axis=time_axis, squeeze_axis=True)
+        outputs = [outputs[i] for i in range(length)]
+    return outputs
 
 class RecurrentCell(Block):
     """Abstract base class for RNN cells
@@ -200,7 +213,8 @@ class RecurrentCell(Block):
             If `valid_length` is None, all sequences are assumed to have the same length.
             If `valid_length` is a Symbol or NDArray, it should have shape (batch_size,).
             The ith element will be the length of the ith sequence in the batch.
-            Also, `valid_length` must be smaller or equal to `length`.
+            The last valid state will be return and the padded outputs will be masked with 0.
+            Note that `valid_length` must be smaller or equal to `length`.
 
         Returns
         -------
@@ -215,7 +229,7 @@ class RecurrentCell(Block):
         """
         self.reset()
 
-        inputs, _, F, batch_size = _format_sequence(length, inputs, layout, False)
+        inputs, axis, F, batch_size = _format_sequence(length, inputs, layout, False)
         begin_state = _get_begin_state(self, F, begin_state, inputs, batch_size)
 
         states = begin_state
@@ -229,8 +243,10 @@ class RecurrentCell(Block):
         if valid_length is not None:
             states = [F.SequenceLast(F.stack(*ele_list, axis=0),
                                      sequence_length=valid_length,
-                                     use_sequence_length=True)
+                                     use_sequence_length=True,
+                                     axis=0)
                       for ele_list in zip(*all_states)]
+            outputs = _mask_sequence_variable_length(F, outputs, length, valid_length, axis, True)
         outputs, _, _, _ = _format_sequence(length, outputs, layout, merge_outputs)
 
         return outputs, states
@@ -741,7 +757,7 @@ class DropoutCell(HybridRecurrentCell):
         else:
             return super(DropoutCell, self).unroll(
                 length, inputs, begin_state=begin_state, layout=layout,
-                merge_outputs=merge_outputs, valid_length=valid_length)
+                merge_outputs=merge_outputs, valid_length=None)
 
 
 class ModifierCell(HybridRecurrentCell):
@@ -858,7 +874,11 @@ class ResidualCell(ModifierCell):
 
         merge_outputs = isinstance(outputs, tensor_types) if merge_outputs is None else \
                         merge_outputs
-        inputs, _, F, _ = _format_sequence(length, inputs, layout, merge_outputs)
+        inputs, axis, F, _ = _format_sequence(length, inputs, layout, merge_outputs)
+        if valid_length is not None:
+            # mask the padded inputs to zero
+            inputs = _mask_sequence_variable_length(F, inputs, length, valid_length, axis,
+                                                    merge_outputs)
         if merge_outputs:
             outputs = F.elemwise_add(outputs, inputs)
         else:
@@ -926,21 +946,34 @@ class BidirectionalCell(HybridRecurrentCell):
         r_outputs, r_states = r_cell.unroll(length,
                                             inputs=reversed_inputs,
                                             begin_state=states[len(l_cell.state_info(batch_size)):],
-                                            layout=layout, merge_outputs=merge_outputs,
+                                            layout=layout, merge_outputs=False,
                                             valid_length=valid_length)
-
+        if valid_length is None:
+            reversed_r_outputs = list(reversed(r_outputs))
+        else:
+            reversed_r_outputs = F.SequenceReverse(F.stack(*r_outputs, axis=0),
+                                                   sequence_length=valid_length,
+                                                   use_sequence_length=True,
+                                                   axis=0)
+            reversed_r_outputs = F.split(reversed_r_outputs, axis=0, num_outputs=length,
+                                         squeeze_axis=True)
+            reversed_r_outputs = [reversed_r_outputs[i] for i in range(length)]
         if merge_outputs is None:
             merge_outputs = (isinstance(l_outputs, tensor_types)
                              and isinstance(r_outputs, tensor_types))
             l_outputs, _, _, _ = _format_sequence(None, l_outputs, layout, merge_outputs)
-            r_outputs, _, _, _ = _format_sequence(None, r_outputs, layout, merge_outputs)
+            reversed_r_outputs, _, _, _ = _format_sequence(None, reversed_r_outputs, layout,
+                                                           merge_outputs)
 
         if merge_outputs:
-            r_outputs = F.reverse(r_outputs, axis=axis)
-            outputs = F.concat(l_outputs, r_outputs, dim=2, name='%sout'%self._output_prefix)
+            reversed_r_outputs = F.stack(*reversed_r_outputs, axis=axis)
+            outputs = F.concat(l_outputs, reversed_r_outputs, dim=2,
+                               name='%sout'%self._output_prefix)
+
         else:
             outputs = [F.concat(l_o, r_o, dim=1, name='%st%d'%(self._output_prefix, i))
-                       for i, (l_o, r_o) in enumerate(zip(l_outputs, reversed(r_outputs)))]
-
+                       for i, (l_o, r_o) in enumerate(zip(l_outputs, reversed_r_outputs))]
+        outputs = _mask_sequence_variable_length(F, outputs, length, valid_length, axis,
+                                                 merge_outputs)
         states = l_states + r_states
         return outputs, states
