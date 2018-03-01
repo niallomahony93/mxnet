@@ -960,8 +960,7 @@ class BidirectionalCell(HybridRecurrentCell):
                                          squeeze_axis=True)
             reversed_r_outputs = [reversed_r_outputs[i] for i in range(length)]
         if merge_outputs is None:
-            merge_outputs = (isinstance(l_outputs, tensor_types)
-                             and isinstance(r_outputs, tensor_types))
+            merge_outputs = isinstance(l_outputs, tensor_types)
             l_outputs, _, _, _ = _format_sequence(None, l_outputs, layout, merge_outputs)
             reversed_r_outputs, _, _, _ = _format_sequence(None, reversed_r_outputs, layout,
                                                            merge_outputs)
