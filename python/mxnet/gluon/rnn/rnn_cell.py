@@ -92,6 +92,7 @@ def _format_sequence(length, inputs, layout, merge, in_layout=None):
     return inputs, axis, F, batch_size
 
 def _mask_sequence_variable_length(F, data, length, valid_length, time_axis, merge):
+    assert valid_length is not None
     if isinstance(data, tensor_types):
         outputs = F.SequenceMask(data, sequence_length=valid_length, use_sequence_length=True,
                                  axis=time_axis)
@@ -973,7 +974,8 @@ class BidirectionalCell(HybridRecurrentCell):
         else:
             outputs = [F.concat(l_o, r_o, dim=1, name='%st%d'%(self._output_prefix, i))
                        for i, (l_o, r_o) in enumerate(zip(l_outputs, reversed_r_outputs))]
-        outputs = _mask_sequence_variable_length(F, outputs, length, valid_length, axis,
-                                                 merge_outputs)
+        if valid_length is not None:
+            outputs = _mask_sequence_variable_length(F, outputs, length, valid_length, axis,
+                                                     merge_outputs)
         states = l_states + r_states
         return outputs, states
