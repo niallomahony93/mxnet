@@ -30,6 +30,6 @@ cmake -G "Visual Studio 14 2015 Win64" ^
 -DCUDNN_INCLUDE="C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v9.0\\include" ^
 -DCUDNN_ROOT="C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v9.0\\lib\\x64" ^
 -DUSE_MKL_IF_AVAILABLE=OFF ^
--DGTEST_INCLUDE_DIRS="C:\\Users\xingjs\AppData\Local\Continuum\anaconda3\Library\include" ^
--DGTEST_LIBRARIES="C:\\Users\xingjs\AppData\Local\Continuum\anaconda3\Library\bin" ^
+-DUSE_JEMALLOC=OFF ^
+-DUSE_GPERFTOOLS=OFF ^
 -DBLAS=MKL ..
