@@ -22,3 +22,16 @@
  * \file layer_norm.cu
  * \brief Implements Ba et. al, Layer Normalization (https://arxiv.org/abs/1607.06450).
 */
+#include "./layer_norm-inl.h"
+
+namespace mxnet {
+namespace op {
+
+NNVM_REGISTER_OP(LayerNorm)
+.set_attr<FCompute>("FCompute<gpu>", LayerNormCompute<gpu>);
+
+NNVM_REGISTER_OP(_backward_LayerNorm)
+.set_attr<FCompute>("FCompute<gpu>", LayerNormGradCompute<gpu>);
+
+}  // namespace op
+}  // namespace mxnet
