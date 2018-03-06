@@ -205,14 +205,14 @@ void LayerNormGradCompute(const nnvm::NodeAttrs& attrs,
         std::max(reduce_workspace_size,
                  broadcast::ReduceWorkspaceSize<NDim, DType>(
                    s, ograd.reshape(red_src_shape), kAddTo,
-                   mean.reshape(red_dst_shape));
+                   mean.reshape(red_dst_shape)));
     });
     BROADCAST_NDIM_SWITCH(red_exclude_dst_shape.ndim(), NDim, {
       reduce_workspace_size =
         std::max(reduce_workspace_size,
                  broadcast::ReduceWorkspaceSize<NDim, DType>(
                    s, ograd.reshape(red_exclude_src_shape), kAddTo,
-                   gamma.reshape(red_exclude_dst_shape));
+                   gamma.reshape(red_exclude_dst_shape)));
     });
   });
   workspace = ctx.requested[0].get_space_typed<xpu, 1, char>(
