@@ -218,11 +218,11 @@ void LayerNormGradCompute(const nnvm::NodeAttrs& attrs,
   workspace = ctx.requested[0].get_space_typed<xpu, 1, char>(
     Shape1(reduce_workspace_size + data_size * 2 + red_out_size), s);
   const TBlob normalized_data = TBlob(workspace.dptr_ + reduce_workspace_size,
-                                data.shape_, data.dev_mask(), data.type_flag_);
+                                      data.shape_, data.dev_mask(), data.type_flag_, data.dev_id());
   const TBlob ograd_mult = TBlob(workspace.dptr_ + reduce_workspace_size + data_size,
-                           ograd.shape_, ograd.dev_mask(), ograd.type_flag_);
+                                 ograd.shape_, ograd.dev_mask(), ograd.type_flag_, ograd.dev_id());
   const TBlob red_out = TBlob(workspace.dptr_ + reduce_workspace_size + data_size * 2,
-                        mean.shape_, mean.dev_mask(), mean.type_flag_);
+                              mean.shape_, mean.dev_mask(), mean.type_flag_, mean.dev_id());
   // Compute normalized_data = (data - mean) / std
   BinaryBroadcastCompute<xpu, op::mshadow_op::minus>(attrs, ctx,
                                                     {data, mean},
