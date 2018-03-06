@@ -38,11 +38,6 @@
 #include "../mxnet_op.h"
 #include "../tensor/broadcast_reduce_op.h"
 
-#ifdef __GNUG__
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-local-typedefs"
-#endif
-
 namespace mxnet {
 namespace op {
 
@@ -104,10 +99,12 @@ void LayerNormCompute(const nnvm::NodeAttrs& attrs,
   workspace = ctx.requested[0].get_space_typed<xpu, 1, char>(Shape1(workspace_size), s);
   // Calculate mean
   MSHADOW_REAL_TYPE_SWITCH(outputs[0].type_flag_, DType, {
-    broadcast::Reduce<red::sum, NDim, DType, op::mshadow_op::identity>(
-      s, mean_data, req[0], workspace, in_data);
-    Tensor<xpu, 2, DType> mean_data_tensor = mean_data.FlatTo2D<xpu, DType>(s);
-    mean_data_tensor /= scalar<DType>(normalize_size);
+    BROADCAST_NDIM_SWITCH(red_dst_shape.ndim(), NDim,{
+      broadcast::Reduce<red::sum, NDim, DType, op::mshadow_op::identity>(
+        s, mean_data, req[0], workspace, in_data);
+      Tensor<xpu, 2, DType> mean_data_tensor = mean_data.FlatTo2D<xpu, DType>(s);
+      mean_data_tensor /= scalar<DType>(normalize_size);
+    });
   });
   // Calculate data = data - mean
   BinaryBroadcastCompute<xpu, op::mshadow_op::minus>(attrs, ctx,
@@ -116,10 +113,13 @@ void LayerNormCompute(const nnvm::NodeAttrs& attrs,
   // Calculate std
   const TBlob centered_out = outputs[0].reshape(red_src_shape);
   MSHADOW_REAL_TYPE_SWITCH(outputs[0].type_flag_, DType, {
-    broadcast::Reduce<red::sum, NDim, DType, op::mshadow_op::square>(
-      s, std_data, req[0], workspace, centered_out);
-    Tensor<xpu, 2, DType> std_data_tensor = std_data.FlatTo2D<xpu, DType>(s);
-    std_data_tensor = F<mshadow_op::square_root>(std_data_tensor / scalar<DType>(normalize_size) + scalar<DType>(param.eps));
+    BROADCAST_NDIM_SWITCH(red_dst_shape.ndim(), NDim,{
+      broadcast::Reduce<red::sum, NDim, DType, op::mshadow_op::square>(
+        s, std_data, req[0], workspace, centered_out);
+      Tensor<xpu, 2, DType> std_data_tensor = std_data.FlatTo2D<xpu, DType>(s);
+      std_data_tensor = F<mshadow_op::square_root>(std_data_tensor / scalar<DType>(normalize_size)
+                        + scalar<DType>(param.eps));
+    });
   });
   // Calculate data = data / std
   BinaryBroadcastCompute<xpu, op::mshadow_op::div>(attrs, ctx,
@@ -138,3 +138,4 @@ void LayerNormGradCompute(const nnvm::NodeAttrs& attrs,
 
 }  // namespace op
 }  // namespace mxnet
+#endif
