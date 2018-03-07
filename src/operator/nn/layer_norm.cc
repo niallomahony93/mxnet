@@ -39,13 +39,13 @@ static bool LayerNormShape(const nnvm::NodeAttrs& attrs,
   using namespace mshadow;
   CHECK_EQ(in_shape->size(), 3U) << "Input:[data, gamma, beta]";
   const TShape &dshape = in_shape->at(layernorm::kData);
+  int axis = param.axis;
+  if(axis < 0) {
+    axis += static_cast<int>(dshape.ndim());
+  }
+  CHECK(axis >= 0 && axis < dshape.ndim()) << "Channel axis out of range: " << param.axis;
 
-  const size_t channelAxis = static_cast<size_t>(param.axis < 0
-      ? static_cast<int>(dshape.ndim()) + param.axis
-      : param.axis);
-  CHECK_LT(channelAxis, dshape.ndim()) << "Channel axis out of range: " << param.axis;
-
-  const int channelCount = dshape[channelAxis];
+  const int channelCount = dshape[axis];
 
   if (dshape.ndim() == 0) {
     return false;
@@ -57,7 +57,7 @@ static bool LayerNormShape(const nnvm::NodeAttrs& attrs,
   out_shape->clear();
   out_shape->push_back(dshape);                // kOut
   TShape moments_shape(dshape.begin(), dshape.end());
-  moments_shape[channelAxis] = 1;
+  moments_shape[axis] = 1;
   out_shape->push_back(moments_shape);  // kMean
   out_shape->push_back(moments_shape);  // kInvstd
   return true;
