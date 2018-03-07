@@ -57,7 +57,7 @@ static bool LayerNormShape(const nnvm::NodeAttrs& attrs,
   out_shape->clear();
   out_shape->push_back(dshape);                // kOut
   TShape moments_shape(dshape.begin(), dshape.end());
-  moments_shape[param.axis] = 1;
+  moments_shape[channelAxis] = 1;
   out_shape->push_back(moments_shape);  // kMean
   out_shape->push_back(moments_shape);  // kInvstd
   return true;
