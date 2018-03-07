@@ -43,7 +43,7 @@ static bool LayerNormShape(const nnvm::NodeAttrs& attrs,
   if(axis < 0) {
     axis += static_cast<int>(dshape.ndim());
   }
-  CHECK(axis >= 0 && axis < dshape.ndim()) << "Channel axis out of range: " << param.axis;
+  CHECK(axis >= 0 && axis < static_cast<int>(dshape.ndim())) << "Channel axis out of range: " << param.axis;
 
   const int channelCount = dshape[axis];
 
