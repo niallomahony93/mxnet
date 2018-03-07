@@ -40,10 +40,11 @@ static bool LayerNormShape(const nnvm::NodeAttrs& attrs,
   CHECK_EQ(in_shape->size(), 3U) << "Input:[data, gamma, beta]";
   const TShape &dshape = in_shape->at(layernorm::kData);
   int axis = param.axis;
-  if(axis < 0) {
+  if (axis < 0) {
     axis += static_cast<int>(dshape.ndim());
   }
-  CHECK(axis >= 0 && axis < static_cast<int>(dshape.ndim())) << "Channel axis out of range: " << param.axis;
+  CHECK(axis >= 0 && axis < static_cast<int>(dshape.ndim()))
+    << "Channel axis out of range: axis=" << param.axis;
 
   const int channelCount = dshape[axis];
 
@@ -119,11 +120,11 @@ axis to be the last item in the input shape.
 .set_attr<FCompute>("FCompute<cpu>", LayerNormCompute<cpu>)
 .set_attr<nnvm::FGradient>("FGradient", [](const nnvm::NodePtr& n, const std::vector<nnvm::NodeEntry>& ograds) {
   std::vector<nnvm::NodeEntry> heads;
-  heads.push_back(ograds[0]); // ograd
-  heads.push_back(n->inputs[0]); // data
-  heads.push_back(n->inputs[1]); // gamma
-  heads.emplace_back(nnvm::NodeEntry{n, 1, 0}); // mean
-  heads.emplace_back(nnvm::NodeEntry{ n, 2, 0 }); // std
+  heads.push_back(ograds[0]);  // ograd
+  heads.push_back(n->inputs[0]);  // data
+  heads.push_back(n->inputs[1]);  // gamma
+  heads.emplace_back(nnvm::NodeEntry{n, 1, 0});  // mean
+  heads.emplace_back(nnvm::NodeEntry{ n, 2, 0 });  // std
   return MakeGradNode("_backward_LayerNorm", n, heads, n->attrs.dict);
 })
 .set_attr<FResourceRequest>("FResourceRequest", [](const NodeAttrs& n) {

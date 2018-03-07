@@ -30,6 +30,7 @@
 #include <mxnet/operator.h>
 #include <mshadow/base.h>
 #include <map>
+#include <algorithm>
 #include <vector>
 #include <string>
 #include <utility>
@@ -82,8 +83,8 @@ void LayerNormCompute(const nnvm::NodeAttrs& attrs,
   Stream<xpu> *s = ctx.get_stream<xpu>();
   // Reshape gamma and beta to be broadcastable
   TShape new_param_shape(inputs[0].shape_.begin(), inputs[0].shape_.end());
-  for(int i = 0; i < inputs[0].ndim(); i++) {
-    if(i != axis) {
+  for (int i = 0; i < inputs[0].ndim(); i++) {
+    if (i != axis) {
       new_param_shape[i] = 1;
     }
   }
@@ -103,14 +104,14 @@ void LayerNormCompute(const nnvm::NodeAttrs& attrs,
   Tensor<xpu, 1, char> workspace;
   size_t workspace_size = 0;
   MSHADOW_REAL_TYPE_SWITCH(outputs[0].type_flag_, DType, {
-    BROADCAST_NDIM_SWITCH(red_dst_shape.ndim(), NDim,{
+    BROADCAST_NDIM_SWITCH(red_dst_shape.ndim(), NDim, {
       workspace_size = broadcast::ReduceWorkspaceSize<NDim, DType>(s, mean_data, req[0], in_data);
     });
   });
   workspace = ctx.requested[0].get_space_typed<xpu, 1, char>(Shape1(workspace_size), s);
   // Calculate mean
   MSHADOW_REAL_TYPE_SWITCH(outputs[0].type_flag_, DType, {
-    BROADCAST_NDIM_SWITCH(red_dst_shape.ndim(), NDim,{
+    BROADCAST_NDIM_SWITCH(red_dst_shape.ndim(), NDim, {
       broadcast::Reduce<red::sum, NDim, DType, op::mshadow_op::identity>(
         s, mean_data, req[0], workspace, in_data);
       Tensor<xpu, 1, DType> mean_data_tensor = mean_data.FlatTo1D<xpu, DType>(s);
@@ -124,7 +125,7 @@ void LayerNormCompute(const nnvm::NodeAttrs& attrs,
   // Calculate std
   const TBlob centered_out = outputs[0].reshape(red_src_shape);
   MSHADOW_REAL_TYPE_SWITCH(outputs[0].type_flag_, DType, {
-    BROADCAST_NDIM_SWITCH(red_dst_shape.ndim(), NDim,{
+    BROADCAST_NDIM_SWITCH(red_dst_shape.ndim(), NDim, {
       broadcast::Reduce<red::sum, NDim, DType, op::mshadow_op::square>(
         s, std_data, req[0], workspace, centered_out);
       Tensor<xpu, 1, DType> std_data_tensor = std_data.FlatTo1D<xpu, DType>(s);
@@ -173,8 +174,8 @@ void LayerNormGradCompute(const nnvm::NodeAttrs& attrs,
   Stream<xpu> *s = ctx.get_stream<xpu>();
   // Reshape gamma to be broadcastable
   TShape new_param_shape(inputs[0].shape_.begin(), inputs[0].shape_.end());
-  for(int i = 0; i < inputs[0].ndim(); i++) {
-    if(i != axis) {
+  for (int i = 0; i < inputs[0].ndim(); i++) {
+    if (i != axis) {
       new_param_shape[i] = 1;
     }
   }
@@ -200,7 +201,7 @@ void LayerNormGradCompute(const nnvm::NodeAttrs& attrs,
     // There are two types of reduction workloads: reduce over axis and reduce exclude axis
     // We take the maximum of the workspace sizes required by these workloads.
     // Also, we explicitly set the req_type=kAddto in case we want to use it.
-    BROADCAST_NDIM_SWITCH(red_dst_shape.ndim(), NDim,{
+    BROADCAST_NDIM_SWITCH(red_dst_shape.ndim(), NDim, {
       reduce_workspace_size =
         std::max(reduce_workspace_size,
                  broadcast::ReduceWorkspaceSize<NDim, DType>(
@@ -231,9 +232,9 @@ void LayerNormGradCompute(const nnvm::NodeAttrs& attrs,
                                                    {normalized_data, std},
                                                    {kWriteTo}, {normalized_data});
   // Calculate grad_beta
-  if(req[2] != kNullOp) {
+  if (req[2] != kNullOp) {
     MSHADOW_REAL_TYPE_SWITCH(outputs[2].type_flag_, DType, {
-      BROADCAST_NDIM_SWITCH(red_exclude_dst_shape.ndim(), NDim,{
+      BROADCAST_NDIM_SWITCH(red_exclude_dst_shape.ndim(), NDim, {
         broadcast::Reduce<red::sum, NDim, DType, op::mshadow_op::identity>(
           s, outputs[2].reshape(red_exclude_dst_shape), req[2], workspace,
           ograd.reshape(red_exclude_src_shape));
@@ -243,9 +244,9 @@ void LayerNormGradCompute(const nnvm::NodeAttrs& attrs,
   // Calculate grad_gamma, it will be sum(ograd * normalized_data, exclude_axis)
   ElemwiseBinaryOp::Compute<xpu, op::mshadow_op::mul>(attrs, ctx, {normalized_data, ograd},
                                                       {kWriteTo}, {ograd_mult});
-  if(req[1] != kNullOp) {
+  if (req[1] != kNullOp) {
     MSHADOW_REAL_TYPE_SWITCH(outputs[1].type_flag_, DType, {
-      BROADCAST_NDIM_SWITCH(red_exclude_dst_shape.ndim(), NDim,{
+      BROADCAST_NDIM_SWITCH(red_exclude_dst_shape.ndim(), NDim, {
         broadcast::Reduce<red::sum, NDim, DType, op::mshadow_op::identity>(
           s, outputs[1].reshape(red_exclude_dst_shape), req[1], workspace,
           ograd_mult.reshape(red_exclude_src_shape));
@@ -256,7 +257,7 @@ void LayerNormGradCompute(const nnvm::NodeAttrs& attrs,
   //   ograd_mult = ograd * gamma / std
   //   grad_data = ograd_mult - mean(ograd_mult, axis)
   //               + normalized_data * (-mean(normalized_data * ograd_mult, axis))
-  if(req[0] != kNullOp) {
+  if (req[0] != kNullOp) {
     BinaryBroadcastCompute<xpu, op::mshadow_op::mul>(attrs, ctx,
                                                     {ograd, gamma},
                                                     {kWriteTo}, {ograd_mult});
@@ -264,7 +265,7 @@ void LayerNormGradCompute(const nnvm::NodeAttrs& attrs,
                                                     {ograd_mult, std},
                                                     {kWriteTo}, {ograd_mult});
     MSHADOW_REAL_TYPE_SWITCH(outputs[0].type_flag_, DType, {
-      BROADCAST_NDIM_SWITCH(red_dst_shape.ndim(), NDim,{
+      BROADCAST_NDIM_SWITCH(red_dst_shape.ndim(), NDim, {
         broadcast::Reduce<red::sum, NDim, DType, op::mshadow_op::identity>(
           s, red_out.reshape(red_dst_shape), kWriteTo, workspace,
           ograd_mult.reshape(red_src_shape));
@@ -278,7 +279,7 @@ void LayerNormGradCompute(const nnvm::NodeAttrs& attrs,
     ElemwiseBinaryOp::Compute<xpu, op::mshadow_op::mul>(attrs, ctx, {ograd_mult, normalized_data},
                                                         {kWriteTo}, {ograd_mult});
     MSHADOW_REAL_TYPE_SWITCH(outputs[0].type_flag_, DType, {
-      BROADCAST_NDIM_SWITCH(red_dst_shape.ndim(), NDim,{
+      BROADCAST_NDIM_SWITCH(red_dst_shape.ndim(), NDim, {
         broadcast::Reduce<red::sum, NDim, DType, op::mshadow_op::identity>(
           s, red_out.reshape(red_dst_shape), kWriteTo, workspace,
           ograd_mult.reshape(red_src_shape));
@@ -294,4 +295,4 @@ void LayerNormGradCompute(const nnvm::NodeAttrs& attrs,
 
 }  // namespace op
 }  // namespace mxnet
-#endif
+#endif  // MXNET_OPERATOR_NN_LAYER_NORM_INL_H_
