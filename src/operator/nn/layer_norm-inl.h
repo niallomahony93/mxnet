@@ -138,11 +138,11 @@ void LayerNormCompute(const nnvm::NodeAttrs& attrs,
                                                    {kWriteTo}, {outputs[0]});
   // Calculate data = data * gamma
   BinaryBroadcastCompute<xpu, op::mshadow_op::mul>(attrs, ctx,
-                                                   {outputs[0], inputs[layernorm::kGamma]},
+                                                   {outputs[0], gamma},
                                                    {kWriteTo}, {outputs[0]});
   // Calculate data = data + beta
   BinaryBroadcastCompute<xpu, op::mshadow_op::plus>(attrs, ctx,
-                                                   {outputs[0], inputs[layernorm::kBeta]},
+                                                   {outputs[0], beta},
                                                    {kWriteTo}, {outputs[0]});
 }
 
