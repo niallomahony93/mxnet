@@ -140,7 +140,8 @@ axis to be the last item in the input shape.
 
 
 NNVM_REGISTER_OP(_backward_LayerNorm)
-.set_num_outputs(5)
+.set_num_inputs(5)
+.set_num_outputs(3)
 .set_attr<nnvm::TIsBackward>("TIsBackward", true)
 .set_attr_parser(ParamParser<LayerNormParam>)
 .set_attr<FCompute>("FCompute<cpu>", LayerNormGradCompute<cpu>);
