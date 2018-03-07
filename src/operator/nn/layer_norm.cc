@@ -124,10 +124,6 @@ axis to be the last item in the input shape.
   heads.push_back(n->inputs[1]); // gamma
   heads.emplace_back(nnvm::NodeEntry{n, 1, 0}); // mean
   heads.emplace_back(nnvm::NodeEntry{ n, 2, 0 }); // std
-  index_t n_out = n->num_outputs();
-  for (index_t i = 0; i < n_out; ++i) {
-    heads.emplace_back(nnvm::NodeEntry{n, i, 0});
-  }
   return MakeGradNode("_backward_LayerNorm", n, heads, n->attrs.dict);
 })
 .set_attr<FResourceRequest>("FResourceRequest", [](const NodeAttrs& n) {
