@@ -140,7 +140,10 @@ NNVM_REGISTER_OP(_backward_LayerNorm)
 .set_num_outputs(3)
 .set_attr<nnvm::TIsBackward>("TIsBackward", true)
 .set_attr_parser(ParamParser<LayerNormParam>)
-.set_attr<FCompute>("FCompute<cpu>", LayerNormGradCompute<cpu>);
+.set_attr<FCompute>("FCompute<cpu>", LayerNormGradCompute<cpu>)
+.set_attr<FResourceRequest>("FResourceRequest", [](const NodeAttrs& n) {
+  return std::vector<ResourceRequest>{ResourceRequest::kTempSpace};
+});
 
 }  // namespace op
 }  // namespace mxnet
