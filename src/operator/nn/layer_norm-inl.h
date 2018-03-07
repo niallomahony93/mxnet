@@ -81,14 +81,14 @@ void LayerNormCompute(const nnvm::NodeAttrs& attrs,
   CHECK_EQ(inputs.size(), 3U);
   Stream<xpu> *s = ctx.get_stream<xpu>();
   // Reshape gamma and beta to be broadcastable
-  TShape new_moments_shape(inputs[0].shape_.begin(), inputs[0].shape_.end());
+  TShape new_param_shape(inputs[0].shape_.begin(), inputs[0].shape_.end());
   for(int i = 0; i < inputs[0].ndim(); i++) {
     if(i != axis) {
-      new_moments_shape[i] = 1;
+      new_param_shape[i] = 1;
     }
   }
-  const TBlob gamma = inputs[1].reshape(new_moments_shape);
-  const TBlob beta = inputs[2].reshape(new_moments_shape);
+  const TBlob gamma = inputs[1].reshape(new_param_shape);
+  const TBlob beta = inputs[2].reshape(new_param_shape);
   // Initialize the output to be the same as the input
   mxnet_op::copy(s, outputs[0], inputs[0]);
   // Compute necessary data for the reduce operation.
@@ -172,15 +172,15 @@ void LayerNormGradCompute(const nnvm::NodeAttrs& attrs,
   CHECK(axis >= 0 && axis < inputs[0].ndim()) << "Channel axis out of range: " << param.axis;
   Stream<xpu> *s = ctx.get_stream<xpu>();
   // Reshape gamma to be broadcastable
-  TShape new_moments_shape(inputs[0].shape_.begin(), inputs[0].shape_.end());
+  TShape new_param_shape(inputs[0].shape_.begin(), inputs[0].shape_.end());
   for(int i = 0; i < inputs[0].ndim(); i++) {
     if(i != axis) {
-      new_moments_shape[i] = 1;
+      new_param_shape[i] = 1;
     }
   }
   const TBlob ograd = inputs[0];
   const TBlob data = inputs[1];
-  const TBlob gamma = inputs[2].reshape(new_moments_shape);
+  const TBlob gamma = inputs[2].reshape(new_param_shape);
   const TBlob mean = inputs[3];
   const TBlob std = inputs[4];
   // Prepare the necessary shapes for reduction
