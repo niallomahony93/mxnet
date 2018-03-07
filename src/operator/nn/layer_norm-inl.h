@@ -52,7 +52,7 @@ struct LayerNormParam : public dmlc::Parameter<LayerNormParam> {
   float eps;
   bool output_mean_var;
   DMLC_DECLARE_PARAMETER(LayerNormParam) {
-    DMLC_DECLARE_FIELD(axis).set_default(1)
+    DMLC_DECLARE_FIELD(axis).set_default(-1)
       .describe("The axis to perform layer normalization. "
                 "Usually, this should be be axis of the channel dimension. "
                 "Negative values means indexing from right to left. ");
