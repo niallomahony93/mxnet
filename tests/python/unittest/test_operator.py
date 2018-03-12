@@ -268,7 +268,7 @@ def test_regression():
                      lambda x: x,
                      lambda x, y : x - y,
                      shape, stype='csr')
-   
+
 
 def check_softmax_grad(xpu):
     x = mx.sym.Variable('x')
@@ -2413,20 +2413,19 @@ def test_l2_normalization():
                         check_l2_normalization((nbatch, nchannel, height, width), mode)
 
 
-def npy_layer_norm(data, gamma, beta, axis=1, eps=1E-5):
-    if axis < 0:
-        axis += data.ndim
-    broadcast_shape = [1 for _ in range(data.ndim)]
-    broadcast_shape[axis] = data.shape[axis]
-    mean = data.mean(axis=axis, keepdims=True)
-    var = data.var(axis=axis, keepdims=True)
-    std = np.sqrt(var + eps)
-    out = np.reshape(gamma, broadcast_shape) * (data - mean) / std + \
-          np.reshape(beta, broadcast_shape)
-    return out
-
-
 def check_layer_normalization(in_shape, axis, eps, dtype=np.float32):
+    def npy_layer_norm(data, gamma, beta, axis=1, eps=1E-5):
+        if axis < 0:
+            axis += data.ndim
+        broadcast_shape = [1 for _ in range(data.ndim)]
+        broadcast_shape[axis] = data.shape[axis]
+        mean = data.mean(axis=axis, keepdims=True)
+        var = data.var(axis=axis, keepdims=True)
+        std = np.sqrt(var + eps)
+        out = np.reshape(gamma, broadcast_shape) * (data - mean) / std + \
+              np.reshape(beta, broadcast_shape)
+        return out
+
     ctx = default_context()
     data = np.random.normal(0, 1, in_shape).astype(dtype)
     gamma = np.random.normal(0, 1, (in_shape[axis],)).astype(dtype)
@@ -2449,9 +2448,10 @@ def check_layer_normalization(in_shape, axis, eps, dtype=np.float32):
 
 def test_layer_norm():
     for dtype in [np.float16, np.float32, np.float64]:
-        check_layer_normalization((10, 12, 5), -1, 1E-3)
-        check_layer_normalization((10, 12, 5), 0, 1E-3)
-        check_layer_normalization((10, 12, 5), 1, 1E-3)
+        for in_shape in [(10, 6, 5), (5, 5)]:
+            for axis in range(-len(in_shape), len(in_shape)):
+                for eps in [1E-3, 1E-4]:
+                    check_layer_normalization(in_shape, axis, eps)
 
 
 # Numpy Implementation of Sequence Ops
@@ -4686,12 +4686,49 @@ def test_dropout():
             exe.backward([mx.nd.ones(shape)], is_train=False)
             assert (exe.grad_arrays[0].asnumpy() == exe.outputs[0].asnumpy()).all()
 
+    def get_slice(x, axis, idx):
+        ix = ()
+        for i in range(x.ndim):
+            if i == axis:
+                ix += (idx,)
+            else:
+                ix += (slice(None, None, None),)
+        return x[ix]
+
+    def check_dropout_axes(ratio, shape, axes):
+        compactshape = list(shape)
+        for axis in axes:
+            compactshape[axis] = 1
+        compactx = mx.random.uniform(shape=tuple(compactshape))
+        broadcastx = compactx.broadcast_to(shape)
+        dropouty = mx.nd.Dropout(broadcastx, p=ratio, axes=axes)
+        for axis in axes:
+            target = get_slice(dropouty, axis, 0).asnumpy()
+            for i in range(1, shape[axis]):
+                assert(get_slice(dropouty, axis, i).asnumpy() == target).all()
+
     shape = (100, 100)
     check_dropout_ratio(0.5, shape)
     check_dropout_ratio(0.0, shape)
     check_dropout_ratio(1.0, shape)
     check_dropout_ratio(0.75, shape)
     check_dropout_ratio(0.25, shape)
+
+    nshape = (10, 10, 10, 10)
+    with mx.autograd.train_mode():
+        check_dropout_axes(0.25, nshape, axes = (0,))
+        check_dropout_axes(0.25, nshape, axes = (1,))
+        check_dropout_axes(0.25, nshape, axes = (2,))
+        check_dropout_axes(0.25, nshape, axes = (3,))
+        check_dropout_axes(0.25, nshape, axes = (0, 1))
+        check_dropout_axes(0.25, nshape, axes = (0, 2))
+        check_dropout_axes(0.25, nshape, axes = (0, 3))
+        check_dropout_axes(0.25, nshape, axes = (1, 2))
+        check_dropout_axes(0.25, nshape, axes = (1, 3))
+        check_dropout_axes(0.25, nshape, axes = (2, 3))
+        check_dropout_axes(0.25, nshape, axes = (0, 1, 2))
+        check_dropout_axes(0.25, nshape, axes = (0, 2, 3))
+        check_dropout_axes(0.25, nshape, axes = (1, 2, 3))
 
 
 @with_seed()

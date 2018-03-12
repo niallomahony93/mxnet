@@ -21,6 +21,10 @@ __all__ = ['VariationalDropoutCell']
 
 from ...rnn import BidirectionalCell, SequentialRNNCell, ModifierCell
 from ...rnn.rnn_cell import _format_sequence, _get_begin_state, _mask_sequence_variable_length
+<<<<<<< HEAD
+=======
+from ... import tensor_types
+>>>>>>> apache/master
 
 
 class VariationalDropoutCell(ModifierCell):
@@ -170,7 +174,8 @@ class VariationalDropoutCell(ModifierCell):
         # only when state dropout is not present.
         if self.drop_states:
             return super(VariationalDropoutCell, self).unroll(length, inputs, begin_state,
-                                                              layout, merge_outputs)
+                                                              layout, merge_outputs,
+                                                              valid_length=valid_length)
 
         self.reset()
 
@@ -178,17 +183,14 @@ class VariationalDropoutCell(ModifierCell):
         states = _get_begin_state(self, F, begin_state, inputs, batch_size)
 
         if self.drop_inputs:
-            first_input = inputs.slice_axis(axis, 0, 1).split(1, axis=axis, squeeze_axis=True)
-            self._initialize_input_masks(F, first_input, states)
-            inputs = F.broadcast_mul(inputs, self.drop_inputs_mask.expand_dims(axis=axis))
+            inputs = F.Dropout(inputs, p=self.drop_inputs, axes=(axis,))
 
         outputs, states = self.base_cell.unroll(length, inputs, states, layout, merge_outputs=True,
                                                 valid_length=valid_length)
         if self.drop_outputs:
-            first_output = outputs.slice_axis(axis, 0, 1).split(1, axis=axis, squeeze_axis=True)
-            self._initialize_output_mask(F, first_output)
-            outputs = F.broadcast_mul(outputs, self.drop_outputs_mask.expand_dims(axis=axis))
-
+            outputs = F.Dropout(outputs, p=self.drop_outputs, axes=(axis,))
+        merge_outputs = isinstance(outputs, tensor_types) if merge_outputs is None else \
+            merge_outputs
         outputs, _, _, _ = _format_sequence(length, outputs, layout, merge_outputs)
         if valid_length is not None:
             outputs = _mask_sequence_variable_length(F, outputs, length, valid_length, axis,

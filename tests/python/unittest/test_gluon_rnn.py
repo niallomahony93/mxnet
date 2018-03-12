@@ -67,6 +67,20 @@ def test_lstm_forget_bias():
                                forget_bias * np.ones(100, ), np.zeros((2 * 100,))])
     assert_allclose(mod.get_params()[0][bias_argument].asnumpy(), expected_bias)
 
+def test_lstm_cpu_inference():
+    # should behave the same as lstm cell
+    EXPECTED_LSTM_OUTPUT = np.array([[[0.72045636, 0.72045636, 0.95215213, 0.95215213],
+                                  [0.72045636, 0.72045636, 0.95215213, 0.95215213]],
+                                 [[0.95215213, 0.95215213, 0.72045636, 0.72045636],
+                                  [0.95215213, 0.95215213, 0.72045636, 0.72045636]]])
+    x = mx.nd.ones(shape=(2, 2, 2))
+    model = mx.gluon.rnn.LSTM(2, num_layers=6, bidirectional=True)
+    model.initialize(mx.init.One())
+    y = model(x).asnumpy()
+
+    mx.test_utils.assert_almost_equal(y, EXPECTED_LSTM_OUTPUT,
+                                      rtol=1e-3, atol=1e-5)
+    
 
 def test_gru():
     cell = gluon.rnn.GRUCell(100, prefix='rnn_')
@@ -284,6 +298,10 @@ def test_rnn_unroll_variant_length():
         cell_list.append(gluon.rnn.BidirectionalCell(
                          l_cell=base_cell_class(20),
                          r_cell=base_cell_class(20)))
+<<<<<<< HEAD
+=======
+        cell_list.append(gluon.contrib.rnn.VariationalDropoutCell(base_cell=base_cell_class(20)))
+>>>>>>> apache/master
     stack_res_rnn_cell = gluon.rnn.SequentialRNNCell()
     stack_res_rnn_cell.add(gluon.rnn.ResidualCell(base_cell=gluon.rnn.RNNCell(20)))
     stack_res_rnn_cell.add(gluon.rnn.ResidualCell(base_cell=gluon.rnn.RNNCell(20)))

@@ -55,11 +55,11 @@ struct LayerNormParam : public dmlc::Parameter<LayerNormParam> {
     DMLC_DECLARE_FIELD(axis).set_default(-1)
       .describe("The axis to perform layer normalization. "
                 "Usually, this should be be axis of the channel dimension. "
-                "Negative values means indexing from right to left. ");
+                "Negative values means indexing from right to left.");
     DMLC_DECLARE_FIELD(eps).set_default(1e-5f)
       .describe("An `epsilon` parameter to prevent division by 0.");
     DMLC_DECLARE_FIELD(output_mean_var).set_default(false)
-      .describe("Output the mean and std calculated along the given axis");
+      .describe("Output the mean and std calculated along the given axis.");
   }
 };
 
@@ -90,8 +90,6 @@ void LayerNormCompute(const nnvm::NodeAttrs& attrs,
   }
   const TBlob gamma = inputs[1].reshape(new_param_shape);
   const TBlob beta = inputs[2].reshape(new_param_shape);
-  // Initialize the output to be the same as the input
-  mxnet_op::copy(s, outputs[0], inputs[0]);
   // Compute necessary data for the reduce operation.
   TShape red_src_shape, red_dst_shape;
   BroadcastReduceShapeCompact(inputs[0].shape_, outputs[layernorm::kMean].shape_,
@@ -120,7 +118,7 @@ void LayerNormCompute(const nnvm::NodeAttrs& attrs,
   });
   // Calculate data = data - mean
   BinaryBroadcastCompute<xpu, op::mshadow_op::minus>(attrs, ctx,
-                                                     {outputs[0], outputs[layernorm::kMean]},
+                                                     {inputs[0], outputs[layernorm::kMean]},
                                                      {kWriteTo}, {outputs[0]});
   // Calculate std
   const TBlob centered_out = outputs[0].reshape(red_src_shape);
