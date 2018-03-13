@@ -21,10 +21,7 @@ __all__ = ['VariationalDropoutCell']
 
 from ...rnn import BidirectionalCell, SequentialRNNCell, ModifierCell
 from ...rnn.rnn_cell import _format_sequence, _get_begin_state, _mask_sequence_variable_length
-<<<<<<< HEAD
-=======
 from ... import tensor_types
->>>>>>> apache/master
 
 
 class VariationalDropoutCell(ModifierCell):
