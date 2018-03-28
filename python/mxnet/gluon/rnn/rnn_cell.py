@@ -750,7 +750,7 @@ class DropoutCell(HybridRecurrentCell):
 
     def unroll(self, length, inputs, begin_state=None, layout='NTC', merge_outputs=None,
                valid_length=None):
-        self.resetset_start_method()
+        self.reset()
 
         inputs, _, F, _ = _format_sequence(length, inputs, layout, merge_outputs)
         if isinstance(inputs, tensor_types):
