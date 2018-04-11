@@ -92,6 +92,9 @@ def test_ndarray_setitem():
     x_np = np.zeros(shape, dtype=x.dtype)
     x_np[1] = 1
     assert same(x.asnumpy(), x_np)
+    x[-1] = 1
+    x_np[-1] = 1
+    assert same(x.asnumpy(), x_np)
 
     # short all-dim indexing
     x = mx.nd.zeros(shape)
@@ -100,11 +103,17 @@ def test_ndarray_setitem():
     x_np = np.zeros(shape, dtype=x.dtype)
     x_np[:, 1:3, 1] = val.asnumpy()
     assert same(x.asnumpy(), x_np)
+    x[:, 1:3, -1] = val
+    x_np[:, 1:3, -1] = val.asnumpy()
+    assert same(x.asnumpy(), x_np)
 
     x = mx.nd.zeros(shape)
-    x[:, 1:3, 1] = 1
+    x[:, 1:3, 1:2] = 1
     x_np = np.zeros(shape, dtype=x.dtype)
     x_np[:, 1:3, 1:2] = 1
+    assert same(x.asnumpy(), x_np)
+    x[:, -3:-1, -2:-1] = 1
+    x_np[:, -3:-1, -2:-1] = 1
     assert same(x.asnumpy(), x_np)
 
 
@@ -163,6 +172,12 @@ def test_ndarray_reshape():
     true_res = mx.nd.arange(8) + 1
     assert same(tensor.reshape(-1).asnumpy(), true_res.asnumpy())
     assert same(tensor.reshape(8).asnumpy(), true_res.asnumpy())
+
+    assert same(tensor.reshape(0, -1).asnumpy(), true_res.reshape(2, 4).asnumpy())
+    assert same(tensor.reshape(-1, 4).asnumpy(), true_res.reshape(2, 4).asnumpy())
+    assert same(tensor.reshape(-2,).asnumpy(), true_res.reshape(2, 2, 2).asnumpy())
+    assert same(tensor.reshape(-3, -1).asnumpy(), true_res.reshape(4, 2).asnumpy())
+    assert same(tensor.reshape(-1, 4).reshape(0, -4, 2, -1).asnumpy(), true_res.reshape(2, 2, 2).asnumpy())
 
 
 @with_seed()
@@ -343,7 +358,7 @@ def test_ndarray_slice():
     A = mx.nd.array(np.random.uniform(-10, 10, shape))
     A2 = A.asnumpy()
     assert same(A[3:8].asnumpy(), A2[3:8])
-    A2[3:8] *= 10;
+    A2[3:8] *= 10
     A[3:8] = A2[3:8]
     assert same(A[3:8].asnumpy(), A2[3:8])
 
@@ -354,11 +369,19 @@ def test_ndarray_slice():
     assert same(A[1,3:4,:,1:5].asnumpy(), A2[1,3:4,:,1:5])
 
     assert A[1,2,3,4,5].asscalar() == A2[1,2,3,4,5]
+    assert A[-1,-2,-3,-4,-5].asscalar() == A2[-1,-2,-3,-4,-5]
 
     a = mx.nd.array([[0, 1], [2, 3]])
     assert (a[[1, 1, 0], [0, 1, 0]].asnumpy() == [2, 3, 0]).all()
     assert (a[mx.nd.array([1, 1, 0]), mx.nd.array([0, 1, 0])].asnumpy() == [2, 3, 0]).all()
 
+    shape = (4, 4)
+    A = mx.nd.random.uniform(shape=shape)
+    A2 = A.asnumpy()
+    for i in range(-4, 0):
+        assert A[i, i].asscalar() == A2[i, i]
+        assert same(A[:, i].asnumpy(), A2[:, i])
+        assert same(A[i, :].asnumpy(), A2[i, :])
 
 @with_seed()
 def test_ndarray_crop():
@@ -1047,35 +1070,112 @@ def test_ndarray_indexing():
         x_grad[index] = value
         assert same(x_grad.asnumpy(), x.grad.asnumpy())
 
+    def np_int(index, int_type=np.int32):
+        def convert(num):
+            if num is None:
+                return num
+            else:
+                return int_type(num)
+
+        if isinstance(index, slice):
+            return slice(convert(index.start), convert(index.stop), convert(index.step))
+        elif isinstance(index, tuple):  # tuple of slices and integers
+            ret = []
+            for elem in index:
+                if isinstance(elem, slice):
+                    ret.append(slice(convert(elem.start), convert(elem.stop), convert(elem.step)))
+                else:
+                    ret.append(convert(elem))
+            return tuple(ret)
+        else:
+            assert False
+
     shape = (8, 16, 9, 9)
     np_array = np.arange(np.prod(shape), dtype='int32').reshape(shape)
     # index_list is a list of tuples. The tuple's first element is the index, the second one is a boolean value
     # indicating whether we should expect the result as a scalar compared to numpy.
-    index_list = [(0, False), (5, False), (-1, False),
-                  (slice(5), False), (slice(1, 5), False), (slice(1, 5, 2), False),
-                  (slice(7, 0, -1), False), (slice(None, 6), False), (slice(None, 6, 3), False),
-                  (slice(1, None), False), (slice(1, None, 3), False), (slice(None, None, 2), False),
-                  (slice(None, None, -1), False), (slice(None, None, -2), False),
+    index_list = [(0, False), (np.int32(0), False), (np.int64(0), False),
+                  (5, False), (np.int32(5), False), (np.int64(5), False),
+                  (-1, False), (np.int32(-1), False), (np.int64(-1), False),
+                  (slice(5), False), (np_int(slice(5), np.int32), False), (np_int(slice(5), np.int64), False),
+                  (slice(1, 5), False), (np_int(slice(1, 5), np.int32), False), (np_int(slice(1, 5), np.int64), False),
+                  (slice(1, 5, 2), False), (np_int(slice(1, 5, 2), np.int32), False),
+                  (np_int(slice(1, 5, 2), np.int64), False),
+                  (slice(7, 0, -1), False), (np_int(slice(7, 0, -1)), False),
+                  (np_int(slice(7, 0, -1), np.int64), False),
+                  (slice(None, 6), False), (np_int(slice(None, 6)), False),
+                  (np_int(slice(None, 6), np.int64), False),
+                  (slice(None, 6, 3), False), (np_int(slice(None, 6, 3)), False),
+                  (np_int(slice(None, 6, 3), np.int64), False),
+                  (slice(1, None), False), (np_int(slice(1, None)), False),
+                  (np_int(slice(1, None), np.int64), False),
+                  (slice(1, None, 3), False), (np_int(slice(1, None, 3)), False),
+                  (np_int(slice(1, None, 3), np.int64), False),
+                  (slice(None, None, 2), False), (np_int(slice(None, None, 2)), False),
+                  (np_int(slice(None, None, 2), np.int64), False),
+                  (slice(None, None, -1), False),
+                  (np_int(slice(None, None, -1)), False), (np_int(slice(None, None, -1), np.int64), False),
+                  (slice(None, None, -2), False),
+                  (np_int(slice(None, None, -2), np.int32), False), (np_int(slice(None, None, -2), np.int64), False),
                   ((slice(None), slice(None), 1, 8), False),
+                  ((slice(None), slice(None), -1, 8), False),
+                  ((slice(None), slice(None), 1, -8), False),
+                  ((slice(None), slice(None), -1, -8), False),
+                  (np_int((slice(None), slice(None), 1, 8)), False),
+                  (np_int((slice(None), slice(None), 1, 8), np.int64), False),
+                  ((slice(None), slice(None), 1, 8), False),
+                  (np_int((slice(None), slice(None), -1, -8)), False),
+                  (np_int((slice(None), slice(None), -1, -8), np.int64), False),
                   ((slice(None), 2, slice(1, 5), 1), False),
-                  ((1, 2, 3), False), ((1, 2, 3, 4), True),
+                  (np_int((slice(None), 2, slice(1, 5), 1)), False),
+                  (np_int((slice(None), 2, slice(1, 5), 1), np.int64), False),
+                  ((1, 2, 3), False),
+                  (np_int((1, 2, 3)), False),
+                  (np_int((1, 2, 3), np.int64), False),
+                  ((-1, -2, -3), False),
+                  (np_int((-1, -2, -3)), False),
+                  (np_int((-1, -2, -3), np.int64), False),
+                  ((1, 2, 3, 4), True),
+                  (np_int((1, 2, 3, 4)), True),
+                  (np_int((1, 2, 3, 4), np.int64), True),
+                  ((-4, -3, -2, -1), True),
+                  (np_int((-4, -3, -2, -1)), True),
+                  (np_int((-4, -3, -2, -1), np.int64), True),
                   ((slice(None, None, -1), 2, slice(1, 5), 1), False),
+                  (np_int((slice(None, None, -1), 2, slice(1, 5), 1)), False),
+                  (np_int((slice(None, None, -1), 2, slice(1, 5), 1), np.int64), False),
                   ((slice(None, None, -1), 2, slice(1, 7, 2), 1), False),
+                  (np_int((slice(None, None, -1), 2, slice(1, 7, 2), 1)), False),
+                  (np_int((slice(None, None, -1), 2, slice(1, 7, 2), 1), np.int64), False),
                   ((slice(1, 8, 2), slice(14, 2, -2), slice(3, 8), slice(0, 7, 3)), False),
+                  (np_int((slice(1, 8, 2), slice(14, 2, -2), slice(3, 8), slice(0, 7, 3))), False),
+                  (np_int((slice(1, 8, 2), slice(14, 2, -2), slice(3, 8), slice(0, 7, 3)), np.int64), False),
                   ((slice(1, 8, 2), 1, slice(3, 8), 2), False),
+                  (np_int((slice(1, 8, 2), 1, slice(3, 8), 2)), False),
+                  (np_int((slice(1, 8, 2), 1, slice(3, 8), 2), np.int64), False),
                   ([1], False), ([1, 2], False), ([2, 1, 3], False), ([7, 5, 0, 3, 6, 2, 1], False),
                   (np.array([6, 3], dtype=np.int32), False),
                   (np.array([[3, 4], [0, 6]], dtype=np.int32), False),
                   (np.array([[7, 3], [2, 6], [0, 5], [4, 1]], dtype=np.int32), False),
+                  (np.array([[7, 3], [2, 6], [0, 5], [4, 1]], dtype=np.int64), False),
                   (np.array([[2], [0], [1]], dtype=np.int32), False),
+                  (np.array([[2], [0], [1]], dtype=np.int64), False),
                   (mx.nd.array([4, 7], dtype=np.int32), False),
+                  (mx.nd.array([4, 7], dtype=np.int64), False),
                   (mx.nd.array([[3, 6], [2, 1]], dtype=np.int32), False),
+                  (mx.nd.array([[3, 6], [2, 1]], dtype=np.int64), False),
                   (mx.nd.array([[7, 3], [2, 6], [0, 5], [4, 1]], dtype=np.int32), False),
+                  (mx.nd.array([[7, 3], [2, 6], [0, 5], [4, 1]], dtype=np.int64), False),
                   ((1, [2, 3]), False), ((1, [2, 3], np.array([[3], [0]], dtype=np.int32)), False),
+                  ((1, [2, 3]), False), ((1, [2, 3], np.array([[3], [0]], dtype=np.int64)), False),
                   ((1, [2], np.array([[5], [3]], dtype=np.int32), slice(None)), False),
+                  ((1, [2], np.array([[5], [3]], dtype=np.int64), slice(None)), False),
                   ((1, [2, 3], np.array([[6], [0]], dtype=np.int32), slice(2, 5)), False),
+                  ((1, [2, 3], np.array([[6], [0]], dtype=np.int64), slice(2, 5)), False),
                   ((1, [2, 3], np.array([[4], [7]], dtype=np.int32), slice(2, 5, 2)), False),
+                  ((1, [2, 3], np.array([[4], [7]], dtype=np.int64), slice(2, 5, 2)), False),
                   ((1, [2], np.array([[3]], dtype=np.int32), slice(None, None, -1)), False),
+                  ((1, [2], np.array([[3]], dtype=np.int64), slice(None, None, -1)), False),
                   ((1, [2], np.array([[3]], dtype=np.int32), np.array([[5, 7], [2, 4]], dtype=np.int64)), False),
                   ((1, [2], mx.nd.array([[4]], dtype=np.int32), mx.nd.array([[1, 3], [5, 7]], dtype='int64')),
                    False),
@@ -1120,16 +1220,16 @@ def test_assign_a_row_to_ndarray():
     # assign a list
     v = np.random.random(W).astype(dtype).tolist()
     a_np[1] = v
-    a_nd[1] = v 
+    a_nd[1] = v
     assert same(a_np, a_nd.asnumpy())
 
     # assign a np.ndarray
     v = np.random.random(W).astype(dtype)
     a_np[2] = v
-    a_nd[2] = v 
+    a_nd[2] = v
     assert same(a_np, a_nd.asnumpy())
 
-    # assign by slice 
+    # assign by slice
     a_np[0, :] = a_np[1]
     a_nd[0, :] = a_nd[1]
     assert same(a_np, a_nd.asnumpy())

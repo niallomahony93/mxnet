@@ -23,10 +23,10 @@ more `Executor` for data parallelization.
 
 import logging
 import warnings
-import numpy as np
 
 from .. import context as ctx
 from .. import optimizer as opt
+from .. import ndarray as nd
 
 from .executor_group import DataParallelExecutorGroup
 from ..model import _create_kvstore, _initialize_kvstore, _update_params, _update_params_on_kvstore
@@ -631,6 +631,12 @@ class Module(BaseModule):
         """Updates parameters according to the installed optimizer and the gradients computed
         in the previous forward-backward batch.
 
+        When KVStore is used to update parameters for multi-device or multi-machine training,
+        a copy of the parameters are stored in KVStore. Note that for `row_sparse` parameters,
+        this function does update the copy of parameters in KVStore, but doesn't broadcast the
+        updated parameters to all devices / machines. Please call `prepare` to broadcast
+        `row_sparse` parameters with the next batch of data.
+
         See Also
         ----------
         :meth:`BaseModule.update`.
@@ -649,73 +655,6 @@ class Module(BaseModule):
                            num_device=len(self._context),
                            kvstore=self._kvstore,
                            param_names=self._exec_group.param_names)
-
-    def clip_by_global_norm(self, max_norm=1.0):
-        """Clips gradient norm.
-
-        The norm is computed over all gradients together, as if they were
-         concatenated into a single vector. Gradients are modified in-place.
-        The method is first used in
-         `[ICML2013] On the difficulty of training recurrent neural networks`
-
-        Parameters
-        ----------
-        max_norm : float or int
-            The maximum clipping threshold of the gradient norm.
-
-        Returns
-        -------
-        norm_val : float
-            The computed norm of the gradients.
-
-        Examples
-        --------
-        An example of using clip_grad_norm to clip the gradient before updating the parameters::
-            >>> #Get the gradient via back-propagation
-            >>> net.forward_backward(data_batch=data_batch)
-            >>> norm_val = net.clip_by_global_norm(max_norm=1.0)
-            >>> net.update()
-        """
-        assert self.binded and self.params_initialized and self.optimizer_initialized
-        norm_val = self.global_grad_norm()
-        if norm_val > max_norm:
-            ratio = max_norm / float(norm_val)
-            for grads in self._exec_group.grad_arrays:
-                for grad in grads:
-                    grad *= ratio
-        return norm_val
-
-    def global_grad_norm(self):
-        """Calculate global gradient norm.
-
-        The L2 norm is computed over all gradients together, as if they were
-         concatenated into a single vector.
-
-        Could be used to debug the optimization process.
-         See http://videolectures.net/deeplearning2015_goodfellow_network_optimization/
-
-        Returns
-        -------
-        norm_val : float
-            The computed norm of the gradients.
-
-        Examples
-        --------
-        An example of using global_norm to calculate the gradient norm after back-propgation::
-            >>> #Get the gradient via back-propagation
-            >>> net.forward_backward(data_batch=data_batch)
-            >>> norm_val = net.global_grad_norm()
-            >>> print(norm_val)
-        """
-        import mxnet.ndarray as nd
-        assert self.binded and self.params_initialized and self.optimizer_initialized
-        # The code in the following will cause the estimated norm to be different for multiple gpus
-        norm_val = 0.0
-        for exe in self._exec_group.execs:
-            norm_val += nd.contrib.global_norm(exe.grad_arrays).asscalar()
-        norm_val /= float(len(self._exec_group.execs))
-        norm_val *= self._optimizer.rescale_grad
-        return norm_val
 
     def get_outputs(self, merge_multi_context=True):
         """Gets outputs of the previous forward computation.
@@ -820,8 +759,16 @@ class Module(BaseModule):
         """Synchronizes parameters from devices to CPU. This function should be called after
         calling `update` that updates the parameters on the devices, before one can read the
         latest parameters from ``self._arg_params`` and ``self._aux_params``.
+
+        For row_sparse parameters on devices, ther are pulled from KVStore with all row ids.
+
         """
         self._exec_group.get_params(self._arg_params, self._aux_params)
+        if self._kvstore and self._update_on_kvstore:
+            for param_name, param_val in sorted(self._arg_params.items()):
+                if param_val.stype == 'row_sparse':
+                    row_ids = nd.arange(0, param_val.shape[0], dtype='int64')
+                    self._kvstore.row_sparse_pull(param_name, param_val, row_ids=row_ids)
         self._params_dirty = False
 
     def save_optimizer_states(self, fname):
@@ -860,89 +807,45 @@ class Module(BaseModule):
         assert self.binded
         self._exec_group.install_monitor(mon)
 
-    # pylint: disable=invalid-name
-    def summary(self, level=2):
-        """Summarize the network parameters.
+    def prepare(self, data_batch, sparse_row_id_fn=None):
+        '''Prepares the module for processing a data batch.
+
+        Usually involves switching bucket and reshaping.
+        For modules that contain `row_sparse` parameters in KVStore,
+        it prepares the `row_sparse` parameters based on the sparse_row_id_fn.
+
+        When KVStore is used to update parameters for multi-device or multi-machine training,
+        a copy of the parameters are stored in KVStore. Note that for `row_sparse` parameters,
+        the `update()` updates the copy of parameters in KVStore, but doesn't broadcast
+        the updated parameters to all devices / machines. The `prepare` function is used to
+        broadcast `row_sparse` parameters with the next batch of data.
 
         Parameters
         ----------
-        level : int, optional
-            Level of the summarization logs to print.
-            The log becomes more verbose with higher summary level.
-            - Level = 0
-                Print the total param number + aux param number
-            - Level = 1
-                Print the shape of all parameters + The total number of paremter numbers
-            - Level = 2
-                Print the shape of the data/state and other available information in Level 1
-        """
-        assert self.binded and self.params_initialized
-        assert 0 <= level <= 2,\
-            "Level must be between 0 and 2, level=%d is not supported" % level
-        def _log_var(key, value, typ="param"):
-            if typ == "param":
-                if k in self._fixed_param_names:
-                    self.logger.info("   %s: %s, %d, req = %s, fixed"
-                                     %(key,
-                                       str(value.shape),
-                                       np.prod(value.shape),
-                                       self._exec_group.grad_req[k]))
-                else:
-                    self.logger.info("   %s: %s, %d, req = %s"
-                                     % (key,
-                                        str(value.shape),
-                                        np.prod(value.shape),
-                                        self._exec_group.grad_req[k]))
-            elif typ == "data" or typ == "aux":
-                self.logger.info("   %s: %s, %d"
-                                 % (key,
-                                    str(value.shape),
-                                    np.prod(value.shape)))
-        total_param_num = 0
-        total_fixed_param_num = 0
-        total_aux_param_num = 0
-        if level >= 2:
-            if len(self.data_names) == 0:
-                self.logger.info("Data: None")
+        data_batch : DataBatch
+            The current batch of data for forward computation.
+
+        sparse_row_id_fn : A callback function
+            The function  takes `data_batch` as an input and returns a dict of
+            str -> NDArray. The resulting dict is used for pulling row_sparse
+            parameters from the kvstore, where the str key is the name of the param,
+            and the value is the row id of the param to pull.
+        '''
+        assert self.binded
+        if sparse_row_id_fn is not None:
+            if not self._kvstore or not self._update_on_kvstore:
+                warnings.warn(UserWarning("Parameters are not updated in the KVStore. "
+                                          "No need to call sparse_row_id_fn."))
             else:
-                self.logger.info("Data:")
-                for k, v in zip(self.data_names, self.data_shapes):
-                    _log_var(k, v, typ="data")
-            if len(self._state_names) == 0:
-                self.logger.info("State: None")
-            else:
-                self.logger.info("State:")
-                for k in self._state_names:
-                    v = self._exec_group.execs[0].arg_dict[k]
-                    _log_var(k, v, typ="data")
-        if level >= 1:
-            if len(self._param_names) == 0:
-                self.logger.info("Param: None")
-            else:
-                self.logger.info("Params:")
-                for k in self._param_names:
-                    v = self._arg_params[k]
-                    _log_var(k, v)
-                    if k in self._fixed_param_names:
-                        total_fixed_param_num += np.prod(v.shape)
+                row_ids = sparse_row_id_fn(data_batch)
+                assert(isinstance(row_ids, dict)), "Expected dict output from sparse_row_id_fn"
+                for param_name, row_id in row_ids.items():
+                    param_idx = self._exec_group.param_names.index(param_name)
+                    param_val = self._exec_group.param_arrays[param_idx]
+                    assert(isinstance(param_val, (tuple, list)))
+                    if param_val[0].stype != 'row_sparse':
+                        warnings.warn(UserWarning("%s.stype is not 'row_sparse'. No need to "
+                                                  "perform row_sparse_pull." % param_name))
                     else:
-                        total_param_num += np.prod(v.shape)
-            if len(self._aux_names) == 0:
-                self.logger.info("Aux States: None")
-            else:
-                self.logger.info("Aux States: ")
-                for k in self._aux_names:
-                    v = self._aux_params[k]
-                    _log_var(k, v, typ="aux")
-                    total_aux_param_num += np.prod(v.shape)
-        else:
-            for k in self._param_names:
-                v = self._arg_params[k]
-                total_param_num += np.prod(v.shape)
-            for k in self._aux_names:
-                v = self._aux_params[k]
-                total_aux_param_num += np.prod(v.shape)
-        self.logger.info("Total Param Num (exclude fixed ones): " + str(total_param_num))
-        self.logger.info("Total Fixed Param Num: " + str(total_fixed_param_num))
-        self.logger.info("Total Aux Param Num: " + str(total_aux_param_num))
-    # pylint: enable=invalid-name
+                        self._kvstore.row_sparse_pull(param_name, param_val, row_ids=row_id,
+                                                      priority=-param_idx)
