@@ -23,14 +23,14 @@ __all__ = ['Block', 'HybridBlock', 'SymbolBlock']
 import copy
 import warnings
 import re
+from collections import OrderedDict
 
 from .. import symbol, ndarray, initializer
 from ..symbol import Symbol
 from ..ndarray import NDArray
 from .. import name as _name
-from ..context import cpu
 from .parameter import Parameter, ParameterDict, DeferredInitializationError
-from .utils import _indent
+from .utils import _indent, _brief_print_list
 
 
 class _BlockScope(object):
@@ -134,7 +134,6 @@ class Block(object):
             def __init__(self, **kwargs):
                 super(Model, self).__init__(**kwargs)
                 # use name_scope to give child Blocks appropriate names.
-                # It also allows sharing Parameters between Blocks recursively.
                 with self.name_scope():
                     self.dense0 = nn.Dense(20)
                     self.dense1 = nn.Dense(20)
@@ -154,10 +153,11 @@ class Block(object):
     Parameters
     ----------
     prefix : str
-        Prefix acts like a name space. It will be prepended to the names of all
-        Parameters and child :py:class:`Block` s in this :py:class:`Block` 's
-        :py:meth:`name_scope` .
-        Prefix should be unique within one model to prevent name collisions.
+        Prefix acts like a name space. All children blocks created in parent block's
+        :py:meth:`name_scope` will have parent block's prefix in their name.
+        Please refer to
+        `naming tutorial <http://mxnet.incubator.apache.org/tutorials/basic/naming.html>`_
+        for more info on prefix and naming.
     params : ParameterDict or None
         :py:class:`ParameterDict` for sharing weights with the new :py:class:`Block`. For example,
         if you want ``dense1`` to share ``dense0``'s weights, you can do::
@@ -170,55 +170,34 @@ class Block(object):
         self._prefix, self._params = _BlockScope.create(prefix, params, self._alias())
         self._name = self._prefix[:-1] if self._prefix.endswith('_') else self._prefix
         self._scope = _BlockScope(self)
-        self._children = []
+        self._children = OrderedDict()
+        self._reg_params = {}
 
     def __repr__(self):
         s = '{name}(\n{modstr}\n)'
         modstr = '\n'.join(['  ({key}): {block}'.format(key=key,
                                                         block=_indent(block.__repr__(), 2))
                             for key, block in self.__dict__.items() if isinstance(block, Block)])
-        return s.format(name=self.__class__.__name__,
-                        modstr=modstr)
+        return s.format(name=self.__class__.__name__, modstr=modstr)
 
     def __setattr__(self, name, value):
         """Registers parameters."""
-        def _find_block_in_nested(data):
-            # Find whether a nested structure contains Blocks
-            if isinstance(data, (list, tuple)):
-                for ele in data:
-                    if _find_block_in_nested(ele):
-                        return True
-                return False
-            elif isinstance(data, dict):
-                for _, v in data.items():
-                    if _find_block_in_nested(v):
-                        return True
-                return False
-            elif isinstance(data, Block):
-                return True
-            else:
-                return False
 
         if hasattr(self, name):
             existing = getattr(self, name)
             if isinstance(existing, (Parameter, Block)) and not isinstance(value, type(existing)):
                 raise TypeError('Changing attribute type for {name} from {type1} to {type2}' \
-                                'is not allowed.'.format(name=name,
-                                                         type1=type(existing),
-                                                         type2=type(value)))
-            if isinstance(existing, Block):
-                for i, c in enumerate(self._children):
-                    if c is existing:
-                        self._children[i] = value
-            elif isinstance(value, Block):
-                self.register_child(value)
-        elif isinstance(value, Block):
-            self.register_child(value)
-        elif isinstance(value, (list, tuple, dict)):
-            if _find_block_in_nested(value):
-                warnings.warn('Blocks inside the list or dict will not be registered '
-                              'automatically! Make sure to register them using '
-                              'register_child() or use nn.Sequential instead.')
+                                'is not allowed.'.format(
+                                    name=name, type1=type(existing), type2=type(value)))
+
+        if isinstance(value, Block):
+            self.register_child(value, name)
+        elif isinstance(value, Parameter):
+            assert name not in self._reg_params, \
+                "Overriding Parameter attribute %s is not allowed. " \
+                "If you want to share parameters between blocks, please set " \
+                "'params' at Block construction instead."
+            self._reg_params[name] = value
 
         super(Block, self).__setattr__(name, value)
 
@@ -268,6 +247,10 @@ class Block(object):
 
             with self.name_scope():
                 self.dense = nn.Dense(20)
+
+        Please refer to
+        `naming tutorial <http://mxnet.incubator.apache.org/tutorials/basic/naming.html>`_
+        for more info on prefix and naming.
         """
         return self._scope
 
@@ -309,8 +292,16 @@ class Block(object):
         else:
             pattern = re.compile(select)
             ret.update({name:value for name, value in self.params.items() if pattern.match(name)})
-        for cld in self._children:
+        for cld in self._children.values():
             ret.update(cld.collect_params(select=select))
+        return ret
+
+    def _collect_params_with_prefix(self, prefix=''):
+        if prefix:
+            prefix += '.'
+        ret = {prefix + key : val for key, val in self._reg_params.items()}
+        for name, child in self._children.items():
+            ret.update(child._collect_params_with_prefix(prefix + name))
         return ret
 
     def save_params(self, filename):
@@ -319,9 +310,11 @@ class Block(object):
         filename : str
             Path to file.
         """
-        self.collect_params().save(filename, strip_prefix=self.prefix)
+        params = self._collect_params_with_prefix()
+        arg_dict = {key : val._reduce() for key, val in params.items()}
+        ndarray.save(filename, arg_dict)
 
-    def load_params(self, filename, ctx=cpu(), allow_missing=False,
+    def load_params(self, filename, ctx=None, allow_missing=False,
                     ignore_extra=False):
         """Load parameters from file.
 
@@ -335,20 +328,58 @@ class Block(object):
             Whether to silently ignore parameters from the file that are not
             present in this Block.
         """
-        self.collect_params().load(filename, ctx, allow_missing, ignore_extra,
-                                   self.prefix)
+        loaded = ndarray.load(filename)
+        params = self._collect_params_with_prefix()
+        if not loaded and not params:
+            return
 
-    def register_child(self, block):
+        if not any('.' in i for i in loaded.keys()):
+            # legacy loading
+            del loaded
+            self.collect_params().load(
+                filename, ctx, allow_missing, ignore_extra, self.prefix)
+            return
+
+        if not allow_missing:
+            for name in params.keys():
+                assert name in loaded, \
+                    "Parameter '%s' is missing in file '%s', which contains parameters: %s. " \
+                    "Set allow_missing=True to ignore missing parameters."%(
+                        name, filename, _brief_print_list(loaded.keys()))
+        for name in loaded:
+            if not ignore_extra and name not in params:
+                raise ValueError(
+                    "Parameter '%s' loaded from file '%s' is not present in ParameterDict, " \
+                    "which contains parameters %s. Set ignore_extra=True to ignore. "%(
+                        name, filename, _brief_print_list(self._params.keys())))
+            params[name]._load_init(loaded[name], ctx)
+
+
+    def register_child(self, block, name=None):
         """Registers block as a child of self. :py:class:`Block` s assigned to self as
         attributes will be registered automatically."""
-        self._children.append(block)
+        if name is None:
+            name = str(len(self._children))
+        self._children[name] = block
 
-    def initialize(self, init=initializer.Uniform(), ctx=None, verbose=False):
+    def initialize(self, init=initializer.Uniform(), ctx=None, verbose=False,
+                   force_reinit=False):
         """Initializes :py:class:`Parameter` s of this :py:class:`Block` and its children.
-
         Equivalent to ``block.collect_params().initialize(...)``
+
+        Parameters
+        ----------
+        init : Initializer
+            Global default Initializer to be used when :py:meth:`Parameter.init` is ``None``.
+            Otherwise, :py:meth:`Parameter.init` takes precedence.
+        ctx : Context or list of Context
+            Keeps a copy of Parameters on one or many context(s).
+        verbose : bool, default False
+            Whether to verbosely print out details on initialization.
+        force_reinit : bool, default False
+            Whether to force re-initialization if parameter is already initialized.
         """
-        self.collect_params().initialize(init, ctx, verbose)
+        self.collect_params().initialize(init, ctx, verbose, force_reinit)
 
     def hybridize(self, active=True, **kwargs):
         """Activates or deactivates :py:class:`HybridBlock` s recursively. Has no effect on
@@ -361,7 +392,7 @@ class Block(object):
         **kwargs : string
             Additional flags for hybridized operator.
         """
-        for cld in self._children:
+        for cld in self._children.values():
             cld.hybridize(active, **kwargs)
 
     def cast(self, dtype):
@@ -372,7 +403,7 @@ class Block(object):
         dtype : str or numpy.dtype
             The new data type.
         """
-        for child in self._children:
+        for child in self._children.values():
             child.cast(dtype)
         for _, param in self.params.items():
             param.cast(dtype)
@@ -414,7 +445,6 @@ class HybridBlock(Block):
     """
     def __init__(self, prefix=None, params=None):
         super(HybridBlock, self).__init__(prefix=prefix, params=params)
-        self._reg_params = {}
         self._cached_graph = ()
         self._cached_op = None
         self._cached_op_args = None
@@ -428,13 +458,6 @@ class HybridBlock(Block):
         super(HybridBlock, self).__setattr__(name, value)
         if isinstance(value, HybridBlock):
             self._clear_cached_op()
-        if isinstance(value, Parameter):
-            assert name not in self._reg_params or \
-                not isinstance(self._reg_params[name], Parameter), \
-                "Overriding Parameter attribute %s is not allowed. " \
-                "Please pass in Parameters by specifying `params` at " \
-                "Block construction instead."
-            self._reg_params[name] = value
 
     def _get_graph(self, *args):
         if not self._cached_graph:
@@ -479,7 +502,13 @@ class HybridBlock(Block):
                                 for name in out.list_inputs()]
 
     def _finish_deferred_init(self, hybrid, *args):
-        self.infer_shape(*args)
+        try:
+            self.infer_shape(*args)
+        except Exception as e:
+            error_msg = "Deferred initialization failed because shape"\
+                        " cannot be inferred \n {}".format(e)
+            raise ValueError(error_msg)
+
         if hybrid:
             for is_arg, i in self._cached_op_args:
                 if not is_arg:
@@ -506,14 +535,14 @@ class HybridBlock(Block):
         self._cached_op = None
         self._cached_op_args = None
 
-    def register_child(self, block):
+    def register_child(self, block, name=None):
         if not isinstance(block, HybridBlock):
             raise ValueError(
                 "Children of HybridBlock must also be HybridBlock, " \
                 "but %s has type %s. If you are using Sequential, " \
-                "please try HybridSequential instead"%(
+                "please try HybridSequential instead."%(
                     str(block), str(type(block))))
-        super(HybridBlock, self).register_child(block)
+        super(HybridBlock, self).register_child(block, name)
         self._clear_cached_op()
 
     def hybridize(self, active=True, **kwargs):
@@ -530,11 +559,14 @@ class HybridBlock(Block):
         """Generic infer attributes."""
         inputs, out = self._get_graph(*args)
         args, _ = _flatten(args)
-        arg_attrs, _, aux_attrs = getattr(out, infer_fn)(
-            **{i.name: getattr(j, attr) for i, j in zip(inputs, args)})
+        with warnings.catch_warnings(record=True) as w:
+            arg_attrs, _, aux_attrs = getattr(out, infer_fn)(
+                **{i.name: getattr(j, attr) for i, j in zip(inputs, args)})
+            if arg_attrs is None:
+                raise ValueError(w[0].message)
         sdict = {i: j for i, j in zip(out.list_arguments(), arg_attrs)}
         sdict.update({name : attr for name, attr in \
-                      zip(out.list_auxiliary_states(), aux_attrs)})
+             zip(out.list_auxiliary_states(), aux_attrs)})
         for i in self.collect_params().values():
             setattr(i, attr, sdict[i.name])
 
