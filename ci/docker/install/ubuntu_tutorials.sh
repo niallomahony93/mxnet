@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
@@ -15,10 +17,10 @@
 # specific language governing permissions and limitations
 # under the License.
 
-package AI::MXNet::Contrib::NDArray;
-use strict;
-use warnings;
-use parent 'AI::MXNet::AutoLoad';
-sub config { ('contrib', 'AI::MXNet::NDArray') }
+# build and install are separated so changes to build don't invalidate
+# the whole docker cache for the image
 
-1;
+set -ex
+apt-get install graphviz python-opencv
+pip2 install jupyter matplotlib Pillow opencv-python scikit-learn graphviz
+pip3 install jupyter matplotlib Pillow opencv-python scikit-learn graphviz
