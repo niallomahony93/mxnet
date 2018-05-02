@@ -44,9 +44,9 @@ from nbconvert.preprocessors import ExecutePreprocessor
 import sys
 
 
-# Maximum 7 minutes per test
-# Reaching timeout causes a test failure
-TIME_OUT = 7*60
+# Maximum 10 minutes per test
+# Reaching timeout causes test failure
+TIME_OUT = 10*60
 # Pin to ipython version 4
 IPYTHON_VERSION = 4
 temp_dir = 'tmp_notebook'
@@ -120,6 +120,9 @@ def test_basic_data():
 
 def test_gluon_customop():
     assert _test_tutorial_nb('gluon/customop')
+
+def test_gluon_custom_layer():
+    assert _test_tutorial_nb('gluon/custom_layer')
 
 def test_gluon_data_augmentation():
     assert _test_tutorial_nb('gluon/data_augmentation')
