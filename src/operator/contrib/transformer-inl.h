@@ -41,7 +41,7 @@ static void DivSqrtDimForward_(const nnvm::NodeAttrs& attrs,
   double sqrt_dim = std::sqrt(static_cast<double>(inputs.shape_[inputs.ndim() - 1]));
   MSHADOW_TYPE_SWITCH(outputs[0].type_flag_, DType, {
     MXNET_ASSIGN_REQ_SWITCH(req[0], Req, {
-      mxnet_op::Kernel<mxnet_op::op_with_req<op::mshadow_op::div, Req>, xpu>::Launch(
+      mxnet_op::Kernel<mxnet_op::op_with_req<mshadow_op::div, Req>, xpu>::Launch(
         s, inputs[0].Size(), outputs[0].dptr<DType>(), inputs[0].dptr<DType>(), DType(sqrt_dim));
     });
   });
