@@ -26,6 +26,7 @@
 #define MXNET_OPERATOR_CONTRIB_TRANSFORMER_INL_H_
 
 #include <mxnet/operator_util.h>
+#include "../mxnet_op.h"
 
 namespace mxnet {
 namespace op {
