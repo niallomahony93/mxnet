@@ -26,6 +26,7 @@
 #define MXNET_OPERATOR_CONTRIB_TRANSFORMER_INL_H_
 
 #include <mxnet/operator_util.h>
+#include <vector>
 #include "../mxnet_op.h"
 #include "../mshadow_op.h"
 
