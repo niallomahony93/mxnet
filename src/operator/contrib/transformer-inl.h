@@ -27,6 +27,8 @@
 
 #include <mxnet/operator_util.h>
 #include "../mxnet_op.h"
+#include "../mshadow_op.h"
+
 
 namespace mxnet {
 namespace op {
