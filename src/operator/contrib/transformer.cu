@@ -30,7 +30,7 @@ namespace op {
 
 // relu
 NNVM_REGISTER_OP(_contrib_div_sqrt_dim)
-.set_attr<FCompute>("FCompute<cpu>", DivSqrtDimForward_<gpu>)
+.set_attr<FCompute>("FCompute<cpu>", DivSqrtDimForward_<gpu>);
 
 }  // namespace op
 }  // namespace mxnet
