@@ -335,6 +335,7 @@ MSHADOW_FORCE_INLINE void TopKSort<gpu>(const Tensor<gpu, 1, real_t>& dat,
 template<typename xpu>
 void TopKImpl(RunContext ctx,
               Resource resource,
+              const std::vector<OpReqType>& req,
               const TBlob& src,
               const std::vector<TBlob>& ret,
               const TopKParam& param) {
@@ -425,49 +426,55 @@ void TopKImpl(RunContext ctx,
       sel_indices = transpose_indices(sel_indices, Shape3(src_shape[0], src_shape[2], src_shape[1]),
                                       Shape3(0, 2, 1));
     }
-    IndexFill(ret_mask, sel_indices, mask_val);
+    if(req[0] == kNullOp) {
+      return;
+    } else if(req[0] == kWriteTo) {
+      IndexFill(ret_mask, sel_indices, mask_val);
+    } else {
+      LOG(FATAL) << "req=" << req[0] << " is not supported yet.";
+    }
   } else if (param.ret_typ == topk_enum::kReturnIndices) {
     indices = F<mshadow_op::mod>(indices, element_num);
     if (do_transpose) {
       Tensor<xpu, 3, real_t> ret_indices = ret[0].FlatTo3D<xpu, real_t>(axis, axis, s);
-      ret_indices = tcast<real_t>(transpose(
+      Assign(ret_indices, req[0], tcast<real_t>(transpose(
                       slice<2>(inplace_reshape(indices,
                                                Shape3(ret_indices.shape_[0],
                                                       ret_indices.shape_[2],
                                                       element_num)),
                                0, k),
-                      Shape3(0, 2, 1)));
+                      Shape3(0, 2, 1))));
     } else {
       Tensor<xpu, 2, real_t> ret_indices =
         ret[0].get_with_shape<xpu, 2, real_t>(Shape2(batch_size, k), s);
-      ret_indices = tcast<real_t>(slice<1>(
-                      inplace_reshape(indices, Shape2(batch_size, element_num)), 0, k));
+      Assign(ret_indices, req[0], tcast<real_t>(slice<1>(
+                      inplace_reshape(indices, Shape2(batch_size, element_num)), 0, k)));
     }
   } else {
     indices = F<mshadow_op::mod>(indices, element_num);
     if (do_transpose) {
       Tensor<xpu, 3, real_t> ret_value = ret[0].FlatTo3D<xpu, real_t>(axis, axis, s);
       Tensor<xpu, 3, real_t> ret_indices = ret[1].FlatTo3D<xpu, real_t>(axis, axis, s);
-      ret_value = transpose(
+      Assign(ret_value, req[0], transpose(
                    slice<2>(inplace_reshape(sorted_dat,
                                     Shape3(ret_value.shape_[0], ret_value.shape_[2], element_num)),
                             0, k),
-                   Shape3(0, 2, 1));
-      ret_indices = tcast<real_t>(transpose(
+                   Shape3(0, 2, 1)));
+      Assign(ret_indices, req[1], tcast<real_t>(transpose(
                       slice<2>(inplace_reshape(indices,
                                                Shape3(ret_indices.shape_[0],
                                                       ret_indices.shape_[2],
                                                       element_num)),
                                0, k),
-                      Shape3(0, 2, 1)));
+                      Shape3(0, 2, 1))));
     } else {
       Tensor<xpu, 2, real_t> ret_value =
         ret[0].get_with_shape<xpu, 2, real_t>(Shape2(batch_size, k), s);
       Tensor<xpu, 2, real_t> ret_indices =
-        ret[1].get_with_shape<xpu, 2, real_t>(Shape2(batch_size, k), s);
-      ret_value = slice<1>(inplace_reshape(sorted_dat, Shape2(batch_size, element_num)), 0, k);
-      ret_indices = tcast<real_t>(slice<1>(
-                      inplace_reshape(indices, Shape2(batch_size, element_num)), 0, k));
+        ret[1].get_with_shapae<xpu, 2, real_t>(Shape2(batch_size, k), s);
+      Assign(ret_value, req[0], slice<1>(inplace_reshape(sorted_dat, Shape2(batch_size, element_num)), 0, k));
+      Assign(ret_indices, req[1], tcast<real_t>(slice<1>(
+                      inplace_reshape(indices, Shape2(batch_size, element_num)), 0, k)));
     }
   }
 }
@@ -480,8 +487,7 @@ void TopK(const nnvm::NodeAttrs& attrs,
           const std::vector<TBlob>& outputs) {
   const TopKParam& param = nnvm::get<TopKParam>(attrs.parsed);
   // TODO(sxjscience) We can support inplace in the future
-  CHECK_EQ(req[0], kWriteTo) << "TopK does not support inplace";
-  TopKImpl<xpu>(ctx.run_ctx, ctx.requested[0], inputs[0], outputs, param);
+  TopKImpl<xpu>(ctx.run_ctx, ctx.requested[0], req, inputs[0], outputs, param);
 }
 
 template<typename xpu>
@@ -491,13 +497,12 @@ void Sort(const nnvm::NodeAttrs& attrs,
           const std::vector<OpReqType>& req,
           const std::vector<TBlob>& outputs) {
   const SortParam& param = nnvm::get<SortParam>(attrs.parsed);
-  CHECK_EQ(req[0], kWriteTo) << "Sort does not support inplace";
   TopKParam topk_param;
   topk_param.axis = param.axis;
   topk_param.is_ascend = param.is_ascend;
   topk_param.k = 0;
   topk_param.ret_typ = topk_enum::kReturnValue;
-  TopKImpl<xpu>(ctx.run_ctx, ctx.requested[0], inputs[0], outputs, topk_param);
+  TopKImpl<xpu>(ctx.run_ctx, ctx.requested[0], req, inputs[0], outputs, topk_param);
 }
 
 template<typename xpu>
@@ -507,13 +512,12 @@ void ArgSort(const nnvm::NodeAttrs& attrs,
              const std::vector<OpReqType>& req,
              const std::vector<TBlob>& outputs) {
   const ArgSortParam& param = nnvm::get<ArgSortParam>(attrs.parsed);
-  CHECK_EQ(req[0], kWriteTo) << "ArgSort does not support inplace";
   TopKParam topk_param;
   topk_param.axis = param.axis;
   topk_param.is_ascend = param.is_ascend;
   topk_param.k = 0;
   topk_param.ret_typ = topk_enum::kReturnIndices;
-  TopKImpl<xpu>(ctx.run_ctx, ctx.requested[0], inputs[0], outputs, topk_param);
+  TopKImpl<xpu>(ctx.run_ctx, ctx.requested[0], req, inputs[0], outputs, topk_param);
 }
 
 template<typename xpu>
