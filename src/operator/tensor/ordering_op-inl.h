@@ -437,13 +437,13 @@ void TopKImpl(RunContext ctx,
     indices = F<mshadow_op::mod>(indices, element_num);
     if (do_transpose) {
       Tensor<xpu, 3, int> ret_indices = ret[0].FlatTo3D<xpu, int>(axis, axis, s);
-      Assign(ret_indices, req[0], tcast<real_t>(transpose(
+      Assign(ret_indices, req[0], transpose(
                       slice<2>(inplace_reshape(indices,
                                                Shape3(ret_indices.shape_[0],
                                                       ret_indices.shape_[2],
                                                       element_num)),
                                0, k),
-                      Shape3(0, 2, 1))));
+                      Shape3(0, 2, 1)));
     } else {
       Tensor<xpu, 2, int> ret_indices =
         ret[0].get_with_shape<xpu, 2, int>(Shape2(batch_size, k), s);
