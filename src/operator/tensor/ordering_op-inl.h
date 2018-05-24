@@ -471,7 +471,7 @@ void TopKImpl(RunContext ctx,
       Tensor<xpu, 2, real_t> ret_value =
         ret[0].get_with_shape<xpu, 2, real_t>(Shape2(batch_size, k), s);
       Tensor<xpu, 2, real_t> ret_indices =
-        ret[1].get_with_shapae<xpu, 2, real_t>(Shape2(batch_size, k), s);
+        ret[1].get_with_shape<xpu, 2, real_t>(Shape2(batch_size, k), s);
       Assign(ret_value, req[0], slice<1>(inplace_reshape(sorted_dat, Shape2(batch_size, element_num)), 0, k));
       Assign(ret_indices, req[1], tcast<real_t>(slice<1>(
                       inplace_reshape(indices, Shape2(batch_size, element_num)), 0, k)));
