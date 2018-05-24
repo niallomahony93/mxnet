@@ -341,9 +341,6 @@ void TopKImpl(RunContext ctx,
               const TopKParam& param) {
   using namespace mshadow;
   using namespace mshadow::expr;
-  for (auto ret_ele : ret) {
-    CHECK_EQ(ret_ele.type_flag_, src.type_flag_);
-  }
   // 1. Parse and initialize information
   Stream<xpu> *s = ctx.get_stream<xpu>();
   Tensor<xpu, 1, char> workspace;
@@ -436,45 +433,45 @@ void TopKImpl(RunContext ctx,
   } else if (param.ret_typ == topk_enum::kReturnIndices) {
     indices = F<mshadow_op::mod>(indices, element_num);
     if (do_transpose) {
-      Tensor<xpu, 3, real_t> ret_indices = ret[0].FlatTo3D<xpu, real_t>(axis, axis, s);
-      Assign(ret_indices, req[0], tcast<real_t>(transpose(
+      Tensor<xpu, 3, int> ret_indices = ret[0].FlatTo3D<xpu, int>(axis, axis, s);
+      Assign(ret_indices, req[0], transpose(
                       slice<2>(inplace_reshape(indices,
                                                Shape3(ret_indices.shape_[0],
                                                       ret_indices.shape_[2],
                                                       element_num)),
                                0, k),
-                      Shape3(0, 2, 1))));
+                      Shape3(0, 2, 1)));
     } else {
-      Tensor<xpu, 2, real_t> ret_indices =
-        ret[0].get_with_shape<xpu, 2, real_t>(Shape2(batch_size, k), s);
-      Assign(ret_indices, req[0], tcast<real_t>(slice<1>(
-                      inplace_reshape(indices, Shape2(batch_size, element_num)), 0, k)));
+      Tensor<xpu, 2, int> ret_indices =
+        ret[0].get_with_shape<xpu, 2, int>(Shape2(batch_size, k), s);
+      Assign(ret_indices, req[0], slice<1>(
+                      inplace_reshape(indices, Shape2(batch_size, element_num)), 0, k));
     }
   } else {
     indices = F<mshadow_op::mod>(indices, element_num);
     if (do_transpose) {
       Tensor<xpu, 3, real_t> ret_value = ret[0].FlatTo3D<xpu, real_t>(axis, axis, s);
-      Tensor<xpu, 3, real_t> ret_indices = ret[1].FlatTo3D<xpu, real_t>(axis, axis, s);
+      Tensor<xpu, 3, int> ret_indices = ret[1].FlatTo3D<xpu, int>(axis, axis, s);
       Assign(ret_value, req[0], transpose(
                    slice<2>(inplace_reshape(sorted_dat,
                                     Shape3(ret_value.shape_[0], ret_value.shape_[2], element_num)),
                             0, k),
                    Shape3(0, 2, 1)));
-      Assign(ret_indices, req[1], tcast<real_t>(transpose(
+      Assign(ret_indices, req[1], transpose(
                       slice<2>(inplace_reshape(indices,
                                                Shape3(ret_indices.shape_[0],
                                                       ret_indices.shape_[2],
                                                       element_num)),
                                0, k),
-                      Shape3(0, 2, 1))));
+                      Shape3(0, 2, 1)));
     } else {
       Tensor<xpu, 2, real_t> ret_value =
         ret[0].get_with_shape<xpu, 2, real_t>(Shape2(batch_size, k), s);
-      Tensor<xpu, 2, real_t> ret_indices =
-        ret[1].get_with_shape<xpu, 2, real_t>(Shape2(batch_size, k), s);
+      Tensor<xpu, 2, int> ret_indices =
+        ret[1].get_with_shape<xpu, 2, int>(Shape2(batch_size, k), s);
       Assign(ret_value, req[0], slice<1>(inplace_reshape(sorted_dat, Shape2(batch_size, element_num)), 0, k));
-      Assign(ret_indices, req[1], tcast<real_t>(slice<1>(
-                      inplace_reshape(indices, Shape2(batch_size, element_num)), 0, k)));
+      Assign(ret_indices, req[1], slice<1>(
+                      inplace_reshape(indices, Shape2(batch_size, element_num)), 0, k));
     }
   }
 }
@@ -540,23 +537,22 @@ void TopKBackward_(const nnvm::NodeAttrs& attrs,
   TShape target_shape;
   ParseTopKParam(outputs[0].shape_, param,
                  &target_shape, &batch_size, &element_num, &axis, &k, &do_transpose, &is_ascend);
-  Tensor<xpu, 1, real_t> workspace =
-    ctx.requested[0].get_space_typed<xpu, 1, real_t>(Shape1(batch_size * k * 2 + batch_size), s);
-  Tensor<xpu, 1, real_t> sel_indices =
-    Tensor<xpu, 1, real_t>(workspace.dptr_, Shape1(batch_size * k), s);
-  Tensor<xpu, 1, real_t> batch_shift =
-    Tensor<xpu, 1, real_t>(workspace.dptr_ + batch_size * k, Shape1(batch_size), s);
-  Tensor<xpu, 1, real_t> dummy_index =
-    Tensor<xpu, 1, real_t>(workspace.dptr_ + batch_size * k + batch_size,
+  Tensor<xpu, 1, int> workspace =
+    ctx.requested[0].get_space_typed<xpu, 1, int>(Shape1(batch_size * k * 2 + batch_size), s);
+  Tensor<xpu, 1, int> sel_indices =
+    Tensor<xpu, 1, int>(workspace.dptr_, Shape1(batch_size * k), s);
+  Tensor<xpu, 1, int> batch_shift =
+    Tensor<xpu, 1, int>(workspace.dptr_ + batch_size * k, Shape1(batch_size), s);
+  Tensor<xpu, 1, int> dummy_index =
+    Tensor<xpu, 1, int>(workspace.dptr_ + batch_size * k + batch_size,
                            Shape1(batch_size * k), s);
   Tensor<xpu, 2, real_t> out_grad =
     inputs[0].get_with_shape<xpu, 2, real_t>(Shape2(inputs[0].shape_.Size(), 1), s);
   Tensor<xpu, 2, real_t> in_grad =
     outputs[0].get_with_shape<xpu, 2, real_t>(Shape2(outputs[0].shape_.Size(), 1), s);
-  mxnet_op::Kernel<range_fwd, xpu>::Launch(s, batch_size, 1, 0.0f,
-    static_cast<real_t>(element_num), kWriteTo, batch_shift.dptr_);
+  mxnet_op::Kernel<range_fwd, xpu>::Launch(s, batch_size, 1, 0, element_num, kWriteTo, batch_shift.dptr_);
   if (do_transpose) {
-    Tensor<xpu, 1, real_t> indices = inputs[2].FlatTo1D<xpu, real_t>(s);
+    Tensor<xpu, 1, int> indices = inputs[2].FlatTo1D<xpu, int>(s);
     TShape src_shape = outputs[0].shape_.FlatTo3D(axis);
     sel_indices = reshape(transpose(
                             broadcast_to(inplace_reshape(batch_shift,
@@ -568,8 +564,8 @@ void TopKBackward_(const nnvm::NodeAttrs& attrs,
     sel_indices = transpose_indices(sel_indices, Shape3(src_shape[0], src_shape[2], src_shape[1]),
                                     Shape3(0, 2, 1));
   } else {
-    Tensor<xpu, 2, real_t> indices =
-      inputs[2].get_with_shape<xpu, 2, real_t>(Shape2(batch_size, k), s);
+    Tensor<xpu, 2, int> indices =
+      inputs[2].get_with_shape<xpu, 2, int>(Shape2(batch_size, k), s);
     sel_indices = reshape(indices +
                           broadcast_to(inplace_reshape(batch_shift, Shape2(batch_size, 1)),
                                        TShape(Shape2(batch_size, k))),
@@ -582,8 +578,7 @@ void TopKBackward_(const nnvm::NodeAttrs& attrs,
   } else if (kAddTo == req[0]) {
     // TODO(sxjscience) We can use AddTakeGrad in the future.
     // However, the current implementation of AddTakeGrad is not so efficient.
-    mxnet_op::Kernel<range_fwd, xpu>::Launch(s, sel_indices.shape_.Size(), 1, 0.0f,
-      1.0f, kWriteTo, dummy_index.dptr_);
+    mxnet_op::Kernel<range_fwd, xpu>::Launch(s, sel_indices.shape_.Size(), 1, 0, 1, kWriteTo, dummy_index.dptr_);
     mxnet::op::AddTakeGradLargeBatch(in_grad, sel_indices, dummy_index, out_grad);
   } else if (kNullOp == req[0]) {
     return;
@@ -614,8 +609,25 @@ inline uint32_t TopKNumVisibleOutputs(const NodeAttrs& attrs) {
 inline bool TopKType(const nnvm::NodeAttrs& attrs,
                      std::vector<int> *in_attrs,
                      std::vector<int> *out_attrs) {
-  return ElemwiseAttr<int, type_is_none, type_assign, true, type_string>(
-    attrs, in_attrs, out_attrs, -1);
+  const TopKParam& param = nnvm::get<TopKParam>(attrs.parsed);
+  int data_type = -1;
+  size_t in_size = in_attrs->size();
+  size_t out_size = out_attrs->size();
+  CHECK_EQ(in_size, 1);
+  CHECK(out_size == 1 || out_size == 2);
+  if(out_size > 1) {
+    CHECK(type_assign(&(*out_attrs)[1], mshadow::kInt32)) << "Failed to set the type of ret_indices to int32.";
+  }
+  if(param.ret_typ == topk_enum::kReturnIndices) {
+    CHECK(type_assign(&(*out_attrs)[0], mshadow::kInt32)) << "Failed to set the type of ret_indices to int32.";
+  } else {
+    CHECK(type_assign(&data_type, (*in_attrs)[0])) << "Incompatible dtype of input, in_attrs[0]=" << (*in_attrs)[0];
+    CHECK(type_assign(&data_type, (*out_attrs)[0])) << "Incompatible dtype of output, out_attrs[0]=" << (*out_attrs)[0];
+    CHECK(type_assign(&(*in_attrs)[0], data_type)) << "Incompatible dtype of input, in_attrs[0]=" << (*in_attrs)[0];
+    CHECK(type_assign(&(*out_attrs)[0], data_type)) << "Incompatible dtype of output, out_attrs[0]=" << (*out_attrs)[0];
+    if(data_type == -1) return false;
+  }
+  return true;
 }
 
 inline bool TopKShapeImpl(const TopKParam& param,
@@ -654,6 +666,23 @@ inline bool TopKShape(const nnvm::NodeAttrs& attrs,
   return TopKShapeImpl(param, in_attrs, out_attrs);
 }
 
+inline bool SortType(const nnvm::NodeAttrs& attrs,
+                     std::vector<int> *in_attrs,
+                     std::vector<int> *out_attrs) {
+  int data_type = -1;
+  size_t in_size = in_attrs->size();
+  size_t out_size = out_attrs->size();
+  CHECK_EQ(in_size, 1);
+  CHECK_EQ(out_size, 2);
+  CHECK(type_assign(&(*out_attrs)[1], mshadow::kInt32)) << "Failed to set the type of ret_indices to int32.";
+  CHECK(type_assign(&data_type, (*in_attrs)[0])) << "Incompatible dtype of input, in_attrs[0]=" << (*in_attrs)[0];
+  CHECK(type_assign(&data_type, (*out_attrs)[0])) << "Incompatible dtype of output, out_attrs[0]=" << (*out_attrs)[0];
+  CHECK(type_assign(&(*in_attrs)[0], data_type)) << "Incompatible dtype of input, in_attrs[0]=" << (*in_attrs)[0];
+  CHECK(type_assign(&(*out_attrs)[0], data_type)) << "Incompatible dtype of output, out_attrs[0]=" << (*out_attrs)[0];
+  if(data_type == -1) return false;
+  return true;
+}
+
 inline bool SortShape(const nnvm::NodeAttrs& attrs,
                       std::vector<TShape> *in_attrs,
                       std::vector<TShape> *out_attrs) {
@@ -664,6 +693,13 @@ inline bool SortShape(const nnvm::NodeAttrs& attrs,
   topk_param.k = 0;
   topk_param.ret_typ = topk_enum::kReturnValue;
   return TopKShapeImpl(topk_param, in_attrs, out_attrs);
+}
+
+inline bool ArgSortType(const nnvm::NodeAttrs& attrs,
+                        std::vector<int> *in_attrs,
+                        std::vector<int> *out_attrs) {
+  CHECK(type_assign(&(*out_attrs)[0], mshadow::kInt32)) << "Failed to set the type of ret_indices to int32.";
+  return true;
 }
 
 inline bool ArgSortShape(const nnvm::NodeAttrs& attrs,
