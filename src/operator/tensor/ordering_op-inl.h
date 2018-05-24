@@ -612,8 +612,6 @@ inline uint32_t TopKNumVisibleOutputs(const NodeAttrs& attrs) {
 inline bool TopKType(const nnvm::NodeAttrs& attrs,
                      std::vector<int> *in_attrs,
                      std::vector<int> *out_attrs) {
-  return ElemwiseAttr<int, type_is_none, type_assign, true, type_string>(
-    attrs, in_attrs, out_attrs, -1);
   const TopKParam& param = nnvm::get<TopKParam>(attrs.parsed);
   int data_type = -1;
   size_t in_size = in_attrs->size();
