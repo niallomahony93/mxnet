@@ -478,7 +478,7 @@ void TopK(const nnvm::NodeAttrs& attrs,
   const TopKParam& param = nnvm::get<TopKParam>(attrs.parsed);
   MSHADOW_TYPE_SWITCH(inputs[0].type_flag_, DType, {
     TopKImpl<xpu, DType>(ctx.run_ctx, ctx.requested[0], req, inputs[0], outputs, param);
-  }
+  });
 }
 
 template<typename xpu>
@@ -495,8 +495,7 @@ void Sort(const nnvm::NodeAttrs& attrs,
   topk_param.ret_typ = topk_enum::kReturnValue;
   MSHADOW_TYPE_SWITCH(inputs[0].type_flag_, DType, {
     TopKImpl<xpu, DType>(ctx.run_ctx, ctx.requested[0], req, inputs[0], outputs, topk_param);
-  }
-
+  });
 }
 
 template<typename xpu>
@@ -513,7 +512,7 @@ void ArgSort(const nnvm::NodeAttrs& attrs,
   topk_param.ret_typ = topk_enum::kReturnIndices;
   MSHADOW_TYPE_SWITCH(inputs[0].type_flag_, DType, {
     TopKImpl<xpu, DType>(ctx.run_ctx, ctx.requested[0], req, inputs[0], outputs, topk_param);
-  }
+  });
 }
 
 template<typename xpu>
