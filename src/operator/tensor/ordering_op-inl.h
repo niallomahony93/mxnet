@@ -544,45 +544,47 @@ void TopKBackward_(const nnvm::NodeAttrs& attrs,
   Tensor<xpu, 1, int> dummy_index =
     Tensor<xpu, 1, int>(workspace.dptr_ + batch_size * k + batch_size,
                            Shape1(batch_size * k), s);
-  Tensor<xpu, 2, real_t> out_grad =
-    inputs[0].get_with_shape<xpu, 2, real_t>(Shape2(inputs[0].shape_.Size(), 1), s);
-  Tensor<xpu, 2, real_t> in_grad =
-    outputs[0].get_with_shape<xpu, 2, real_t>(Shape2(outputs[0].shape_.Size(), 1), s);
-  mxnet_op::Kernel<range_fwd, xpu>::Launch(s, batch_size, 1, 0, element_num, kWriteTo, batch_shift.dptr_);
-  if (do_transpose) {
-    Tensor<xpu, 1, int> indices = inputs[2].FlatTo1D<xpu, int>(s);
-    TShape src_shape = outputs[0].shape_.FlatTo3D(axis);
-    sel_indices = reshape(transpose(
-                            broadcast_to(inplace_reshape(batch_shift,
-                                                         Shape3(src_shape[0], src_shape[2], 1)),
-                                         TShape(Shape3(src_shape[0], src_shape[2], k))),
-                            Shape3(0, 2, 1)),
-                          Shape1(batch_size * k));
-    sel_indices += indices;
-    sel_indices = transpose_indices(sel_indices, Shape3(src_shape[0], src_shape[2], src_shape[1]),
-                                    Shape3(0, 2, 1));
-  } else {
-    Tensor<xpu, 2, int> indices =
-      inputs[2].get_with_shape<xpu, 2, int>(Shape2(batch_size, k), s);
-    sel_indices = reshape(indices +
-                          broadcast_to(inplace_reshape(batch_shift, Shape2(batch_size, 1)),
-                                       TShape(Shape2(batch_size, k))),
-                          Shape1(batch_size * k));
-  }
-  CHECK_EQ(sel_indices.CheckContiguous(), true);
-  if (kWriteTo == req[0]) {
-    in_grad = scalar<real_t>(0);
-    IndexFill(in_grad, sel_indices, out_grad);
-  } else if (kAddTo == req[0]) {
-    // TODO(sxjscience) We can use AddTakeGrad in the future.
-    // However, the current implementation of AddTakeGrad is not so efficient.
-    mxnet_op::Kernel<range_fwd, xpu>::Launch(s, sel_indices.shape_.Size(), 1, 0, 1, kWriteTo, dummy_index.dptr_);
-    mxnet::op::AddTakeGradLargeBatch(in_grad, sel_indices, dummy_index, out_grad);
-  } else if (kNullOp == req[0]) {
-    return;
-  } else {
-    LOG(FATAL) << "Not Implemented!";
-  }
+  MSHADOW_TYPE_SWITCH(inputs[0].type_flag_, DType, {
+    Tensor<xpu, 2, DType> out_grad =
+      inputs[0].get_with_shape<xpu, 2, DType>(Shape2(inputs[0].shape_.Size(), 1), s);
+    Tensor<xpu, 2, DType> in_grad =
+      outputs[0].get_with_shape<xpu, 2, DType>(Shape2(outputs[0].shape_.Size(), 1), s);
+    mxnet_op::Kernel<range_fwd, xpu>::Launch(s, batch_size, 1, 0, element_num, kWriteTo, batch_shift.dptr_);
+    if (do_transpose) {
+      Tensor<xpu, 1, int> indices = inputs[2].FlatTo1D<xpu, int>(s);
+      TShape src_shape = outputs[0].shape_.FlatTo3D(axis);
+      sel_indices = reshape(transpose(
+                              broadcast_to(inplace_reshape(batch_shift,
+                                                           Shape3(src_shape[0], src_shape[2], 1)),
+                                           TShape(Shape3(src_shape[0], src_shape[2], k))),
+                              Shape3(0, 2, 1)),
+                            Shape1(batch_size * k));
+      sel_indices += indices;
+      sel_indices = transpose_indices(sel_indices, Shape3(src_shape[0], src_shape[2], src_shape[1]),
+                                      Shape3(0, 2, 1));
+    } else {
+      Tensor<xpu, 2, int> indices =
+        inputs[2].get_with_shape<xpu, 2, int>(Shape2(batch_size, k), s);
+      sel_indices = reshape(indices +
+                            broadcast_to(inplace_reshape(batch_shift, Shape2(batch_size, 1)),
+                                         TShape(Shape2(batch_size, k))),
+                            Shape1(batch_size * k));
+    }
+    CHECK_EQ(sel_indices.CheckContiguous(), true);
+    if (kWriteTo == req[0]) {
+      in_grad = scalar<DType>(0);
+      IndexFill(in_grad, sel_indices, out_grad);
+    } else if (kAddTo == req[0]) {
+      // TODO(sxjscience) We can use AddTakeGrad in the future.
+      // However, the current implementation of AddTakeGrad is not so efficient.
+      mxnet_op::Kernel<range_fwd, xpu>::Launch(s, sel_indices.shape_.Size(), 1, 0, 1, kWriteTo, dummy_index.dptr_);
+      mxnet::op::AddTakeGradLargeBatch(in_grad, sel_indices, dummy_index, out_grad);
+    } else if (kNullOp == req[0]) {
+      return;
+    } else {
+      LOG(FATAL) << "Not Implemented!";
+    }
+  });
 }
 
 inline uint32_t TopKNumOutputs(const NodeAttrs& attrs) {
