@@ -476,7 +476,7 @@ void TopK(const nnvm::NodeAttrs& attrs,
           const std::vector<OpReqType>& req,
           const std::vector<TBlob>& outputs) {
   const TopKParam& param = nnvm::get<TopKParam>(attrs.parsed);
-  MSHADOW_TYPE_SWITCH(inputs[0].type_flag_, DType, {
+  MXNET_NO_FLOAT16_TYPE_SWITCH(inputs[0].type_flag_, DType, {
     TopKImpl<xpu, DType>(ctx.run_ctx, ctx.requested[0], req, inputs[0], outputs, param);
   });
 }
@@ -493,7 +493,7 @@ void Sort(const nnvm::NodeAttrs& attrs,
   topk_param.is_ascend = param.is_ascend;
   topk_param.k = 0;
   topk_param.ret_typ = topk_enum::kReturnValue;
-  MSHADOW_TYPE_SWITCH(inputs[0].type_flag_, DType, {
+  MXNET_NO_FLOAT16_TYPE_SWITCH(inputs[0].type_flag_, DType, {
     TopKImpl<xpu, DType>(ctx.run_ctx, ctx.requested[0], req, inputs[0], outputs, topk_param);
   });
 }
@@ -510,7 +510,7 @@ void ArgSort(const nnvm::NodeAttrs& attrs,
   topk_param.is_ascend = param.is_ascend;
   topk_param.k = 0;
   topk_param.ret_typ = topk_enum::kReturnIndices;
-  MSHADOW_TYPE_SWITCH(inputs[0].type_flag_, DType, {
+  MXNET_NO_FLOAT16_TYPE_SWITCH(inputs[0].type_flag_, DType, {
     TopKImpl<xpu, DType>(ctx.run_ctx, ctx.requested[0], req, inputs[0], outputs, topk_param);
   });
 }
@@ -544,7 +544,7 @@ void TopKBackward_(const nnvm::NodeAttrs& attrs,
   Tensor<xpu, 1, int> dummy_index =
     Tensor<xpu, 1, int>(workspace.dptr_ + batch_size * k + batch_size,
                            Shape1(batch_size * k), s);
-  MSHADOW_TYPE_SWITCH(inputs[0].type_flag_, DType, {
+  MXNET_NO_FLOAT16_TYPE_SWITCH(inputs[0].type_flag_, DType, {
     Tensor<xpu, 2, DType> out_grad =
       inputs[0].get_with_shape<xpu, 2, DType>(Shape2(inputs[0].shape_.Size(), 1), s);
     Tensor<xpu, 2, DType> in_grad =
