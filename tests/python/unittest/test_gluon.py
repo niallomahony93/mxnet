@@ -350,7 +350,7 @@ def test_sparse_symbol_block():
 def test_sparse_hybrid_block():
     params = gluon.ParameterDict('net_')
     params.get('weight', shape=(5,5), stype='row_sparse', dtype='float32')
-    params.get('bias', shape=(5,), dtype='float32')
+    params.get('bias', shape=(5), dtype='float32')
     net = gluon.nn.Dense(5, params=params)
     net.initialize()
     x = mx.nd.ones((2,5))
@@ -753,8 +753,22 @@ def test_embedding():
             y.backward()
         assert (layer.weight.grad().asnumpy()[:5] == 1).all()
         assert (layer.weight.grad().asnumpy()[5:] == 0).all()
+
+    def check_embedding_large_input(sparse_grad):
+        embedding = mx.gluon.nn.Embedding(10, 1, sparse_grad=True)
+        embedding.initialize()
+        embedding.hybridize()
+        shape = (20481,)
+        with mx.autograd.record():
+            emb_in = embedding(mx.nd.ones(shape))
+            loss = emb_in.sum()
+        loss.backward()
+        assert embedding.weight.grad().data.sum().asscalar() == 20481
+
     check_embedding(True)
     check_embedding(False)
+    check_embedding_large_input(True)
+    check_embedding_large_input(False)
 
 @with_seed()
 def test_export():
