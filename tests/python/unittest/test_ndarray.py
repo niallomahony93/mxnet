@@ -726,9 +726,8 @@ def test_order():
                          k=dat_size*dat_size*dat_size*dat_size, is_ascend=False)
             assert_almost_equal(nd_ret_argsort, gt)
 
-    # test topk with a big shape
-    a = mx.nd.arange(0, 54686454, step=1, repeat=1, dtype=np.int32)
-    assert_almost_equal(a.topk(k=54686454, dtype=np.int32).asnumpy(), a.asnumpy()[::-1])
+    a = mx.nd.arange(0, 1024, step=1, repeat=1, dtype=np.int32)
+    assert_almost_equal(a.topk(k=1024, dtype=np.int32).asnumpy(), a.asnumpy()[::-1])
     a.attach_grad()
 
     k = 10

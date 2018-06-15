@@ -1,4 +1,3 @@
-# -*- mode: dockerfile -*-
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
@@ -15,35 +14,15 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-#
-# Dockerfile to build MXNet for ARMv6
+import os
+import sys
+import mxnet as mx
 
-FROM ubuntu:16.04 as ccachebuilder
+os.environ['ENABLE_MKLDNN_QUANTIZATION_TEST'] = '1'
+curr_path = os.path.dirname(os.path.abspath(os.path.expanduser(__file__)))
+sys.path.insert(0, os.path.join(curr_path, '../quantization'))
+from test_quantization import *
 
-COPY install/ubuntu_core.sh /work/
-RUN /work/ubuntu_core.sh
-COPY install/ubuntu_ccache.sh /work/
-RUN /work/ubuntu_ccache.sh
-
-FROM dockcross/linux-armv6
-
-# extract ccache binary into latest context
-COPY --from=ccachebuilder /usr/local/bin/ccache /usr/local/bin/ccache
-
-ENV ARCH armv6l
-ENV HOSTCC gcc
-ENV TARGET ARMV6
-
-WORKDIR /work/deps
-
-COPY install/ubuntu_arm.sh /work/
-RUN /work/ubuntu_arm.sh
-
-COPY install/arm_openblas.sh /work/
-RUN /work/arm_openblas.sh
-
-ENV OpenBLAS_HOME=${CROSS_ROOT}
-ENV OpenBLAS_DIR=${CROSS_ROOT}
-
-COPY runtime_functions.sh /work/
-WORKDIR /work/mxnet
+if __name__ == '__main__':
+    import nose
+    nose.runmodule()
