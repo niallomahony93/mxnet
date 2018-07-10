@@ -780,6 +780,7 @@ def test_embedding():
     check_embedding_large_input(True)
     check_embedding_large_input(False)
 
+@unittest.skip("Flaky test: https://github.com/apache/incubator-mxnet/issues/11616")
 @with_seed()
 def test_export():
     ctx = mx.context.current_context()
@@ -1412,6 +1413,21 @@ def test_share_inputs_outputs():
             res.backward(out_grad=out_grad)
             assert_almost_equal(out_grad.asnumpy(), d1.grad.asnumpy())
             assert_almost_equal(out_grad.asnumpy(), d2.grad.asnumpy())
+
+
+def test_grad_graph_change():
+    class Model(mx.gluon.HybridBlock):
+        def hybrid_forward(self, F, array, index):
+            row = array.take(index)
+            return row, index
+    array = mx.nd.arange(3)
+    index = mx.nd.array([2])
+    array.attach_grad()
+    model = Model()
+    model.hybridize(inline_limit=0)
+    with mx.autograd.record(train_mode=True):
+        row, _ = model(array, index)
+    row.backward()
 
 
 if __name__ == '__main__':
