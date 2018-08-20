@@ -479,7 +479,7 @@ void TopKImpl(const RunContext &ctx,
   } else if (param.ret_typ == topk_enum::kReturnIndices) {
     if (do_transpose) {
       Tensor<xpu, 3, IDType> ret_indices = ret[0].FlatTo3D<xpu, IDType>(axis, axis, s);
-      Assign(ret_indices, req[0], tcast<IDType>(transpose(
+      ASSIGN_DISPATCH(ret_indices, req[0], tcast<IDType>(transpose(
                       slice<2>(inplace_reshape(indices,
                                                Shape3(ret_indices.shape_[0],
                                                       ret_indices.shape_[2],
@@ -489,19 +489,19 @@ void TopKImpl(const RunContext &ctx,
     } else {
       Tensor<xpu, 2, IDType> ret_indices =
         ret[0].get_with_shape<xpu, 2, IDType>(Shape2(batch_size, k), s);
-      Assign(ret_indices, req[0], tcast<IDType>(slice<1>(
+      ASSIGN_DISPATCH(ret_indices, req[0], tcast<IDType>(slice<1>(
                       inplace_reshape(indices, Shape2(batch_size, element_num)), 0, k)));
     }
   } else {
     if (do_transpose) {
       Tensor<xpu, 3, DType> ret_value = ret[0].FlatTo3D<xpu, DType>(axis, axis, s);
       Tensor<xpu, 3, IDType> ret_indices = ret[1].FlatTo3D<xpu, IDType>(axis, axis, s);
-      Assign(ret_value, req[0], transpose(
+      ASSIGN_DISPATCH(ret_value, req[0], transpose(
                    slice<2>(inplace_reshape(sorted_dat,
                                     Shape3(ret_value.shape_[0], ret_value.shape_[2], element_num)),
                             0, k),
                    Shape3(0, 2, 1)));
-      Assign(ret_indices, req[1], tcast<IDType>(F<mshadow_op::mod>(transpose(
+      ASSIGN_DISPATCH(ret_indices, req[1], tcast<IDType>(F<mshadow_op::mod>(transpose(
                       slice<2>(inplace_reshape(indices,
                                                Shape3(ret_indices.shape_[0],
                                                       ret_indices.shape_[2],
@@ -513,9 +513,9 @@ void TopKImpl(const RunContext &ctx,
         ret[0].get_with_shape<xpu, 2, DType>(Shape2(batch_size, k), s);
       Tensor<xpu, 2, IDType> ret_indices =
         ret[1].get_with_shape<xpu, 2, IDType>(Shape2(batch_size, k), s);
-      Assign(ret_value, req[0],
+      ASSIGN_DISPATCH(ret_value, req[0],
              slice<1>(inplace_reshape(sorted_dat, Shape2(batch_size, element_num)), 0, k));
-      Assign(ret_indices, req[1], tcast<IDType>(F<mshadow_op::mod>(slice<1>(
+      ASSIGN_DISPATCH(ret_indices, req[1], tcast<IDType>(F<mshadow_op::mod>(slice<1>(
                  inplace_reshape(indices, Shape2(batch_size, element_num)), 0, k)), element_num);
     }
   }
