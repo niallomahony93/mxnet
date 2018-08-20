@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
@@ -30,3 +30,8 @@ apt-get -y install time
 
 # Install for RAT License Check Nightly Test
 apt-get install -y subversion maven -y #>/dev/null
+
+# Packages needed for the Straight Dope Nightly tests.
+pip2 install pandas
+pip3 install pandas
+

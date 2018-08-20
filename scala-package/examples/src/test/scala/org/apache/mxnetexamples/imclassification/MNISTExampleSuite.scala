@@ -22,34 +22,27 @@ import java.net.URL
 
 import org.apache.commons.io.FileUtils
 import org.apache.mxnet.Context
+import org.apache.mxnetexamples.Util
 import org.scalatest.{BeforeAndAfterAll, FunSuite}
 import org.slf4j.LoggerFactory
 
 import scala.sys.process.Process
 
 /**
-  * Integration test for imageClassifier example.
-  * This will run as a part of "make scalatest"
+  * Integration test for MNIST example.
   */
 class MNISTExampleSuite extends FunSuite with BeforeAndAfterAll {
   private val logger = LoggerFactory.getLogger(classOf[MNISTExampleSuite])
 
   test("Example CI: Test MNIST Training") {
-    // This test is CPU only
-    if (System.getenv().containsKey("SCALA_TEST_ON_GPU") &&
-      System.getenv("SCALA_TEST_ON_GPU").toInt == 1) {
-      logger.info("CPU test only, skipped...")
-    } else {
+
       logger.info("Downloading mnist model")
       val baseUrl = "https://s3.us-east-2.amazonaws.com/mxnet-scala/scala-example-ci"
       val tempDirPath = System.getProperty("java.io.tmpdir")
       val modelDirPath = tempDirPath + File.separator + "mnist/"
       logger.info("tempDirPath: %s".format(tempDirPath))
-      val tmpFile = new File(tempDirPath + "/mnist/mnist.zip")
-      if (!tmpFile.exists()) {
-        FileUtils.copyURLToFile(new URL(baseUrl + "/mnist/mnist.zip"),
-          tmpFile)
-      }
+      Util.downloadUrl(baseUrl + "/mnist/mnist.zip",
+        tempDirPath + "/mnist/mnist.zip")
       // TODO: Need to confirm with Windows
       Process("unzip " + tempDirPath + "/mnist/mnist.zip -d "
         + tempDirPath + "/mnist/") !
@@ -60,7 +53,5 @@ class MNISTExampleSuite extends FunSuite with BeforeAndAfterAll {
       Process("rm -rf " + modelDirPath) !
 
       assert(output >= 0.95f)
-    }
-
   }
 }
