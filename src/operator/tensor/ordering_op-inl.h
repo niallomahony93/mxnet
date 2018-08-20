@@ -185,12 +185,12 @@ MSHADOW_FORCE_INLINE void TopKSort(const Tensor<cpu, 1, DType>& dat,
   // Use full sort when K is relatively large.
   const bool full_sort(K*8 > N);
   // Batch size.
-  const int M(work.size(0)/(sizeof(real_t)*N));
+  const int M(work.size(0)/(sizeof(DType)*N));
   const int omp_threads(engine::OpenMP::Get()->GetRecommendedOMPThreadCount());
   #pragma omp parallel for num_threads(omp_threads)
   for (int i = 0; i < M; ++i) {
     // Tensor `work` stores the flattened source data, while `dat` stores the sorted result.
-    DType *vals = reinterpret_cast<real_t*>(work.dptr_);
+    DType *vals = reinterpret_cast<DType*>(work.dptr_);
     DType *sorted_vals = dat.dptr_+i*N;
     int *indices = ind.dptr_+i*N;
     if (is_ascend) {
@@ -413,19 +413,19 @@ void TopKImpl(const RunContext &ctx,
   }
 
   if (std::is_same<xpu, cpu>::value) {
-    Tensor<xpu, 1, real_t> flattened_data;
+    Tensor<xpu, 1, DType> flattened_data;
     if (do_transpose) {
-      flattened_data = Tensor<xpu, 1, real_t>(reinterpret_cast<real_t*>(workspace_curr_ptr),
+      flattened_data = Tensor<xpu, 1, DType>(reinterpret_cast<DType*>(workspace_curr_ptr),
                                               Shape1(src.Size()), s);
-      workspace_curr_ptr += sizeof(real_t) * src.Size();
+      workspace_curr_ptr += sizeof(DType) * src.Size();
       flattened_data = reshape(transpose(dat, Shape3(0, 2, 1)), Shape1(src.Size()));
       CHECK_EQ(flattened_data.CheckContiguous(), true);
     } else {
-      flattened_data = src.FlatTo1D<xpu, real_t>(s);
+      flattened_data = src.FlatTo1D<xpu, DType>(s);
     }
     // `temp_workspace` stores the flattened data
     temp_workspace = Tensor<xpu, 1, char>(reinterpret_cast<char*>(flattened_data.dptr_),
-                                          Shape1(sizeof(real_t)*src.Size()), s);
+                                          Shape1(sizeof(DType)*src.Size()), s);
     CHECK_EQ(temp_workspace.CheckContiguous(), true);
   } else {
     if (do_transpose) {
