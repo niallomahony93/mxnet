@@ -479,18 +479,19 @@ void TopKImpl(const RunContext &ctx,
   } else if (param.ret_typ == topk_enum::kReturnIndices) {
     if (do_transpose) {
       Tensor<xpu, 3, IDType> ret_indices = ret[0].FlatTo3D<xpu, IDType>(axis, axis, s);
-      ASSIGN_DISPATCH(ret_indices, req[0], tcast<IDType>(transpose(
+      ASSIGN_DISPATCH(ret_indices, req[0], tcast<IDType>(F<mshadow_op::mod>(transpose(
                       slice<2>(inplace_reshape(indices,
                                                Shape3(ret_indices.shape_[0],
                                                       ret_indices.shape_[2],
                                                       element_num)),
                                0, k),
-                      Shape3(0, 2, 1))));
+                      Shape3(0, 2, 1)), element_num)));
     } else {
       Tensor<xpu, 2, IDType> ret_indices =
         ret[0].get_with_shape<xpu, 2, IDType>(Shape2(batch_size, k), s);
-      ASSIGN_DISPATCH(ret_indices, req[0], tcast<IDType>(slice<1>(
-                      inplace_reshape(indices, Shape2(batch_size, element_num)), 0, k)));
+      ASSIGN_DISPATCH(ret_indices, req[0], tcast<IDType>(F<mshadow_op::mod>(slice<1>(
+                      inplace_reshape(indices, Shape2(batch_size, element_num)), 0, k),
+                      element_num)));
     }
   } else {
     if (do_transpose) {
@@ -499,15 +500,13 @@ void TopKImpl(const RunContext &ctx,
       ASSIGN_DISPATCH(ret_value, req[0], transpose(
                    slice<2>(inplace_reshape(sorted_dat,
                                     Shape3(ret_value.shape_[0], ret_value.shape_[2], element_num)),
-                            0, k),
-                   Shape3(0, 2, 1)));
+                            0, k), Shape3(0, 2, 1)));
       ASSIGN_DISPATCH(ret_indices, req[1], tcast<IDType>(F<mshadow_op::mod>(transpose(
                       slice<2>(inplace_reshape(indices,
                                                Shape3(ret_indices.shape_[0],
                                                       ret_indices.shape_[2],
                                                       element_num)),
-                               0, k),
-                      Shape3(0, 2, 1)), element_num)));
+                               0, k), Shape3(0, 2, 1)), element_num)));
     } else {
       Tensor<xpu, 2, DType> ret_value =
         ret[0].get_with_shape<xpu, 2, DType>(Shape2(batch_size, k), s);
@@ -516,7 +515,7 @@ void TopKImpl(const RunContext &ctx,
       ASSIGN_DISPATCH(ret_value, req[0],
              slice<1>(inplace_reshape(sorted_dat, Shape2(batch_size, element_num)), 0, k));
       ASSIGN_DISPATCH(ret_indices, req[1], tcast<IDType>(F<mshadow_op::mod>(slice<1>(
-                 inplace_reshape(indices, Shape2(batch_size, element_num)), 0, k)), element_num);
+                 inplace_reshape(indices, Shape2(batch_size, element_num)), 0, k), element_num)));
     }
   }
 }
