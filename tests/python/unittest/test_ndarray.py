@@ -675,6 +675,22 @@ def test_order():
         else:
             raise NotImplementedError
 
+    # Produce a large matrix (256, 300096) as the input data, to cover the case which
+    # has a large size of matrix (exceed the express range by float precisly), but
+    # the number of elements in each dimension could be expressed by float precisly.
+    def get_large_matrix():
+        data = np.array([np.arange(300096).astype(np.float32)])
+        data = np.repeat(data, 100, axis=0)
+        np.apply_along_axis(np.random.shuffle, 1, data)
+        return data
+
+    large_matrix_npy = get_large_matrix()
+    large_matrix_nd = mx.nd.array(large_matrix_npy, ctx=ctx)
+
+    nd_ret_topk = mx.nd.topk(large_matrix_nd, axis=1, ret_typ="indices", k=5, is_ascend=False).asnumpy()
+    gt = gt_topk(large_matrix_npy, axis=1, ret_typ="indices", k=5, is_ascend=False)
+    assert_almost_equal(nd_ret_topk, gt)
+
     for dtype in [np.int16, np.int32, np.int64, np.float32, np.float64]:
         a_npy = get_values(ensure_unique=True, dtype=dtype)
         a_nd = mx.nd.array(a_npy, ctx=ctx)
@@ -747,6 +763,32 @@ def test_order():
             gt = gt_topk(a_npy, axis=None, ret_typ="indices",
                          k=dat_size*dat_size*dat_size*dat_size, is_ascend=False)
             assert_almost_equal(nd_ret_argsort, gt)
+
+        # Repeat those tests that don't involve indices.  These should pass even with
+        # duplicated input data values (over many repeated runs with different random seeds,
+        # this will be tested).
+        a_npy = get_values(ensure_unique=False, dtype=dtype)
+        a_nd = mx.nd.array(a_npy, ctx=ctx)
+
+        # test for ret_typ=value
+        nd_ret_topk = mx.nd.topk(a_nd, axis=1, ret_typ="value", k=3, is_ascend=True).asnumpy()
+        gt = gt_topk(a_npy, axis=1, ret_typ="value", k=3, is_ascend=True)
+        assert_almost_equal(nd_ret_topk, gt)
+        nd_ret_topk = mx.nd.topk(a_nd, axis=3, ret_typ="value", k=2, is_ascend=False).asnumpy()
+        gt = gt_topk(a_npy, axis=3, ret_typ="value", k=2, is_ascend=False)
+        assert_almost_equal(nd_ret_topk, gt)
+        nd_ret_topk = mx.nd.topk(a_nd, axis=None, ret_typ="value", k=21, is_ascend=False).asnumpy()
+        gt = gt_topk(a_npy, axis=None, ret_typ="value", k=21, is_ascend=False)
+        assert_almost_equal(nd_ret_topk, gt)
+
+        # test for sort
+        nd_ret_sort = mx.nd.sort(a_nd, axis=1, is_ascend=True).asnumpy()
+        gt = gt_topk(a_npy, axis=1, ret_typ="value", k=dat_size, is_ascend=True)
+        assert_almost_equal(nd_ret_sort, gt)
+        nd_ret_sort = mx.nd.sort(a_nd, axis=None, is_ascend=False).asnumpy()
+        gt = gt_topk(a_npy, axis=None, ret_typ="value",
+                     k=dat_size*dat_size*dat_size*dat_size, is_ascend=False)
+        assert_almost_equal(nd_ret_sort, gt)
 
     a = mx.nd.arange(0, 1024, step=1, repeat=1, dtype=np.int32)
     assert_almost_equal(a.topk(k=1024, dtype=np.int32).asnumpy(), a.asnumpy()[::-1])
