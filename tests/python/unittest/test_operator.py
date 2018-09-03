@@ -1616,6 +1616,7 @@ def test_convolution_grouping():
             np.testing.assert_allclose(arr1.asnumpy(), arr2.asnumpy(), rtol=1e-3, atol=1e-3)
 
 
+@unittest.skip("Flaky test https://github.com/apache/incubator-mxnet/issues/12203")
 @with_seed()
 def test_depthwise_convolution():
     for dim in [1,2]:
@@ -1649,7 +1650,7 @@ def test_depthwise_convolution():
                             exe2 = y2.simple_bind(mx.cpu(), x=shape, w=(num_filter, shape[1]//num_group)+kernel,
                                     b=(num_filter,))
                             for arr1, arr2 in zip(exe1.arg_arrays, exe2.arg_arrays):
-                                arr1[:] = np.float32(np.random.normal(size=arr1.shape))
+                                arr1[:] = np.random.normal(size=arr1.shape)
                                 arr2[:] = arr1
                             exe1.forward(is_train=True)
                             exe1.backward(exe1.outputs[0])
@@ -1657,7 +1658,7 @@ def test_depthwise_convolution():
                             exe2.backward(exe2.outputs[0])
 
                             for arr1, arr2 in zip(exe1.outputs + exe1.grad_arrays, exe2.outputs + exe2.grad_arrays):
-                                np.testing.assert_allclose(arr1.asnumpy(), arr2.asnumpy(), rtol=1e-2, atol=1e-3)
+                                np.testing.assert_allclose(arr1.asnumpy(), arr2.asnumpy(), rtol=1e-3, atol=1e-3)
 
 def gen_broadcast_data(idx):
     # Manually set test cases
@@ -3115,11 +3116,9 @@ def check_l2_normalization(in_shape, mode, dtype, norm_eps=1e-10):
     # compare numpy + mxnet
     assert_almost_equal(exe.outputs[0].asnumpy(), np_out, rtol=1e-2 if dtype is 'float16' else 1e-5, atol=1e-5)
     # check gradient
-    check_numeric_gradient(out, [in_data], numeric_eps=1e-3, rtol=1e-2, atol=1e-3)
+    check_numeric_gradient(out, [in_data], numeric_eps=1e-3, rtol=1e-2, atol=5e-3)
 
 
-# @haojin2: getting rid of the fixed seed as the flakiness could not be reproduced.
-# tracked at: https://github.com/apache/incubator-mxnet/issues/11717
 @with_seed()
 def test_l2_normalization():
     for dtype in ['float16', 'float32', 'float64']:
