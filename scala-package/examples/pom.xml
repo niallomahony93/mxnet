@@ -6,7 +6,7 @@
   <parent>
     <groupId>org.apache.mxnet</groupId>
     <artifactId>mxnet-parent_2.11</artifactId>
-    <version>1.3.0-SNAPSHOT</version>
+    <version>1.3.1-SNAPSHOT</version>
     <relativePath>../pom.xml</relativePath>
   </parent>
 
@@ -14,6 +14,18 @@
   <name>MXNet Scala Package - Examples</name>
 
   <profiles>
+    <profile>
+      <id>unittest</id>
+      <properties>
+        <skipTests>true</skipTests>
+      </properties>
+    </profile>
+    <profile>
+      <id>integrationtest</id>
+      <properties>
+        <skipTests>false</skipTests>
+      </properties>
+    </profile>
     <profile>
       <id>osx-x86_64-cpu</id>
       <properties>
@@ -41,13 +53,6 @@
             <artifactId>maven-source-plugin</artifactId>
             <configuration>
               <skipSource>true</skipSource>
-            </configuration>
-          </plugin>
-          <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-javadoc-plugin</artifactId>
-            <configuration>
-              <skip>true</skip>
             </configuration>
           </plugin>
           <plugin>
@@ -129,6 +134,7 @@
         <groupId>org.scalatest</groupId>
         <artifactId>scalatest-maven-plugin</artifactId>
         <configuration>
+          <skipTests>${skipTests}</skipTests>
           <argLine>
             -Djava.library.path=${project.parent.basedir}/native/${platform}/target \
             -Dlog4j.configuration=file://${project.basedir}/src/test/resources/log4j.properties
@@ -145,13 +151,13 @@
     <dependency>
       <groupId>org.apache.mxnet</groupId>
       <artifactId>mxnet-core_${scala.binary.version}</artifactId>
-      <version>1.3.0-SNAPSHOT</version>
+      <version>1.3.1-SNAPSHOT</version>
       <scope>provided</scope>
     </dependency>
     <dependency>
       <groupId>org.apache.mxnet</groupId>
       <artifactId>mxnet-infer_${scala.binary.version}</artifactId>
-      <version>1.3.0-SNAPSHOT</version>
+      <version>1.3.1-SNAPSHOT</version>
       <scope>provided</scope>
     </dependency>
     <dependency>

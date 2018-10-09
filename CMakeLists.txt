@@ -15,9 +15,9 @@ mxnet_option(USE_NCCL             "Use NVidia NCCL with CUDA" OFF)
 mxnet_option(USE_OPENCV           "Build with OpenCV support" ON)
 mxnet_option(USE_OPENMP           "Build with Openmp support" ON)
 mxnet_option(USE_CUDNN            "Build with cudnn support"  ON) # one could set CUDNN_ROOT for search path
-mxnet_option(USE_SSE              "Build with x86 SSE instruction support" ON)
+mxnet_option(USE_SSE              "Build with x86 SSE instruction support" ON IF NOT ARM)
 mxnet_option(USE_F16C             "Build with x86 F16C instruction support" ON) # autodetects support if ON
-mxnet_option(USE_LAPACK           "Build with lapack support" ON IF NOT MSVC)
+mxnet_option(USE_LAPACK           "Build with lapack support" ON)
 mxnet_option(USE_MKL_IF_AVAILABLE "Use MKL if found" ON)
 mxnet_option(USE_MKLML_MKL        "Use MKLDNN variant of MKL (if MKL found)" ON IF USE_MKL_IF_AVAILABLE AND (NOT APPLE))
 mxnet_option(USE_MKLDNN           "Use MKLDNN variant of MKL (if MKL found)" ON IF USE_MKL_IF_AVAILABLE AND (NOT APPLE))
@@ -37,7 +37,11 @@ mxnet_option(ENABLE_CUDA_RTC      "Build with CUDA runtime compilation support" 
 mxnet_option(BUILD_CPP_EXAMPLES   "Build cpp examples" ON)
 mxnet_option(INSTALL_EXAMPLES     "Install the example source files." OFF)
 mxnet_option(USE_SIGNAL_HANDLER   "Print stack traces on segfaults." OFF)
+mxnet_option(USE_TENSORRT         "Enable infeference optimization with TensorRT." OFF)
+mxnet_option(USE_ASAN             "Enable Clang/GCC ASAN sanitizers." OFF)
+mxnet_option(ENABLE_TESTCOVERAGE  "Enable compilation with test coverage metric output" OFF)
 
+message(STATUS "CMAKE_SYSTEM_NAME ${CMAKE_SYSTEM_NAME}")
 if(USE_CUDA AND NOT USE_OLDCMAKECUDA)
   message(STATUS "CMake version '${CMAKE_VERSION}' using generator '${CMAKE_GENERATOR}'")
   if(
@@ -129,7 +133,8 @@ else(MSVC)
   else()
     set(SUPPORT_F16C FALSE)
   endif()
-  set(CMAKE_C_FLAGS "-Wall -Wno-unknown-pragmas -fPIC -Wno-sign-compare")
+  set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+  set(CMAKE_C_FLAGS "-Wall -Wno-unknown-pragmas -Wno-sign-compare")
   if ("${CMAKE_CXX_COMPILER_ID}" MATCHES ".*Clang$")
     set(CMAKE_C_FLAGS "-Wno-braced-scalar-init")
   endif()
@@ -184,6 +189,50 @@ if(USE_VTUNE)
   list(APPEND mxnet_LINKER_LIBS dl)
 endif()
 
+if(USE_TENSORRT)
+  message(STATUS "Using TensorRT")
+  set(ONNX_PATH 3rdparty/onnx-tensorrt/third_party/onnx/build/)
+  set(ONNX_TRT_PATH 3rdparty/onnx-tensorrt/build/)
+
+  include_directories(${ONNX_PATH})
+  include_directories(3rdparty/onnx-tensorrt/)
+  include_directories(3rdparty/)
+  add_definitions(-DMXNET_USE_TENSORRT=1)
+  add_definitions(-DONNX_NAMESPACE=onnx)
+
+  find_package(Protobuf REQUIRED)
+
+  find_library(ONNX_LIBRARY NAMES libonnx.so REQUIRED
+          PATHS ${ONNX_PATH}
+          DOC "Path to onnx library.")
+  find_library(ONNX_PROTO_LIBRARY NAMES libonnx_proto.so REQUIRED
+          PATHS ${ONNX_PATH}
+          DOC "Path to onnx_proto library.")
+  find_library(ONNX_TRT_RUNTIME_LIBRARY NAMES libnvonnxparser_runtime.so REQUIRED
+          PATHS ${ONNX_TRT_PATH}
+          DOC "Path to onnx_proto library.")
+  find_library(ONNX_TRT_PARSER_LIBRARY NAMES libnvonnxparser.so REQUIRED
+          PATHS ${ONNX_TRT_PATH}
+          DOC "Path to onnx_proto library.")
+
+  list(APPEND mxnet_LINKER_LIBS libnvinfer.so ${ONNX_TRT_PARSER_LIBRARY} ${ONNX_TRT_RUNTIME_LIBRARY}
+          ${ONNX_PROTO_LIBRARY} ${ONNX_LIBRARY} ${PROTOBUF_LIBRARY})
+endif()
+
+if(ENABLE_TESTCOVERAGE)
+  message(STATUS "Compiling with test coverage support enabled. This will result in additional files being written to your source directory!")
+  find_program( GCOV_PATH gcov )
+  if(NOT GCOV_PATH)
+    message(FATAL_ERROR "gcov not found! Aborting...")
+  endif() # NOT GCOV_PATH
+  
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --coverage")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --coverage")
+  set(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} --coverage")
+  set(GTEST_LIBRARIES "${GTEST_LIBRARIES} --coverage")
+  link_libraries(gcov)
+endif()
+
 if(USE_MKLDNN)
   include(cmake/MklDnn.cmake)
   # CPU architecture (e.g., C5) can't run on another architecture (e.g., g3).
@@ -209,7 +258,7 @@ if(USE_CUDA)
   find_package(CUDA REQUIRED)
   add_definitions(-DMSHADOW_USE_CUDA=1)
   if(FIRST_CUDA AND (NOT USE_OLDCMAKECUDA))
-    if(CUDA_TOOLSET STREQUAL "")
+    if(NOT CUDA_TOOLSET)
       set(CUDA_TOOLSET "${CUDA_VERSION_STRING}")
     endif()
     set(CMAKE_GENERATOR_TOOLSET "cuda=${CUDA_TOOLSET},host=x64")
@@ -250,6 +299,14 @@ else()
     include(Cuda)
     include(mshadow)
   endif()
+endif()
+
+if(USE_ASAN)
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-omit-frame-pointer -fsanitize=address")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-omit-frame-pointer -fsanitize=address")
+  set(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} -fsanitize=address")
+  set(GTEST_LIBRARIES "${GTEST_LIBRARIES} -fsanitize=address")
+  list(APPEND mxnet_LINKER_LIBS asan)
 endif()
 
 list(APPEND mxnet_LINKER_LIBS ${mshadow_LINKER_LIBS})
@@ -320,14 +377,15 @@ endif()
 
 # ---[ OpenCV
 if(USE_OPENCV)
-  find_package(OpenCV QUIET COMPONENTS core highgui imgproc imgcodecs)
+  find_package(OpenCV COMPONENTS core highgui imgproc imgcodecs)
   if(NOT OpenCV_FOUND) # if not OpenCV 3.x, then imgcodecs are not found
+    message(STATUS "OpenCV imgcodecs missing")
     find_package(OpenCV REQUIRED COMPONENTS core highgui imgproc)
   endif()
   include_directories(SYSTEM ${OpenCV_INCLUDE_DIRS})
   list(APPEND mxnet_LINKER_LIBS ${OpenCV_LIBS})
   message(STATUS " OpenCV_LIBS=${OpenCV_LIBS}")
-  message(STATUS "OpenCV found (${OpenCV_CONFIG_PATH})")
+  message(STATUS "OpenCV ${OpenCV_VERSION} found (${OpenCV_CONFIG_PATH})")
   add_definitions(-DMXNET_USE_OPENCV=1)
 else(USE_OPENCV)
   message(STATUS "OpenCV Disabled")
@@ -339,7 +397,11 @@ if(USE_OPENMP)
   find_package(OpenMP REQUIRED)
   # This should build on Windows, but there's some problem and I don't have a Windows box, so
   # could a Windows user please fix?
-  if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/openmp/CMakeLists.txt AND SYSTEM_ARCHITECTURE STREQUAL "x86_64" AND NOT MSVC)
+  if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/openmp/CMakeLists.txt
+     AND SYSTEM_ARCHITECTURE STREQUAL "x86_64"
+     AND NOT MSVC
+     AND NOT CMAKE_CROSSCOMPILING)
+
     # Intel/llvm OpenMP: https://github.com/llvm-mirror/openmp
     set(OPENMP_STANDALONE_BUILD TRUE)
     set(LIBOMP_ENABLE_SHARED TRUE)
@@ -359,20 +421,20 @@ if(USE_OPENMP)
       set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
     endif()
   endif()
-elseif(UNIX)
+elseif(UNIX AND NOT ANDROID)
   list(APPEND mxnet_LINKER_LIBS pthread)
 endif()
 
+
 # ---[ LAPack
-if(USE_LAPACK AND NOT MSVC)
+if(USE_LAPACK)
+  message("USE_LAPACK is ON")
   add_definitions(-DMXNET_USE_LAPACK=1)
-  list(APPEND mxnet_LINKER_LIBS lapack)
-else(USE_LAPACK)
-  # Workaround for Windows until using new Jenkinsfile.
-  if(BLAS STREQUAL "Open" OR BLAS STREQUAL "open" OR USE_BLAS STREQUAL "Open" OR USE_BLAS STREQUAL "open")
-    add_definitions(-DMXNET_USE_LAPACK=1)
+  if (NOT MSVC)
+    list(APPEND mxnet_LINKER_LIBS lapack)
   endif()
 endif()
+
 
 # ---[ jemalloc
 if(USE_JEMALLOC)
@@ -574,11 +636,6 @@ if(USE_PLUGIN_CAFFE)
   endif()
 endif()
 
-if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/tvm/nnvm/CMakeLists.txt")
-  set(nnvm_LINKER_LIBS nnvm)
-  list(APPEND mxnet_LINKER_LIBS ${nnvm_LINKER_LIBS})
-endif()
-
 if(NOT MSVC)
   # Only add c++11 flags and definitions after cuda compiling
   add_definitions(-DDMLC_USE_CXX11)
@@ -647,7 +704,7 @@ if(USE_PLUGINS_WARPCTC)
 endif()
 
 
-if(USE_OPENCV)
+if(USE_OPENCV AND OpenCV_VERSION_MAJOR GREATER 2)
   add_executable(im2rec "tools/im2rec.cc")
   if(MSVC)
     target_link_libraries(im2rec mxnet)
@@ -658,9 +715,11 @@ if(USE_OPENCV)
     ${mxnet_LINKER_LIBS}
     ${OpenCV_LIBS}
     dmlc
-    ${nnvm_LINKER_LIBS}
     ${pslite_LINKER_LIBS}
     )
+else()
+    message(WARNING "OpenCV_VERSION_MAJOR: ${OpenCV_VERSION_MAJOR}, version 3 with imgcodecs \
+    is required for im2rec, im2rec will not be available")
 endif()
 
 target_link_libraries(mxnet PUBLIC dmlc)

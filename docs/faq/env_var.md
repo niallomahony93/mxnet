@@ -8,13 +8,25 @@ For example, you can set these environment variables in Linux or macOS as follow
 export MXNET_GPU_WORKER_NTHREADS=3
 ```
 
+Or in powershell:
+```
+$env:MXNET_STORAGE_FALLBACK_LOG_VERBOSE=0
+```
+
+## Variables controlling the execution environment
+
+* MXNET_LIBRARY_PATH
+    Absolute path indicating where the mxnet dynamic library is to be located, this would be the absolute
+    path to `libmxnet.so` or `libmxnet.dll` depending on the platform. The logic for loading the
+    library is in `python/mxnet/libinfo.py`
+
 ## Set the Number of Threads
 
 * MXNET_GPU_WORKER_NTHREADS
   - Values: Int ```(default=2)```
   - The maximum number of threads to use on each GPU. This parameter is used to parallelize the computation within a single GPU card.
 * MXNET_GPU_COPY_NTHREADS
-  - Values: Int ```(default=1)```
+  - Values: Int ```(default=2)```
   - The maximum number of concurrent threads that do the memory copy job on each GPU.
 * MXNET_CPU_WORKER_NTHREADS
   - Values: Int ```(default=1)```
@@ -46,6 +58,15 @@ export MXNET_GPU_WORKER_NTHREADS=3
   - Values: Int ```(default=5)```
   - The percentage of GPU memory to reserve for things other than the GPU array, such as kernel launch or cudnn handle space.
   - If you see a strange out-of-memory error from the kernel launch, after multiple iterations, try setting this to a larger value.  
+* MXNET_GPU_MEM_POOL_TYPE
+  - Values: String ```(default=Naive)```
+  - The type of memory pool.
+  - Choices:
+    - Naive: A simple memory pool that allocates memory for the exact requested size and cache memory buffers. If a buffered memory chunk matches the size of a new request, the chunk from the memory pool will be returned and reused.
+    - Round: A memory pool that always rounds the requested memory size and allocates memory of the rounded size. MXNET_GPU_MEM_POOL_ROUND_LINEAR_CUTOFF defines how to round up a memory size. Caching and allocating buffered memory works in the same way as the naive memory pool.
+* MXNET_GPU_MEM_POOL_ROUND_LINEAR_CUTOFF
+  - Values: Int ```(default=24)```
+  - The cutoff threshold that decides the rounding strategy. Let's denote the threshold as T. If the memory size is smaller than `2 ** T` (by default, it's 2 ** 24 = 16MB), it rounds to the smallest `2 ** n` that is larger than the requested memory size; if the memory size is larger than `2 ** T`, it rounds to the next k * 2 ** T.
 
 ## Engine Type
 
@@ -83,6 +104,32 @@ export MXNET_GPU_WORKER_NTHREADS=3
   - The minimum size of a "big array".
   - When the array size is bigger than this threshold, MXNET_KVSTORE_REDUCTION_NTHREADS threads are used for reduction.
   - This parameter is also used as a load balancer in kvstore. It controls when to partition a single weight to all the servers. If the size of a single weight is less than MXNET_KVSTORE_BIGARRAY_BOUND then, it is sent to a single randomly picked server otherwise it is partitioned to all the servers.
+
+* MXNET_KVSTORE_USETREE
+  - Values: 0(false) or 1(true) ```(default=0)```
+  - If true, MXNet tries to use tree reduction for Push and Pull communication.
+  - Otherwise, MXNet uses the default Push and Pull implementation.
+  - [Tree reduction technology](http://www.sysml.cc/doc/178.pdf) has been shown to be faster than the standard ```--kv-store device``` Push/Pull and ```--kv-store nccl``` Push/Pull for small batch sizes.
+
+* MXNET_KVSTORE_LOGTREE
+  - Values: 0(false) or 1(true) ```(default=0)```
+  - If true and MXNET_KVSTORE_USETREE is set to 1, MXNet will log the reduction trees that have been generated.
+
+* MXNET_KVSTORE_TREE_ARRAY_BOUND
+  - Values: Int ```(default=10000000)```
+  - The minimum size of a "big array".
+  - When the array size is bigger than this threshold and MXNET_KVSTORE_USETREE is set to 1, multiple trees are used to load balance the big gradient being communicated in order to better saturate link bandwidth.
+  - Note: This environmental variable only takes effect if Tree KVStore is being used (MXNET_KVSTORE_USETREE=1).
+
+* MXNET_KVSTORE_TREE_BACKTRACK
+  - Values: 0(false) or 1(true) ```(default=0)
+  - If true and MXNET_KVSTORE_USETREE is set to 1, MXNet tries to use backtracking to generate the trees required for tree reduction.
+  - If false and MXNET_KVSTORE_USETREE is set to 1, MXNet tries to use Kernighan-Lin heuristic to generate the trees required for tree reduction.
+
+* MXNET_KVSTORE_TREE_LINK_USAGE_PENALTY
+  - Values: Float ```(default=0.7)```
+  - The multiplicative penalty term to a link being used once.
+
 * MXNET_ENABLE_GPU_P2P
   - Values: 0(false) or 1(true) ```(default=1)```
   - If true, MXNet tries to use GPU peer-to-peer communication, if available on your device,
@@ -120,11 +167,30 @@ When USE_PROFILER is enabled in Makefile or CMake, the following environments ca
   - Performance tests are run to pick the convolution algo when value is 1 or 2
   - Value of 1 chooses the best algo in a limited workspace
   - Value of 2 chooses the fastest algo whose memory requirements may be larger than the default workspace threshold
-  
+
+* MXNET_CUDA_ALLOW_TENSOR_CORE
+  - 0(false) or 1(true) ```(default=1)```
+	- If set to '0', disallows Tensor Core use in CUDA ops.
+	- If set to '1', allows Tensor Core use in CUDA ops.
+  - This variable can only be set once in a session.
+
+* MXNET_CUDA_TENSOR_OP_MATH_ALLOW_CONVERSION
+  - 0(false) or 1(true) ```(default=0)```
+	- If set to '0', disallows implicit type conversions to Float16 to use Tensor Cores
+	- If set to '1', allows CUDA ops like RNN and Convolution to use TensorCores even with Float32 input data by using implicit type casting to Float16. Only has an effect if `MXNET_CUDA_ALLOW_TENSOR_CORE` is `1`.
 
 * MXNET_GLUON_REPO
   - Values: String ```(default='https://apache-mxnet.s3-accelerate.dualstack.amazonaws.com/'```
   - The repository url to be used for Gluon datasets and pre-trained models.
+
+* MXNET_HOME
+  - Data directory in the filesystem for storage, for example when downloading gluon models.
+  - Default in *nix is .mxnet APPDATA/mxnet in windows.
+  
+* MXNET_MKLDNN_ENABLED
+  - Values: 0, 1 ```(default=1)```
+  - Flag to enable or disable MKLDNN accelerator. On by default.
+  - Only applies to mxnet that has been compiled with MKLDNN (```pip install mxnet-mkl``` or built from source with ```USE_MKLDNN=1```)
 
 Settings for Minimum Memory Usage
 ---------------------------------

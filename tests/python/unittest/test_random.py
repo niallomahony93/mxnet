@@ -19,11 +19,12 @@ import os
 import math
 import itertools
 import mxnet as mx
-from mxnet.test_utils import verify_generator, gen_buckets_probs_with_ppf
+from mxnet.test_utils import verify_generator, gen_buckets_probs_with_ppf, retry
 import numpy as np
 import random as rnd
-from common import setup_module, with_seed, random_seed
+from common import setup_module, with_seed, random_seed, teardown
 import scipy.stats as ss
+import unittest
 
 def same(a, b):
     return np.sum(a != b) == 0
@@ -39,6 +40,15 @@ def check_with_device(device, dtype):
             'ndop': mx.nd.random.normal,
             'params': { 'loc': 10.0, 'scale': 0.5 },
             'inputs': [ ('loc',[ [ 0.0, 2.5 ], [ -9.75, -7.0 ] ]) , ('scale',[ [ 1.0, 3.7 ], [ 4.2, 1.5 ] ]) ],
+            'checks': [
+                ('mean', lambda x, params: np.mean(x.astype(np.float64) - params['loc']),  tol),
+                ('std',  lambda x, params: np.std(x.astype(np.float64)) - params['scale'], tol)
+            ]
+        },
+        {
+            'name': 'randn',
+            'ndop': mx.nd.random.randn,
+            'params': { 'loc': 10.0, 'scale': 0.5 },
             'checks': [
                 ('mean', lambda x, params: np.mean(x.astype(np.float64) - params['loc']),  tol),
                 ('std',  lambda x, params: np.std(x.astype(np.float64)) - params['scale'], tol)
@@ -122,10 +132,14 @@ def check_with_device(device, dtype):
         # check directly
         params = symbdic['params'].copy()
         params.update(shape=shape, dtype=dtype, ctx=device)
+        args = ()
+        if name == 'randn':
+            params.pop('shape')  # randn does not accept shape param
+            args = shape
         mx.random.seed(128)
-        ret1 = ndop(**params).asnumpy()
+        ret1 = ndop(*args, **params).asnumpy()
         mx.random.seed(128)
-        ret2 = ndop(**params).asnumpy()
+        ret2 = ndop(*args, **params).asnumpy()
         assert same(ret1, ret2), \
                 "ndarray test: `%s` should give the same result with the same seed" % name
 
@@ -133,12 +147,14 @@ def check_with_device(device, dtype):
             assert np.abs(check_func(ret1, params)) < tol, "ndarray test: %s check for `%s` did not pass" % (check_name, name)
 
         # check multi-distribution sampling
+        if 'inputs' not in symbdic: continue  # randn does not support multi-distribution sampling
+
         params = {'shape': shape, 'dtype': dtype, 'ctx': device}
         params.update({k : mx.nd.array(v, ctx=device, dtype=dtype) for k, v in symbdic['inputs']})
         mx.random.seed(128)
-        ret1 = ndop(**params).asnumpy()
+        ret1 = ndop(*args, **params).asnumpy()
         mx.random.seed(128)
-        ret2 = ndop(**params).asnumpy()
+        ret2 = ndop(*args, **params).asnumpy()
         assert same(ret1, ret2), \
                 "ndarray test: `%s` should give the same result with the same seed" % name
         for i in range(2):
@@ -147,6 +163,8 @@ def check_with_device(device, dtype):
                 for check_name, check_func, tol in symbdic['checks']:
                     err = np.abs(check_func(ret2[i,j], stats))
                     assert err < tol, "%f vs %f: symbolic test: %s check for `%s` did not pass" % (err, tol, check_name, name)
+
+        if 'symbol' not in symbdic: continue  # randn does not have symbol
 
         # check symbolic
         symbol = symbdic['symbol']
@@ -293,31 +311,22 @@ def test_random_seed_setting_for_context():
         samples_imp = []
         samples_sym = []
         # Collect random number samples from the generators of all devices, each seeded with the same number.
-        for dev_id in range(0, 16 if dev_type == 'gpu' else 1):
-            # Currently python API does not provide a method to get the number of gpu devices.
-            # Waiting for PR #10354, which provides the method, to be merged.
-            # As a temporal workaround, try first and catch the exception caused by the absence of the device with `dev_id`.
-            try:
-                with mx.Context(dev_type, dev_id):
-                    ctx = mx.context.current_context()
-                    seed = set_seed_variously_for_context(ctx, 1, num_temp_seeds, seed_to_test)
+        for dev_id in range(0, mx.context.num_gpus() if dev_type == 'gpu' else 1):
+            with mx.Context(dev_type, dev_id):
+                ctx = mx.context.current_context()
+                seed = set_seed_variously_for_context(ctx, 1, num_temp_seeds, seed_to_test)
 
-                    # Check imperative. `multinomial` uses non-parallel rng.
-                    rnds = mx.nd.random.multinomial(data=mx.nd.array(probs, dtype=dtype), shape=num_samples)
-                    samples_imp.append(rnds.asnumpy())
+                # Check imperative. `multinomial` uses non-parallel rng.
+                rnds = mx.nd.random.multinomial(data=mx.nd.array(probs, dtype=dtype), shape=num_samples)
+                samples_imp.append(rnds.asnumpy())
 
-                    # Check symbolic. `multinomial` uses non-parallel rng.
-                    P = mx.sym.Variable("P")
-                    X = mx.sym.random.multinomial(data=P, shape=num_samples, get_prob=False)
-                    exe = X.bind(ctx, {"P": mx.nd.array(probs, dtype=dtype)})
-                    set_seed_variously_for_context(ctx, seed, num_temp_seeds, seed_to_test)
-                    exe.forward()
-                    samples_sym.append(exe.outputs[0].asnumpy())
-            except mx.MXNetError as e:
-                if str(e).find("invalid device ordinal") != -1:
-                    break
-                else:
-                    raise e
+                # Check symbolic. `multinomial` uses non-parallel rng.
+                P = mx.sym.Variable("P")
+                X = mx.sym.random.multinomial(data=P, shape=num_samples, get_prob=False)
+                exe = X.bind(ctx, {"P": mx.nd.array(probs, dtype=dtype)})
+                set_seed_variously_for_context(ctx, seed, num_temp_seeds, seed_to_test)
+                exe.forward()
+                samples_sym.append(exe.outputs[0].asnumpy())
         # The samples should be identical across different gpu devices.
         for i in range(1, len(samples_imp)):
             assert same(samples_imp[i - 1], samples_imp[i])
@@ -333,48 +342,40 @@ def test_parallel_random_seed_setting_for_context():
         samples_imp = []
         samples_sym = []
         # Collect random number samples from the generators of all devices, each seeded with the same number.
-        for dev_id in range(0, 16 if dev_type == 'gpu' else 1):
-            # Currently python API does not provide a method to get the number of gpu devices.
-            # Waiting for PR #10354, which provides the method, to be merged.
-            # As a temporal workaround, try first and catch the exception caused by the absence of the device with `dev_id`.
-            try:
-                with mx.Context(dev_type, dev_id):
-                    ctx = mx.context.current_context()
-                    # Avoid excessive test cpu runtimes.
-                    num_temp_seeds = 25 if dev_type == 'gpu' else 1
-                    # To flush out a possible race condition, run multiple times.
-                    for _ in range(20):
-                        # Create enough samples such that we get a meaningful distribution.
-                        shape = (200, 200)
-                        params = { 'low': -1.5, 'high': 3.0 }
-                        params.update(shape=shape, dtype=dtype)
+        for dev_id in range(0, mx.context.num_gpus() if dev_type == 'gpu' else 1):
+            with mx.Context(dev_type, dev_id):
+                ctx = mx.context.current_context()
+                # Avoid excessive test cpu runtimes.
+                num_temp_seeds = 25 if dev_type == 'gpu' else 1
+                # To flush out a possible race condition, run multiple times.
+                for _ in range(20):
+                    # Create enough samples such that we get a meaningful distribution.
+                    shape = (200, 200)
+                    params = { 'low': -1.5, 'high': 3.0 }
+                    params.update(shape=shape, dtype=dtype)
 
-                        # Check imperative. `uniform` uses parallel rng.
-                        seed = set_seed_variously_for_context(ctx, 1, num_temp_seeds, seed_to_test)
-                        rnds = mx.nd.random.uniform(**params)
-                        samples_imp.append(rnds.asnumpy())
+                    # Check imperative. `uniform` uses parallel rng.
+                    seed = set_seed_variously_for_context(ctx, 1, num_temp_seeds, seed_to_test)
+                    rnds = mx.nd.random.uniform(**params)
+                    samples_imp.append(rnds.asnumpy())
 
-                        # Check symbolic. `uniform` uses parallel rng.
-                        X = mx.sym.Variable("X")
-                        Y = mx.sym.random.uniform(**params) + X
-                        x = mx.nd.zeros(shape, dtype=dtype)
-                        xgrad = mx.nd.zeros(shape, dtype=dtype)
-                        yexec = Y.bind(ctx, {'X' : x}, {'X': xgrad})
-                        set_seed_variously_for_context(ctx, seed, num_temp_seeds, seed_to_test)
-                        yexec.forward(is_train=True)
-                        yexec.backward(yexec.outputs[0])
-                        samples_sym.append(yexec.outputs[0].asnumpy())
-            except mx.MXNetError as e:
-                if str(e).find("invalid device ordinal") != -1:
-                    break
-                else:
-                    raise e
+                    # Check symbolic. `uniform` uses parallel rng.
+                    X = mx.sym.Variable("X")
+                    Y = mx.sym.random.uniform(**params) + X
+                    x = mx.nd.zeros(shape, dtype=dtype)
+                    xgrad = mx.nd.zeros(shape, dtype=dtype)
+                    yexec = Y.bind(ctx, {'X' : x}, {'X': xgrad})
+                    set_seed_variously_for_context(ctx, seed, num_temp_seeds, seed_to_test)
+                    yexec.forward(is_train=True)
+                    yexec.backward(yexec.outputs[0])
+                    samples_sym.append(yexec.outputs[0].asnumpy())
         # The samples should be identical across different gpu devices.
         for i in range(1, len(samples_imp)):
             assert same(samples_imp[i - 1], samples_imp[i])
         for i in range(1, len(samples_sym)):
             assert same(samples_sym[i - 1], samples_sym[i])
 
+@retry(5)
 @with_seed()
 def test_sample_multinomial():
     for dtype in ['uint8', 'int32', 'float16', 'float32', 'float64']: # output array types
@@ -382,7 +383,7 @@ def test_sample_multinomial():
             dx = mx.nd.ones_like(x)
             mx.contrib.autograd.mark_variables([x], [dx])
             # Adding rtol and increasing samples needed to pass with seed 2951820647
-            samples = 5000
+            samples = 10000
             with mx.autograd.record():
                 y, prob = mx.nd.random.multinomial(x, shape=samples, get_prob=True, dtype=dtype)
                 r = prob * 5
@@ -399,7 +400,7 @@ def test_sample_multinomial():
                 prob = prob.reshape((1, prob.shape[0]))
             for i in range(x.shape[0]):
                 freq = np.bincount(y[i,:].astype('int32'), minlength=5)/np.float32(samples)*x[i,:].sum()
-                mx.test_utils.assert_almost_equal(freq, x[i], rtol=0.20)
+                mx.test_utils.assert_almost_equal(freq, x[i], rtol=0.20, atol=1e-1)
                 rprob = x[i][y[i].astype('int32')]/x[i].sum()
                 mx.test_utils.assert_almost_equal(np.log(rprob), prob.asnumpy()[i], atol=1e-5)
 
@@ -464,18 +465,19 @@ def test_uniform_generator():
 
 @with_seed()
 def test_gamma_generator():
+    success_rate = 0.05
     ctx = mx.context.current_context()
     for dtype in ['float16', 'float32', 'float64']:
         for kappa, theta in [(0.5, 1.0), (1.0, 5.0)]:
             print("ctx=%s, dtype=%s, Shape=%g, Scale=%g:" % (ctx, dtype, kappa, theta))
             buckets, probs = gen_buckets_probs_with_ppf(lambda x: ss.gamma.ppf(x, a=kappa, loc=0, scale=theta), 5)
             generator_mx = lambda x: mx.nd.random.gamma(kappa, theta, shape=x, ctx=ctx, dtype=dtype).asnumpy()
-            verify_generator(generator=generator_mx, buckets=buckets, probs=probs)
+            verify_generator(generator=generator_mx, buckets=buckets, probs=probs, success_rate=success_rate)
             generator_mx_same_seed = \
                 lambda x: np.concatenate(
                     [mx.nd.random.gamma(kappa, theta, shape=x // 10, ctx=ctx, dtype=dtype).asnumpy()
                      for _ in range(10)])
-            verify_generator(generator=generator_mx_same_seed, buckets=buckets, probs=probs)
+            verify_generator(generator=generator_mx_same_seed, buckets=buckets, probs=probs, success_rate=success_rate)
 
 @with_seed()
 def test_exponential_generator():
@@ -639,6 +641,23 @@ def test_with_random_seed():
     for i in range(0, num_seeds-1):
         for j in range(i+1, num_seeds):
             check_data(data[i],data[j])
+
+@with_seed()
+def test_unique_zipfian_generator():
+    ctx = mx.context.current_context()
+    if ctx.device_type == 'cpu':
+        num_sampled = 8192
+        range_max = 793472
+        batch_size = 4
+        op = mx.nd._internal._sample_unique_zipfian
+        classes, num_trials = op(range_max, shape=(batch_size, num_sampled))
+        for i in range(batch_size):
+            num_trial = num_trials[i].asscalar()
+            # test uniqueness
+            assert np.unique(classes[i].asnumpy()).size == num_sampled
+            # test num trials. reference count obtained from pytorch implementation
+            assert num_trial > 14500
+            assert num_trial < 17000
 
 @with_seed()
 def test_zipfian_generator():

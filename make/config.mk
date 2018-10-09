@@ -37,9 +37,15 @@
 # choice of compiler
 #--------------------
 
+ifndef CC
 export CC = gcc
+endif
+ifndef CXX
 export CXX = g++
+endif
+ifndef NVCC
 export NVCC = nvcc
+endif
 
 # whether compile with options for MXNet developer
 DEV = 0
@@ -173,8 +179,20 @@ USE_OPERATOR_TUNING = 1
 # Use gperftools if found
 USE_GPERFTOOLS = 1
 
+# path to gperftools (tcmalloc) library in case of a non-standard installation
+USE_GPERFTOOLS_PATH =
+
+# Link gperftools statically
+USE_GPERFTOOLS_STATIC =
+
 # Use JEMalloc if found, and not using gperftools
 USE_JEMALLOC = 1
+
+# path to jemalloc library in case of a non-standard installation
+USE_JEMALLOC_PATH =
+
+# Link jemalloc statically
+USE_JEMALLOC_STATIC =
 
 #----------------------------
 # additional operators

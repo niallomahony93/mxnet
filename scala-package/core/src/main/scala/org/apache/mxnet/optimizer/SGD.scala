@@ -41,14 +41,15 @@ class SGD(val learningRate: Float = 0.01f, momentum: Float = 0.0f,
    */
   override def update(index: Int, weight: NDArray, grad: NDArray, state: AnyRef): Unit = {
     // TODO(bing) implement wd_bias, wd_gamma, wd_beta (copy from python package)
-    var lr =
-      (if (lrScheduler != null) {
+    var lr = {
+      if (lrScheduler != null) {
         val scheduledLr = lrScheduler(numUpdate)
         updateCount(index)
         scheduledLr
       } else {
         this.learningRate
-      })
+      }
+    }
     lr = getLr(index, lr)
 
     val wd = getWd(index, this.wd)
@@ -72,7 +73,8 @@ class SGD(val learningRate: Float = 0.01f, momentum: Float = 0.0f,
       weight += mom
       adder.dispose()
     } else {
-      require(momentum == 0f)
+      require(momentum == 0f,
+        s"momentum should be zero when state is provided.")
       // adder = -lr * (resdGrad + this.wd * weight)
       // we write in this way to get rid of memory leak
       val adder = this.wd * weight

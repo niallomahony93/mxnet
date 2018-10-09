@@ -312,6 +312,34 @@ NDArray NDArray::data_ndarray() const {
   return ret;
 }
 
+struct NDArrayDLManager {
+    NDArray handle;  // ref NDArray
+    DLManagedTensor tensor;
+};
+
+DLManagedTensor* NDArray::ToDLPack() const {
+  NDArrayDLManager* dlmanager(new NDArrayDLManager);
+  dlmanager->handle = *this;
+  if (!is_none()) {
+    dlmanager->tensor.dl_tensor = data().dltensor();
+  }
+  dlmanager->tensor.manager_ctx = dlmanager;
+  dlmanager->tensor.deleter = [](DLManagedTensor* dlmanager){
+    delete static_cast<NDArrayDLManager*>(dlmanager->manager_ctx);
+  };
+  return &(dlmanager->tensor);
+}
+
+NDArray NDArray::FromDLPack(const DLManagedTensor* tensor) {
+  const DLTensor &dl_tensor = tensor->dl_tensor;
+  auto deleter = [tensor](){
+    if (tensor->deleter != nullptr) {
+      tensor->deleter(const_cast<DLManagedTensor*>(tensor));
+    }
+  };
+  return NDArray(TBlob(dl_tensor), dl_tensor.ctx.device_id, deleter);
+}
+
 bool NDArray::fresh_out_grad() const {
   if (Imperative::AGInfo::IsNone(*this)) return false;
   Imperative::AGInfo& info = Imperative::AGInfo::Get(entry_.node);
@@ -482,7 +510,7 @@ const mkldnn::memory *NDArray::GetMKLDNNData(
   if (mem->get_primitive_desc() == desc
       || (desc1.data.format == GetDefaultFormat(desc1)
         && desc2.data.format == GetDefaultFormat(desc2))) {
-    return GetMKLDNNExact(ptr_->mkl_mem_->GetRaw(), desc);
+    return GetMKLDNNExact(mem, desc);
   } else {
     return nullptr;
   }
@@ -638,7 +666,6 @@ void NDArray::CopyFrom(const mkldnn::memory &mem) {
 
   CHECK(mem.get_primitive_desc().get_size() == shape().Size() * GetTypeSize(dtype_))
       << "The size of NDArray doesn't match the requested MKLDNN memory desc";
-  MKLDNNStream *stream = MKLDNNStream::Get();
   // If this array uses MKLDNN layout, we have to make sure it's not a view.
   // Otherwise, we'll have to change the layout inside the array.
 
@@ -646,74 +673,7 @@ void NDArray::CopyFrom(const mkldnn::memory &mem) {
     ptr_->Reorder2Default();
 
   const mkldnn::memory *this_mem = GetMKLDNNData();
-  mkldnn::memory::primitive_desc from_pd = mem.get_primitive_desc();
-  mkldnn::memory::desc from_desc = from_pd.desc();
-  mkldnn::memory::primitive_desc this_pd = this_mem->get_primitive_desc();
-  mkldnn::memory::desc this_desc = this_pd.desc();
-  mkldnn_memory_format_t from_def_format = GetDefaultFormat(from_desc);
-  mkldnn_memory_format_t this_def_format = GetDefaultFormat(this_desc);
-  if (IsView()) {
-    // Sliced array must use the default layout.
-    CHECK_EQ(GetDefaultFormat(this_desc), this_desc.data.format);
-  }
-  // It's possible that the memory and the NDArray don't have the same shape.
-  if (!same_shape(this_desc, from_desc)
-      // If the source memory uses the default layout, we can reshape directly.
-      && from_def_format == from_desc.data.format) {
-    // In this case, we can simply create a new MKLDNN memory for the required
-    // shape.
-    mkldnn::memory::dims dims(this_desc.data.dims,
-                              this_desc.data.dims + this_desc.data.ndims);
-    auto this_dtype = static_cast<mkldnn::memory::data_type>(this_desc.data.data_type);
-    auto this_format = static_cast<mkldnn::memory::format>(GetDefaultFormat(this_desc));
-    mkldnn::memory::desc data_md(dims, this_dtype, this_format);
-    mkldnn::memory::primitive_desc pd(data_md, from_pd.get_engine());
-    mkldnn_mem_ptr tmp_mem(new mkldnn::memory(pd, mem.get_data_handle()));
-    stream->RegisterMem(tmp_mem);
-    stream->RegisterPrim(mkldnn::reorder(*tmp_mem, *this_mem));
-  } else if (!same_shape(this_desc, from_desc)) {
-    // In this case, the source memory stores data in a customized layout. We
-    // need to reorganize the data in memory before we can reshape.
-    mkldnn::memory::primitive_desc def_pd = GetPrimitiveDesc(from_pd, from_def_format);
-    mkldnn::memory *def_mem = TmpMemMgr::Get()->Alloc(def_pd);
-    stream->RegisterPrim(mkldnn::reorder(mem, *def_mem));
-    // Now we can reshape it
-    mkldnn::memory::dims dims(this_desc.data.dims,
-                              this_desc.data.dims + this_desc.data.ndims);
-    auto this_dtype = static_cast<mkldnn::memory::data_type>(this_desc.data.data_type);
-    auto this_format = static_cast<mkldnn::memory::format>(GetDefaultFormat(this_desc));
-    mkldnn::memory::desc data_md(dims, this_dtype, this_format);
-    mkldnn::memory::primitive_desc pd(data_md, from_pd.get_engine());
-    mkldnn_mem_ptr tmp_mem(new mkldnn::memory(pd, def_mem->get_data_handle()));
-    stream->RegisterMem(tmp_mem);
-    stream->RegisterPrim(mkldnn::reorder(*tmp_mem, *this_mem));
-  } else if (from_pd == this_pd) {
-    // If the layout is the same, we can just copy data.
-    stream->RegisterPrim(mkldnn::reorder(mem, *this_mem));
-  } else {
-    // If both are not using the default layouts. There isn't much we can do,
-    // other than reorder data layout directly.
-    if (this_def_format != this_desc.data.format
-        && from_def_format != from_desc.data.format) {
-      stream->RegisterPrim(mkldnn::reorder(mem, *this_mem));
-    } else if (this_def_format == this_desc.data.format) {
-      // If the dest mem uses the default memory layout, we can simply use
-      // the default format of the source memory to improve perf of reorder.
-      mkldnn::memory::primitive_desc pd = GetPrimitiveDesc(from_pd,
-                                                           from_def_format);
-      mkldnn_mem_ptr tmp_mem(new mkldnn::memory(pd, this_mem->get_data_handle()));
-      stream->RegisterMem(tmp_mem);
-      stream->RegisterPrim(mkldnn::reorder(mem, *tmp_mem));
-    } else {
-      // If the src mem uses the default memory layout, we can use
-      // the default format of the source memory to improve perf.
-      mkldnn::memory::primitive_desc pd = GetPrimitiveDesc(this_pd,
-                                                           this_def_format);
-      mkldnn_mem_ptr tmp_mem(new mkldnn::memory(pd, mem.get_data_handle()));
-      stream->RegisterMem(tmp_mem);
-      stream->RegisterPrim(mkldnn::reorder(*tmp_mem, *this_mem));
-    }
-  }
+  MKLDNNCopy(mem, this_mem);
 }
 
 mkldnn::memory *NDArray::CreateMKLDNNData(const mkldnn::memory::primitive_desc &desc) {
@@ -1099,7 +1059,7 @@ inline void CopyFromToRspImpl(const NDArray& from, const NDArray& to, RunContext
     op::FillZerosRspImpl(s, to);
     return;
   }
-  auto aux_shape = from.aux_shape(rowsparse::kIdx);
+  const auto& aux_shape = from.aux_shape(rowsparse::kIdx);
   to.CheckAndAlloc({aux_shape});
   TBlob val = to.data();
   TBlob idx = to.aux_data(rowsparse::kIdx);
@@ -1177,7 +1137,8 @@ void CopyFromToImpl(const NDArray& from, const NDArray& to,
   const Context to_ctx = to.ctx();
   bool is_train = Imperative::Get()->is_training();
 
-  OpContext opctx{is_train,
+  OpContext opctx{Imperative::Get()->is_recording(),
+                  is_train,
                   rctx,
                   engine::CallbackOnComplete(),
                   requested};
@@ -1189,7 +1150,7 @@ void CopyFromToImpl(const NDArray& from, const NDArray& to,
     if (from_stype == to_stype) {
       casted_nd = from;  // same stype, no need to cast from
     } else {  // different stypes on different ctx needs an temporary casted_nd
-      TShape shape = from.shape();
+      const TShape& shape = from.shape();
       if (to_stype == kDefaultStorage) {
         casted_nd = NDArray(shape, from_ctx);
       } else {
@@ -1211,7 +1172,7 @@ void CopyFromToImpl(const NDArray& from, const NDArray& to,
   }
 }
 
-void CopyFromTo(const NDArray& from, const NDArray& to, int priority) {
+void CopyFromTo(const NDArray& from, const NDArray& to, int priority, bool is_opr) {
   if (from.var() == to.var() && from.byte_offset() == to.byte_offset()) {
     // skip to copy to itself
     return;
@@ -1292,7 +1253,7 @@ void CopyFromTo(const NDArray& from, const NDArray& to, int priority) {
           on_complete();
         }, from.ctx(), const_vars, mutable_vars,
         from.dtype() != to.dtype() ? FnProperty::kNormal : FnProperty::kCopyFromGPU,
-        priority, "CopyGPU2GPU");
+        priority, is_opr ? "_copyto_GPU2GPU" : "CopyGPU2GPU");
     } else {
       LOG(FATAL) << "unknown device mask";
     }
@@ -2072,7 +2033,7 @@ void CopyFromToSimple(
     const std::vector<NDArray>& inputs,
     const std::vector<OpReqType>& req,
     const std::vector<NDArray>& outputs) {
-  CopyFromTo(inputs[0], outputs[0], 0);
+  CopyFromTo(inputs[0], outputs[0], 0, true);
 }
 
 // copy function is special
@@ -2113,7 +2074,7 @@ void Imdecode(NDArray *ret, NDArray mean, size_t index,
 #if MXNET_USE_OPENCV
   cv::Mat buf(1, size, CV_8U, str_img);
   cv::Mat res = cv::imdecode(buf, n_channels == 1 ? 0 : -1);
-  CHECK(res.data != NULL) << "OpenCV Failed to decode image";
+  CHECK(res.data != nullptr) << "OpenCV Failed to decode image";
   CHECK_LE(n_channels, static_cast<size_t>(res.channels()));
   if (y1 - y0 == 0) {
     x0 = 0;
@@ -2144,10 +2105,10 @@ void Imdecode(NDArray *ret, NDArray mean, size_t index,
   if (mean.is_none()) {
     MSHADOW_TYPE_SWITCH(buff.dtype(), DType, {
       mshadow::Tensor<cpu, 4, DType> tensor = buff.data().get<cpu, 4, DType>();
-      for (index_t i = 0; i < y1-y0; i++) {
+      for (size_t i = 0; i < y1-y0; i++) {
         uchar* im_data = res.ptr<uchar>(y0+i) + res.channels()*x0;
-        for (index_t j = 0; j < x1-x0; j++) {
-          for (index_t k = 0; k < n_channels; k++) {
+        for (size_t j = 0; j < x1-x0; j++) {
+          for (size_t k = 0; k < n_channels; k++) {
             tensor[0][k][i][j] = DType(im_data[k]);  // NOLINT(*)
           }
           im_data += res.channels();
@@ -2164,10 +2125,10 @@ void Imdecode(NDArray *ret, NDArray mean, size_t index,
     MSHADOW_TYPE_SWITCH(buff.dtype(), DType, {
       mshadow::Tensor<cpu, 4, DType> tensor = buff.data().get<cpu, 4, DType>();
       mshadow::Tensor<cpu, 3, DType> tmean = mean.data().get<cpu, 3, DType>();
-      for (index_t i = 0; i < y1-y0; i++) {
+      for (size_t i = 0; i < y1-y0; i++) {
         uchar* im_data = res.ptr<uchar>(y0+i) + res.channels()*x0;
-        for (index_t j = 0; j < x1-x0; j++) {
-          for (index_t k = 0; k < n_channels; k++) {
+        for (size_t j = 0; j < x1-x0; j++) {
+          for (size_t k = 0; k < n_channels; k++) {
             tensor[0][k][i][j] = DType(im_data[k]) - tmean[k][i][j];  // NOLINT(*)
           }
           im_data += res.channels();
