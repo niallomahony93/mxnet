@@ -184,6 +184,14 @@ struct fill_ind_to_one {
   }
 };
 
+struct fill_ind {
+  template<typename DType>
+  MSHADOW_XINLINE static void Map(int i, const int* indices, const DType* val,
+                                  int req, DType* out) {
+    KERNEL_ASSIGN(out[indices[i]], req, val[i]);
+  }
+};
+
 template<typename DType>
 MSHADOW_FORCE_INLINE void TopKSort(const Tensor<cpu, 1, DType>& dat,
                                    const Tensor<cpu, 1, int>& ind,
@@ -321,7 +329,8 @@ MSHADOW_FORCE_INLINE void TopKSort(const Tensor<gpu, 1, DType>& dat,
   const int M(dat.size(0)/N);
   if (full_sort) {
     // Divide workspace into two parts. The first one is needed to store batch ids.
-    const int id_size(sizeof(int)*ind.size(0));
+    size_t alignment = std::max(sizeof(DType), sizeof(int));
+    size_t id_size = PadBytes(sizeof(int) * ind.size(0), alignment);
     Tensor<gpu, 1, int> batch_id(reinterpret_cast<int*>(work.dptr_), Shape1(ind.size(0)), s);
     Tensor<gpu, 1, char> sort_work(work.dptr_+id_size, Shape1(work.size(0)-id_size), s);
     mxnet::op::SortByKey(dat, ind, is_ascend, &sort_work);
@@ -377,6 +386,7 @@ void TopKImpl(const RunContext &ctx,
   bool do_transpose = false;
   bool is_ascend = false;
   int k = 0;
+  size_t alignment = std::max(sizeof(DType), sizeof(int));
   TShape target_shape;
   ParseTopKParam(src.shape_, param,
                  &target_shape, &batch_size, &element_num, &axis, &k, &do_transpose, &is_ascend);
@@ -394,26 +404,27 @@ void TopKImpl(const RunContext &ctx,
   temp_size = std::max(temp_size,
     mxnet::op::SortByKeyWorkspaceSize<DType, int, xpu>(src.Size()));
   // Additional temp space for gpu full sorts for batch ids.
-  temp_size += sizeof(int) * src.Size();
+  temp_size += PadBytes(sizeof(int) * src.Size(), alignment);
   // Temp space for cpu sorts.
-  temp_size = std::max(temp_size, sizeof(DType) * static_cast<size_t>(src.Size()));
-  index_t workspace_size = temp_size + sizeof(DType) * src.Size() + sizeof(int) * src.Size();
+  temp_size = std::max(temp_size, static_cast<size_t>(sizeof(DType) * src.Size()));
+  size_t workspace_size = temp_size + PadBytes(sizeof(DType) * src.Size(), alignment)
+                                    + PadBytes(sizeof(int) * src.Size(), alignment);
   if (param.ret_typ == topk_enum::kReturnMask) {
-    workspace_size += sizeof(int) * batch_size * k;
+    workspace_size += PadBytes(sizeof(int) * batch_size * k, alignment);
   }
   workspace = resource.get_space_typed<xpu, 1, char>(Shape1(workspace_size), s);
   char* workspace_curr_ptr = workspace.dptr_;
   sorted_dat = Tensor<xpu, 1, DType>(reinterpret_cast<DType*>(workspace_curr_ptr),
                                       Shape1(src.Size()), s);  // contain sorted dat
-  workspace_curr_ptr += sizeof(DType) * src.Size();
+  workspace_curr_ptr += PadBytes(sizeof(DType) * src.Size(), alignment);
   indices = Tensor<xpu, 1, int>(reinterpret_cast<int*>(workspace_curr_ptr),
                                 Shape1(src.Size()), s);  // indices in the original matrix
-  workspace_curr_ptr += sizeof(int) * src.Size();
+  workspace_curr_ptr += PadBytes(sizeof(int) * src.Size(), alignment);
 
   if (param.ret_typ == topk_enum::kReturnMask) {
     sel_indices = Tensor<xpu, 1, int>(reinterpret_cast<int*>(workspace_curr_ptr),
                                       Shape1(batch_size * k), s);
-    workspace_curr_ptr += sizeof(int) * batch_size * k;
+    workspace_curr_ptr += PadBytes(sizeof(int) * batch_size * k, alignment);
     CHECK_EQ(sel_indices.CheckContiguous(), true);
   }
 
@@ -607,14 +618,11 @@ void TopKBackwardImpl(const OpContext &ctx,
     << "The total element_num is " << element_num << ", but the selected IDType can only represent "
     << mxnet::common::MaxIntegerValue<IDType>() << " elements";
   Tensor<xpu, 1, int> workspace =
-    ctx.requested[0].get_space_typed<xpu, 1, int>(Shape1(batch_size * k * 2 + batch_size), s);
+    ctx.requested[0].get_space_typed<xpu, 1, int>(Shape1(batch_size * k + batch_size), s);
   Tensor<xpu, 1, int> sel_indices =
     Tensor<xpu, 1, int>(workspace.dptr_, Shape1(batch_size * k), s);
   Tensor<xpu, 1, int> batch_shift =
     Tensor<xpu, 1, int>(workspace.dptr_ + batch_size * k, Shape1(batch_size), s);
-  Tensor<xpu, 1, int> dummy_index =
-    Tensor<xpu, 1, int>(workspace.dptr_ + batch_size * k + batch_size,
-                           Shape1(batch_size * k), s);
 
   Tensor<xpu, 2, DType> out_grad =
     inputs[0].get_with_shape<xpu, 2, DType>(Shape2(inputs[0].shape_.Size(), 1), s);
@@ -643,17 +651,15 @@ void TopKBackwardImpl(const OpContext &ctx,
                           Shape1(batch_size * k));
   }
   CHECK_EQ(sel_indices.CheckContiguous(), true);
-  if (kWriteTo == req[0]) {
-    in_grad = scalar<DType>(0);
-    IndexFill(in_grad, sel_indices, out_grad);
-  } else if (kAddTo == req[0]) {
-    // TODO(sxjscience) We can use AddTakeGrad in the future.
-    // However, the current implementation of AddTakeGrad is not so efficient.
-    mxnet_op::Kernel<range_fwd, xpu>::Launch(s, sel_indices.shape_.Size(), 1, 0, 1, kWriteTo,
-                                             dummy_index.dptr_);
-    mxnet::op::AddTakeGradLargeBatch(in_grad, sel_indices, dummy_index, out_grad);
-  } else if (kNullOp == req[0]) {
-    return;
+  if (kWriteTo == req[0] || kAddTo == req[0]) {
+    if (kWriteTo == req[0]) {
+      in_grad = scalar<DType>(0);
+    }
+    mxnet_op::Kernel<fill_ind, xpu>::Launch(s, batch_size * k,
+                                            sel_indices.dptr_,
+                                            out_grad.dptr_,
+                                            req[0],
+                                            in_grad.dptr_);
   } else {
     LOG(FATAL) << "Not Implemented!";
   }
