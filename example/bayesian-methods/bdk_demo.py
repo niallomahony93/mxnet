@@ -99,10 +99,6 @@ def regression_student_grad(student_outputs, teacher_pred, teacher_noise_precisi
 
     grad_var = (1 - nd.exp(-student_var) * (nd.square(student_mean - teacher_pred)
                                             + 1.0 / teacher_noise_precision)) / 2
-    # print student_mean
-    # print teacher_pred
-    # print grad_mean.asnumpy(), grad_var.asnumpy()
-    # ch = raw_input()
     return [grad_mean, grad_var]
 
 
@@ -160,52 +156,34 @@ def get_toy_sym(teacher=True, teacher_noise_precision=None):
     return net
 
 
-def get_boston_housing_sym(teacher=True, teacher_noise_precision=None):
-    if teacher:
-        net = mx.symbol.Variable('data')
-        net = mx.symbol.FullyConnected(data=net, name='teacher_fc1', num_hidden=50)
-        net = mx.symbol.Activation(data=net, name='teacher_relu1', act_type="relu")
-        net = mx.symbol.FullyConnected(data=net, name='teacher_fc2', num_hidden=1)
-        net = mx.symbol.LinearRegressionOutput(data=net, name='teacher_output',
-                                               grad_scale=teacher_noise_precision)
-    else:
-        net = mx.symbol.Variable('data')
-        net = mx.symbol.FullyConnected(data=net, name='student_fc1', num_hidden=50)
-        net = mx.symbol.Activation(data=net, name='student_relu1', act_type="relu")
-        student_mean = mx.symbol.FullyConnected(data=net, name='student_mean', num_hidden=1)
-        student_var = mx.symbol.FullyConnected(data=net, name='student_var', num_hidden=1)
-        net = mx.symbol.Group([student_mean, student_var])
-    return net
+def dev(gpu_id=None):
+    return mx.gpu(gpu_id) if gpu_id else mx.cpu()
 
 
-def dev():
-    return mx.cpu()
-
-
-def run_mnist_SGD(training_num=50000):
+def run_mnist_SGD(training_num=50000, gpu_id=None):
     X, Y, X_test, Y_test = load_mnist(training_num)
     minibatch_size = 100
     net = get_mnist_sym()
     data_shape = (minibatch_size,) + X.shape[1::]
-    data_inputs = {'data': nd.zeros(data_shape, ctx=dev()),
-                   'softmax_label': nd.zeros((minibatch_size,), ctx=dev())}
+    data_inputs = {'data': nd.zeros(data_shape, ctx=dev(gpu_id)),
+                   'softmax_label': nd.zeros((minibatch_size,), ctx=dev(gpu_id))}
     initializer = mx.init.Xavier(factor_type="in", magnitude=2.34)
-    exe, exe_params, _ = SGD(sym=net, dev=dev(), data_inputs=data_inputs, X=X, Y=Y,
+    exe, exe_params, _ = SGD(sym=net, dev=dev(gpu_id), data_inputs=data_inputs, X=X, Y=Y,
                              X_test=X_test, Y_test=Y_test,
                              total_iter_num=1000000,
                              initializer=initializer,
                              lr=5E-6, prior_precision=1.0, minibatch_size=100)
 
 
-def run_mnist_SGLD(training_num=50000):
+def run_mnist_SGLD(training_num=50000, gpu_id=None):
     X, Y, X_test, Y_test = load_mnist(training_num)
     minibatch_size = 100
     net = get_mnist_sym()
     data_shape = (minibatch_size,) + X.shape[1::]
-    data_inputs = {'data': nd.zeros(data_shape, ctx=dev()),
-                   'softmax_label': nd.zeros((minibatch_size,), ctx=dev())}
+    data_inputs = {'data': nd.zeros(data_shape, ctx=dev(gpu_id)),
+                   'softmax_label': nd.zeros((minibatch_size,), ctx=dev(gpu_id))}
     initializer = mx.init.Xavier(factor_type="in", magnitude=2.34)
-    exe, sample_pool = SGLD(sym=net, dev=dev(), data_inputs=data_inputs, X=X, Y=Y,
+    exe, sample_pool = SGLD(sym=net, dev=dev(gpu_id), data_inputs=data_inputs, X=X, Y=Y,
                             X_test=X_test, Y_test=Y_test,
                             total_iter_num=1000000,
                             initializer=initializer,
@@ -213,7 +191,7 @@ def run_mnist_SGLD(training_num=50000):
                             thin_interval=100, burn_in_iter_num=1000)
 
 
-def run_mnist_DistilledSGLD(training_num=50000):
+def run_mnist_DistilledSGLD(training_num=50000, gpu_id=None):
     X, Y, X_test, Y_test = load_mnist(training_num)
     minibatch_size = 100
     if training_num >= 10000:
@@ -236,10 +214,10 @@ def run_mnist_DistilledSGLD(training_num=50000):
     logsoftmax = LogSoftmax()
     student_net = get_mnist_sym(output_op=logsoftmax, num_hidden=num_hidden)
     data_shape = (minibatch_size,) + X.shape[1::]
-    teacher_data_inputs = {'data': nd.zeros(data_shape, ctx=dev()),
-                           'softmax_label': nd.zeros((minibatch_size,), ctx=dev())}
-    student_data_inputs = {'data': nd.zeros(data_shape, ctx=dev()),
-                           'softmax_label': nd.zeros((minibatch_size, 10), ctx=dev())}
+    teacher_data_inputs = {'data': nd.zeros(data_shape, ctx=dev(gpu_id)),
+                           'softmax_label': nd.zeros((minibatch_size,), ctx=dev(gpu_id))}
+    student_data_inputs = {'data': nd.zeros(data_shape, ctx=dev(gpu_id)),
+                           'softmax_label': nd.zeros((minibatch_size, 10), ctx=dev(gpu_id))}
     teacher_initializer = BiasXavier(factor_type="in", magnitude=1)
     student_initializer = BiasXavier(factor_type="in", magnitude=1)
     student_exe, student_params, _ = \
@@ -253,17 +231,17 @@ def run_mnist_DistilledSGLD(training_num=50000):
                       teacher_learning_rate=teacher_learning_rate,
                       student_learning_rate=student_learning_rate,
                       teacher_prior_precision=teacher_prior, student_prior_precision=student_prior,
-                      perturb_deviation=perturb_deviation, minibatch_size=100, dev=dev())
+                      perturb_deviation=perturb_deviation, minibatch_size=100, dev=dev(gpu_id))
 
 
-def run_toy_SGLD():
+def run_toy_SGLD(gpu_id=None):
     X, Y, X_test, Y_test = load_toy()
     minibatch_size = 1
     teacher_noise_precision = 1.0 / 9.0
     net = get_toy_sym(True, teacher_noise_precision)
     data_shape = (minibatch_size,) + X.shape[1::]
-    data_inputs = {'data': nd.zeros(data_shape, ctx=dev()),
-                   'teacher_output_label': nd.zeros((minibatch_size, 1), ctx=dev())}
+    data_inputs = {'data': nd.zeros(data_shape, ctx=dev(gpu_id)),
+                   'teacher_output_label': nd.zeros((minibatch_size, 1), ctx=dev(gpu_id))}
     initializer = mx.init.Uniform(0.07)
     exe, params, _ = \
         SGLD(sym=net, data_inputs=data_inputs,
@@ -275,20 +253,20 @@ def run_toy_SGLD():
              burn_in_iter_num=1000,
              thin_interval=10,
              task='regression',
-             minibatch_size=minibatch_size, dev=dev())
+             minibatch_size=minibatch_size, dev=dev(gpu_id))
 
 
-def run_toy_DistilledSGLD():
+def run_toy_DistilledSGLD(gpu_id=None):
     X, Y, X_test, Y_test = load_toy()
     minibatch_size = 1
     teacher_noise_precision = 1.0
     teacher_net = get_toy_sym(True, teacher_noise_precision)
     student_net = get_toy_sym(False)
     data_shape = (minibatch_size,) + X.shape[1::]
-    teacher_data_inputs = {'data': nd.zeros(data_shape, ctx=dev()),
-                           'teacher_output_label': nd.zeros((minibatch_size, 1), ctx=dev())}
-    student_data_inputs = {'data': nd.zeros(data_shape, ctx=dev())}
-    #                   'softmax_label': nd.zeros((minibatch_size, 10), ctx=dev())}
+    teacher_data_inputs = {'data': nd.zeros(data_shape, ctx=dev(gpu_id)),
+                           'teacher_output_label': nd.zeros((minibatch_size, 1), ctx=dev(gpu_id))}
+    student_data_inputs = {'data': nd.zeros(data_shape, ctx=dev(gpu_id))}
+
     teacher_initializer = mx.init.Uniform(0.07)
     student_initializer = mx.init.Uniform(0.07)
     student_grad_f = lambda student_outputs, teacher_pred: \
@@ -306,21 +284,21 @@ def run_toy_DistilledSGLD():
                       student_grad_f=student_grad_f,
                       teacher_prior_precision=0.1, student_prior_precision=0.001,
                       perturb_deviation=0.1, minibatch_size=minibatch_size, task='regression',
-                      dev=dev())
+                      dev=dev(gpu_id))
 
 
-def run_toy_HMC():
+def run_toy_HMC(gpu_id=None):
     X, Y, X_test, Y_test = load_toy()
     minibatch_size = Y.shape[0]
     noise_precision = 1 / 9.0
     net = get_toy_sym(True, noise_precision)
     data_shape = (minibatch_size,) + X.shape[1::]
-    data_inputs = {'data': nd.zeros(data_shape, ctx=dev()),
-                   'teacher_output_label': nd.zeros((minibatch_size, 1), ctx=dev())}
+    data_inputs = {'data': nd.zeros(data_shape, ctx=dev(gpu_id)),
+                   'teacher_output_label': nd.zeros((minibatch_size, 1), ctx=dev(gpu_id))}
     initializer = mx.init.Uniform(0.07)
     sample_pool = HMC(net, data_inputs=data_inputs, X=X, Y=Y, X_test=X_test, Y_test=Y_test,
                       sample_num=300000, initializer=initializer, prior_precision=1.0,
-                      learning_rate=1E-3, L=10, dev=dev())
+                      learning_rate=1E-3, L=10, dev=dev(gpu_id))
 
 
 def run_synthetic_SGLD():
@@ -359,82 +337,6 @@ def run_synthetic_SGLD():
     plt.show()
 
 
-def run_boston_housing_SGD():
-    X, Y, X_test, Y_test, X_mean, X_std, Y_mean, Y_std = load_boston_housing()
-    minibatch_size = 1
-    teacher_noise_precision = 1.25
-    net = get_boston_housing_sym(True, teacher_noise_precision)
-    data_shape = (minibatch_size,) + X.shape[1::]
-    print data_shape
-    data_inputs = {'data': nd.zeros(data_shape, ctx=dev()),
-                   'teacher_output_label': nd.zeros((minibatch_size, 1), ctx=dev())}
-    initializer = BiasXavier(factor_type="in", magnitude=1)
-    # initializer = mx.init.Normal(sigma=0.01)
-    exe, exe_params, _ = SGD(sym=net, dev=dev(), data_inputs=data_inputs, X=X, Y=Y,
-                             X_test=X_test, Y_test=Y_test,
-                             X_mean=X_mean, X_std=X_std,
-                             Y_mean=Y_mean, Y_std=Y_std,
-                             total_iter_num=2000000,
-                             initializer=initializer,
-#                             lr_scheduler=mx.lr_scheduler.FactorScheduler(80000, 0.5),
-                             lr=1E-6, prior_precision=1,
-                             minibatch_size=minibatch_size,
-                             task="boston")
-
-
-def run_boston_housing_SGLD():
-    X, Y, X_test, Y_test = load_boston_housing()
-    minibatch_size = 1
-    teacher_noise_precision = 1.25
-    net = get_boston_housing_sym(True, teacher_noise_precision)
-    data_shape = (minibatch_size,) + X.shape[1::]
-    data_inputs = {'data': nd.zeros(data_shape, ctx=dev()),
-                   'teacher_output_label': nd.zeros((minibatch_size, 1), ctx=dev())}
-    initializer = BiasXavier(factor_type="in", magnitude=2.34)
-    exe, sample_pool = SGLD(sym=net, dev=dev(), data_inputs=data_inputs, X=X, Y=Y,
-                            X_test=X_test, Y_test=Y_test,
-                            total_iter_num=1000000,
-                            initializer=initializer,
-                            learning_rate=5E-10, prior_precision=1.0, minibatch_size=minibatch_size,
-                            thin_interval=100, burn_in_iter_num=1000, task='boston')
-
-
-def run_boston_housing_DistilledSGLD():
-    X, Y, X_test, Y_test, X_mean, X_std, Y_mean, Y_std = load_boston_housing()
-    print(X.shape, Y.shape, X_test.shape, Y_test.shape)
-    minibatch_size = 1
-    teacher_noise_precision = 1.25
-    teacher_net = get_boston_housing_sym(True, teacher_noise_precision)
-    student_net = get_boston_housing_sym(False)
-    data_shape = (minibatch_size,) + X.shape[1::]
-    teacher_data_inputs = {'data': nd.zeros(data_shape, ctx=dev()),
-                           'teacher_output_label': nd.zeros((minibatch_size, 1), ctx=dev())}
-    student_data_inputs = {'data': nd.zeros(data_shape, ctx=dev())}
-    #                   'softmax_label': nd.zeros((minibatch_size, 10), ctx=dev())}
-    teacher_initializer = BiasXavier(factor_type="in", magnitude=1)
-    student_initializer = BiasXavier(factor_type="in", magnitude=1)
-    student_grad_f = lambda student_outputs, teacher_pred: \
-        regression_student_grad(student_outputs, teacher_pred, teacher_noise_precision)
-    student_exe, student_params, _ = \
-        DistilledSGLD(teacher_sym=teacher_net, student_sym=student_net,
-                      teacher_data_inputs=teacher_data_inputs,
-                      student_data_inputs=student_data_inputs,
-                      X=X, Y=Y, X_test=X_test, Y_test=Y_test,
-                      X_mean=X_mean, X_std=X_std, Y_mean=Y_mean, Y_std=Y_std,
-                      total_iter_num=5000000,
-                      teacher_initializer=teacher_initializer,
-                      student_initializer=student_initializer,
-                      teacher_learning_rate=2E-7, student_learning_rate=1E-2,
-                      student_optimizing_algorithm='sgd',
-                      teacher_lr_scheduler=mx.lr_scheduler.FactorScheduler(80000, 0.5, 1E-7),
-                      student_lr_scheduler=mx.lr_scheduler.FactorScheduler(step=5000, factor=0.8,
-                                                                           stop_factor_lr=1E-6),
-                      student_grad_f=student_grad_f,
-                      teacher_prior_precision=2.5, student_prior_precision=0.001,
-                      perturb_deviation=0.05, minibatch_size=minibatch_size, task='boston',
-                      dev=dev())
-
-
 if __name__ == '__main__':
     numpy.random.seed(100)
     mx.random.seed(100)
@@ -443,35 +345,27 @@ if __name__ == '__main__':
                     "[ICML2011]Bayesian Learning via Stochastic Gradient Langevin Dynamics")
     parser.add_argument("-d", "--dataset", type=int, default=1,
                         help="Dataset to use. 0 --> TOY, 1 --> MNIST, 2 --> Synthetic Data in "
-                             "the SGLD paper, 3 --> Boston Housing")
+                             "the SGLD paper")
     parser.add_argument("-l", "--algorithm", type=int, default=2,
                         help="Type of algorithm to use. 0 --> SGD, 1 --> SGLD, other-->DistilledSGLD")
     parser.add_argument("-t", "--training", type=int, default=50000,
                         help="Number of training samples")
+    parser.add_argument("--gpu", type=int, help="0 to use GPU, not set to use CPU")
     args = parser.parse_args()
     training_num = args.training
     if args.dataset == 1:
         if 0 == args.algorithm:
-            run_mnist_SGD(training_num)
+            run_mnist_SGD(training_num, gpu_id=args.gpu)
         elif 1 == args.algorithm:
-            run_mnist_SGLD(training_num)
+            run_mnist_SGLD(training_num, gpu_id=args.gpu)
         else:
-            run_mnist_DistilledSGLD(training_num)
+            run_mnist_DistilledSGLD(training_num, gpu_id=args.gpu)
     elif args.dataset == 0:
         if 1 == args.algorithm:
-            run_toy_SGLD()
+            run_toy_SGLD(gpu_id=args.gpu)
         elif 2 == args.algorithm:
-            run_toy_DistilledSGLD()
+            run_toy_DistilledSGLD(gpu_id=args.gpu)
         elif 3 == args.algorithm:
-            run_toy_HMC()
-    elif args.dataset == 2:
-        run_synthetic_SGLD()
-    elif args.dataset == 3:
-        if 0 == args.algorithm:
-            run_boston_housing_SGD()
-        elif 1 == args.algorithm:
-            run_boston_housing_SGLD()
-        else:
-            run_boston_housing_DistilledSGLD()
+            run_toy_HMC(gpu_id=args.gpu)
     else:
-        raise ValueError
+        run_synthetic_SGLD()

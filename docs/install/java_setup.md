@@ -41,60 +41,75 @@ Go to the [MXNet-Java demo project's README](https://github.com/apache/incubator
 
 #### Maven Repository
 
-Package information can be found in this [Maven Repository](https://repository.apache.org/#nexus-search;gav~org.apache.mxnet~~1.3.1-SNAPSHOT~~)
+MXNet-Java can be easily included in your Maven managed project. The Java packages are currently available as nightly builds on Maven. Add the following Maven repository to your `pom.xml` to fetch the Java packages :
+
+```html
+<repositories>
+    <repository>
+      <id>Apache Snapshot</id>
+      <url>https://repository.apache.org/content/groups/snapshots</url>
+    </repository>
+</repositories>
+```
+
+Also, add the dependency which corresponds to your platform to the `dependencies` tag :
 
 **Linux CPU**
 ```html
-<!-- https://mvnrepository.com/artifact/org.apache.mxnet/mxnet-full_2.11-linux-x86_64-cpu -->
 <dependency>
-    <groupId>org.apache.mxnet</groupId>
-    <artifactId>mxnet-full_2.11-linux-x86_64-cpu</artifactId>
-    <scope>system</scope>
-    <systemPath>/system/path/to/jar/mxnet-full_2.11-linux-x86_64-cpu-1.3.1-SNAPSHOT.jar</systemPath>
+  <groupId>org.apache.mxnet</groupId>
+  <artifactId>mxnet-full_2.11-linux-x86_64-cpu</artifactId>
+  <version>1.4.0-SNAPSHOT</version>
 </dependency>
 ```
 
 **Linux GPU**
 ```html
-<!-- https://mvnrepository.com/artifact/org.apache.mxnet/mxnet-full_2.11-linux-x86_64-gpu -->
 <dependency>
-    <groupId>org.apache.mxnet</groupId>
-    <artifactId>mxnet-full_2.11-linux-x86_64-gpu</artifactId>
-    <scope>system</scope>
-    <systemPath>/system/path/to/jar/mxnet-full_2.11-linux-x86_64-gpu-1.3.1-SNAPSHOT.jar</systemPath>
+  <groupId>org.apache.mxnet</groupId>
+  <artifactId>mxnet-full_2.11-linux-x86_64-gpu</artifactId>
+  <version>1.4.0-SNAPSHOT</version>
 </dependency>
 ```
 
 **macOS CPU**
 ```html
-<!-- https://mvnrepository.com/artifact/org.apache.mxnet/mxnet-full_2.11-osx-x86_64-cpu -->
 <dependency>
-    <groupId>org.apache.mxnet</groupId>
-    <artifactId>mxnet-full_2.11-osx-x86_64-cpu</artifactId>
-    <scope>system</scope>
-    <systemPath>/system/path/to/jar/mxnet-full_2.11-osx-x86_64-cpu-1.3.1-SNAPSHOT.jar</systemPath>
+  <groupId>org.apache.mxnet</groupId>
+  <artifactId>mxnet-full_2.11-osx-x86_64-cpu</artifactId>
+  <version>1.4.0-SNAPSHOT</version>
 </dependency>
 ```
 
+
+The official Java Packages will be released with the release of MXNet 1.4 and will be available on  [MXNet Maven package repository](https://search.maven.org/#search%7Cga%7C1%7Cg%3A%22org.apache.mxnet%22).
 <hr>
+
+### Eclipse IDE Support
+You can convert your existing Maven project to a project that can run in Eclipse by:
+```
+mvn eclipse:eclipse
+```
+This can be done once you have your maven project properly configured.
 
 ## Source
 
 The previously mentioned setup with Maven is recommended. Otherwise, the following instructions for macOS and Ubuntu are provided for reference only:
 
+**If you have already built mxnet from source using `cmake`, run `make clean` and then follow the appropriate guide below***
+
 | OS | Step 1 | Step 2 |
 |---|---|---|
 |macOS | [Shared Library for macOS](../install/osx_setup.html#build-the-shared-library) | [Scala Package for macOS](http://mxnet.incubator.apache.org/install/osx_setup.html#install-the-mxnet-package-for-scala) |
 | Ubuntu | [Shared Library for Ubuntu](../install/ubuntu_setup.html#installing-mxnet-on-ubuntu) | [Scala Package for Ubuntu](http://mxnet.incubator.apache.org/install/ubuntu_setup.html#install-the-mxnet-package-for-scala) |
-| Windows | [Shared Library for Windows](../install/windows_setup.html#build-the-shared-library) | <a class="github-button" href="https://github.com/apache/incubator-mxnet/issues/10549" data-size="large" data-show-count="true" aria-label="Issue apache/incubator-mxnet on GitHub">Call for Contribution</a> |
+| Windows | <a class="github-button" href="https://github.com/apache/incubator-mxnet/issues/10549" data-size="large" data-show-count="true" aria-label="Issue apache/incubator-mxnet on GitHub"> | <a class="github-button" href="https://github.com/apache/incubator-mxnet/issues/10549" data-size="large" data-show-count="true" aria-label="Issue apache/incubator-mxnet on GitHub">Call for Contribution</a> |
 
 
 #### Build Java from an Existing MXNet Installation
-If you have already built MXNet **from source** and are looking to setup Java from that point, you may simply run the following from the MXNet source root:
+If you have already built MXNet **from source** and are looking to setup Java from that point, you may simply run the following from the MXNet `scala-package` folder:
 
 ```
-make scalapkg
-make scalainstall
+mvn install
 ```
 This will install both the Java Inference API and the required MXNet-Scala package. 
 <hr>
