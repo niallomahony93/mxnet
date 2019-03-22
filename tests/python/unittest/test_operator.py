@@ -2530,6 +2530,16 @@ def test_slice_like_different_types():
     assert_allclose(z.asnumpy(), [[1,2,3],[5,6,7]])
 
 @with_seed()
+def test_reshape_like_different_types():
+    x = mx.nd.zeros((2, 3))
+
+    y = mx.nd.array([[1, 2], [3, 4], [5, 6]])
+
+    y = mx.nd.array(y).astype('int32')
+    z = mx.nd.reshape_like(x, y)
+    assert_allclose(z.asnumpy(), [[0,0],[0,0],[0,0]])
+
+@with_seed()
 def test_flip():
     for ndim in range(1, 6):
         for t in range(5):
@@ -4884,11 +4894,11 @@ def test_quantization_op():
     min0 = mx.nd.array([0.0])
     max0 = mx.nd.array([1.0])
     a  = mx.nd.array([[0.1392, 0.5928], [0.6027, 0.8579]])
-    qa, min1, max1 = mx.nd.contrib.quantize(a, min0, max0, out_type='uint8')
+    qa, min1, max1 = mx.nd.contrib.quantize(a, min0, max0, out_type='int8')
     a_ = mx.nd.contrib.dequantize(qa, min1, max1, out_type='float32')
 
-    qa_real = mx.nd.array([[35, 151], [154, 219]])
-    a_real  = mx.nd.array([[0.13725491, 0.59215689], [0.60392159, 0.8588236]])
+    qa_real = mx.nd.array([[18, 75], [77, 109]])
+    a_real  = mx.nd.array([[0.14173228, 0.5905512], [0.6062992, 0.8582677]])
 
     assert same(qa.asnumpy(), qa_real.asnumpy())
     assert same(a_.asnumpy(),  a_real.asnumpy())
@@ -5187,6 +5197,45 @@ def test_custom_op():
     with mx.autograd.record():
         x = mx.nd.Custom(length=10, depth=10, op_type="no_input_op")
     assert_almost_equal(x.asnumpy(), np.ones(shape=(10, 10), dtype=np.float32))
+
+    # test custom operator fork
+    # see https://github.com/apache/incubator-mxnet/issues/14396
+    if not sys.platform.startswith('win'):  # no fork in windows
+        class AdditionOP(mx.operator.CustomOp):
+            def __init__(self):
+                super(AdditionOP, self).__init__()
+            def forward(self, is_train, req, in_data, out_data, aux):
+                out_data[0][:] = in_data[0] + in_data[1]
+            def backward(self, req, out_grad, in_data, out_data, in_grad, aux):
+                in_grad[0][:] = out_grad[0]
+                in_grad[1][:] = out_grad[0]
+
+        @mx.operator.register("AdditionOP")
+        class AdditionOPProp(mx.operator.CustomOpProp):
+            def __init__(self):
+                super(AdditionOPProp, self).__init__()
+            def list_arguments(self):
+                return ['a', 'b']
+            def list_outputs(self):
+                return ['output']
+            def infer_shape(self, in_shape):
+                return in_shape, [in_shape[0]]
+            def create_operator(self, ctx, shapes, dtypes):
+                return AdditionOP()
+
+        def custom_add():
+            a = mx.nd.array([1, 2, 3])
+            b = mx.nd.array([4, 5, 6])
+            c = mx.nd.Custom(a, b, op_type='AdditionOP')
+            assert_almost_equal((a + b).asnumpy(), c.asnumpy())
+
+        custom_add()
+        from multiprocessing import Process
+        p = Process(target=custom_add)
+        p.daemon = True
+        p.start()
+        p.join(5)
+        assert not p.is_alive(), "deadlock may exist in custom operator"
 
 @with_seed()
 def test_psroipooling():
@@ -6497,6 +6546,75 @@ def test_softmax():
 
 
 @with_seed()
+def test_softmax_output_normalization():
+    def _softmaxoutput_normalization(multi_output, use_ignore, normalization):
+        grad_scale = np.random.random()
+        batch_size = 8
+        num_labels = 6
+        H, W = 3, 3
+        ignore_label = np.random.randint(0, num_labels) if use_ignore else -1
+
+        if multi_output:
+            data_shape = (batch_size, num_labels, H, W)
+            label_shape = (batch_size, H, W)
+        else:
+            data_shape = (batch_size, num_labels)
+            label_shape = (batch_size, )
+
+        data = mx.nd.random.uniform(-1, 1, shape=data_shape)
+        label = mx.nd.random.randint(
+            0, num_labels, shape=label_shape).astype('float32')
+        data.attach_grad()
+
+        kwargs = dict(grad_scale=grad_scale,
+                      normalization=normalization, multi_output=multi_output)
+        if use_ignore:
+            kwargs.update(use_ignore=True, ignore_label=ignore_label)
+
+        with mx.autograd.record():
+            out = mx.nd.SoftmaxOutput(data=data, label=label, **kwargs)
+        out.backward(mx.nd.ones_like(data))
+
+        exp_data = mx.nd.exp(data)
+        softmax_data = exp_data / exp_data.sum(1, keepdims=True)
+        argmax_data = mx.nd.argmax(data, axis=1)
+
+        assert_almost_equal(out.asnumpy(), softmax_data.asnumpy())
+        one_hot_label = mx.nd.one_hot(label, num_labels)
+        if multi_output:
+            one_hot_label = one_hot_label.transpose((0, 3, 1, 2))
+        data_grad = softmax_data - one_hot_label
+
+        if use_ignore:
+            if multi_output:
+                data_grad *= (label !=
+                              ignore_label).reshape((batch_size, 1, H, W))
+            else:
+                data_grad *= (label != ignore_label).reshape((batch_size, 1))
+
+        valid_cnt = 1
+        if normalization == 'batch':
+            valid_cnt = batch_size
+        elif normalization == 'valid':
+            valid_cnt = mx.nd.maximum(1, (label != ignore_label).sum())
+        scale = grad_scale / valid_cnt
+
+        if multi_output:
+            if normalization != 'valid':
+                scale /= H * W
+
+        data_grad *= scale
+
+        assert_almost_equal(data.grad.asnumpy(), data_grad.asnumpy())
+
+    for multi_output in [False, True]:
+        for use_ignore in [False, True]:
+            for normalization in ['null', 'batch', 'valid']:
+                _softmaxoutput_normalization(
+                    multi_output, use_ignore, normalization)
+
+
+@with_seed()
 def test_slice():
     def test_slice_forward_backward(a, index):
         a_np = a.asnumpy()
@@ -6527,11 +6645,21 @@ def test_slice():
     for index in index_list:
         test_slice_forward_backward(arr, index)
 
+    def test_begin_equals_end(shape, begin, end, step):
+        in_arr = mx.nd.arange(np.prod(shape)).reshape(shape=shape)
+        out_arr = mx.nd.slice(in_arr, begin=begin, end=end, step=step)
+
+    assertRaises(MXNetError, test_begin_equals_end, (4,), (2,), (2,), (1,))
+    assertRaises(MXNetError, test_begin_equals_end, (1, 5), (None, 3), (None, 3), (-1, 1))
+    assertRaises(MXNetError, test_begin_equals_end, (3, 4, 5), (1, 3, 1), (3, 3, 1), (1, -3, 2))
+    assertRaises(MXNetError, test_begin_equals_end, (2, 4), (None, 2), (None, 2), (1, -1))
+
     # check numeric gradient
     in_data = np.arange(36).reshape(2, 2, 3, 3)
     data = mx.sym.Variable('data')
     slice_sym = mx.sym.slice(data, begin=[0, None], end=[1, None], step=[2, -1])
     check_numeric_gradient(slice_sym, [in_data])
+
 
 def test_slice_partial_infer():
     def check_slice_partial_infer(data, begin, end, step, expected_out_shape):
@@ -6554,6 +6682,7 @@ def test_slice_partial_infer():
     var1 = mx.sym.var(name="data", shape=(10, 0))
     check_slice_axis_partial_infer(var1, 0, 0, 5, (5, 0))
     check_slice_axis_partial_infer(var1, 1, 0, 5, (10, 0))
+
 
 @with_seed()
 def test_float16_min_max():
@@ -7024,6 +7153,13 @@ def test_ravel():
       b = mx.sym.ravel_multi_index(a, shape=shape)
       check_symbolic_forward(b, location={'a': data}, expected=[ravel_npy])
       c = mx.sym.unravel_index(a, shape=shape)
+      check_symbolic_forward(c, location={'a': ravel_npy}, expected=[data])
+      # Test with leading dimension set to -1.
+      shape2 = shape
+      shape2 = (-1,)+shape[1:]
+      b = mx.sym.ravel_multi_index(a, shape=shape2)
+      check_symbolic_forward(b, location={'a': data}, expected=[ravel_npy])
+      c = mx.sym.unravel_index(a, shape=shape2)
       check_symbolic_forward(c, location={'a': ravel_npy}, expected=[data])
 
 def test_context_num_gpus():
