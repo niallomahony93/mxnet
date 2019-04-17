@@ -27,8 +27,16 @@
 namespace mxnet {
 namespace op {
 
+
+void LayerNormCompute(const nnvm::NodeAttrs& attrs,
+                      const OpContext& ctx, const std::vector<TBlob>& inputs,
+                      const std::vector<OpReqType>& req,
+                      const std::vector<TBlob>& outputs) {
+  return LayerNormComputeGeneral<cpu>(attrs, ctx, inputs, req, outputs);
+}
+
 NNVM_REGISTER_OP(LayerNorm)
-.set_attr<FCompute>("FCompute<gpu>", LayerNormCompute<gpu>);
+.set_attr<FCompute>("FCompute<gpu>", LayerNormCompute);
 
 NNVM_REGISTER_OP(_backward_LayerNorm)
 .set_attr<FCompute>("FCompute<gpu>", LayerNormGradCompute<gpu>);

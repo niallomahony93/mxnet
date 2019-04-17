@@ -65,10 +65,10 @@ struct LayerNormParam : public dmlc::Parameter<LayerNormParam> {
 
 
 template<typename xpu>
-void LayerNormCompute(const nnvm::NodeAttrs& attrs,
-                      const OpContext& ctx, const std::vector<TBlob>& inputs,
-                      const std::vector<OpReqType>& req,
-                      const std::vector<TBlob>& outputs) {
+void LayerNormComputeGeneral(const nnvm::NodeAttrs& attrs,
+                             const OpContext& ctx, const std::vector<TBlob>& inputs,
+                             const std::vector<OpReqType>& req,
+                             const std::vector<TBlob>& outputs) {
   using namespace mshadow;
   using namespace mshadow::expr;
   const LayerNormParam& param = nnvm::get<LayerNormParam>(attrs.parsed);
