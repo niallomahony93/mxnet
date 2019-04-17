@@ -32,7 +32,7 @@ void LayerNormCompute(const nnvm::NodeAttrs& attrs,
                       const OpContext& ctx, const std::vector<TBlob>& inputs,
                       const std::vector<OpReqType>& req,
                       const std::vector<TBlob>& outputs) {
-  return LayerNormComputeGeneral<cpu>(attrs, ctx, inputs, req, outputs);
+  return LayerNormComputeGeneral<gpu>(attrs, ctx, inputs, req, outputs);
 }
 
 NNVM_REGISTER_OP(LayerNorm)
