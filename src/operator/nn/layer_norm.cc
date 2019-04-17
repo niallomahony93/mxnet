@@ -65,10 +65,11 @@ static bool LayerNormShape(const nnvm::NodeAttrs& attrs,
 }
 
 
-void LayerNormCompute(const nnvm::NodeAttrs& attrs,
-                      const OpContext& ctx, const std::vector<TBlob>& inputs,
-                      const std::vector<OpReqType>& req,
-                      const std::vector<TBlob>& outputs) {
+template<>
+void LayerNormCompute<cpu>(const nnvm::NodeAttrs& attrs,
+                           const OpContext& ctx, const std::vector<TBlob>& inputs,
+                           const std::vector<OpReqType>& req,
+                           const std::vector<TBlob>& outputs) {
   return LayerNormComputeGeneral<cpu>(attrs, ctx, inputs, req, outputs);
 }
 
@@ -118,7 +119,7 @@ axis to be the last item in the input shape.
 })
 .set_attr<mxnet::FInferShape>("FInferShape", LayerNormShape)
 .set_attr<nnvm::FInferType>("FInferType", ElemwiseType<3, 3>)
-.set_attr<FCompute>("FCompute<cpu>", LayerNormCompute)
+.set_attr<FCompute>("FCompute<cpu>", LayerNormCompute<cpu>)
 .set_attr<nnvm::FGradient>("FGradient", [](const nnvm::NodePtr& n,
                                            const std::vector<nnvm::NodeEntry>& ograds) {
   std::vector<nnvm::NodeEntry> heads;
