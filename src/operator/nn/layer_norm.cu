@@ -100,13 +100,13 @@ template<typename DType>
 __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
                                                   const int nchannel,
                                                   const float eps,
-                                                  const DType* in_data,
-                                                  const DType* gamma,
-                                                  const DType* beta,
-                                                  DType* out_data,
-                                                  DType* mean_data,
-                                                  DType* std_data) {
-  int bid = blockIdx.y + blockIdx.x * gridDim.y;
+                                                  const DType* __restrict__ in_data,
+                                                  const DType* __restrict__ gamma,
+                                                  const DType* __restrict__ beta,
+                                                  DType* __restrict__ out_data,
+                                                  DType* __restrict__ mean_data,
+                                                  DType* __restrict__ std_data) {
+  int bid = blockIdx.x + blockIdx.y * gridDim.x;
   const int nthread = blockDim.x * blockDim.y;
   DType count = 0;
   DType mean = 0;
@@ -234,10 +234,8 @@ void LayerNormGPUContig(const LayerNormParam param,
   int nbatch = data_shape[0];
   int nchannel = data_shape[1];
   float eps = param.eps;
-//  int ngrid_x = (nbatch > kMaxGridDim) ? (nbatch + kBaseGridNum - 1) / kBaseGridNum : nbatch;
-//  int ngrid_y = (nbatch > kMaxGridDim) ? kBaseGridNum : 1;
-  int ngrid_x = (nbatch > kMaxGridDim) ? kBaseGridNum : 1;
-  int ngrid_y = (nbatch > kMaxGridDim) ? (nbatch + kBaseGridNum - 1) / kBaseGridNum : nbatch;
+  int ngrid_x = (nbatch > kMaxGridDim) ? (nbatch + kBaseGridNum - 1) / kBaseGridNum : nbatch;
+  int ngrid_y = (nbatch > kMaxGridDim) ? kBaseGridNum : 1;
   int nthread_y = 0;
   const dim3 dimGrid(ngrid_x, ngrid_y, 1);
   if(nchannel <= 32) {
