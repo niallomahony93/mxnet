@@ -244,6 +244,7 @@ void LayerNormGPUContig(const LayerNormParam param,
   std::cout << "nbatch = " << nbatch << ", nchannel = " << nchannel << ", eps = " << eps << std::endl;
   int ngrid_x = (nbatch > kMaxGridDim) ? (nbatch + kBaseGridNum - 1) / kBaseGridNum : nbatch;
   int ngrid_y = (nbatch > kMaxGridDim) ? kBaseGridNum : 1;
+  std::cout << "ngrid = " << ngrid_x << " " << ngrid_y << std::endl;
   int nthread_y = 0;
   const dim3 dimGrid(ngrid_x, ngrid_y, 1);
   if(nchannel <= 32) {
@@ -258,7 +259,7 @@ void LayerNormGPUContig(const LayerNormParam param,
   MSHADOW_REAL_TYPE_SWITCH(in_data.type_flag_, DType, {
     int nshared = nthread_y > 1 ? nthread_y * sizeof(DType) + (nthread_y / 2) * sizeof(DType) : 0;
     CheckLaunchParam(dimGrid, dimBlock);
-    LayerNormFusedForwardKernelContig<<<dimBlock, dimGrid, nshared, stream>>>
+    LayerNormFusedForwardKernelContig<<<dimGrid, dimBlock, nshared, stream>>>
      (nbatch, nchannel, eps,
       in_data.dptr<DType>(), gamma.dptr<DType>(), beta.dptr<DType>(),
       out_data.dptr<DType>(), mean_data.dptr<DType>(), std_data.dptr<DType>());
