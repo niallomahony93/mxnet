@@ -63,7 +63,7 @@ __device__ void welford_online_sum_step(const DType curr,
  *  TODO(sxjscience) Explore the possibility of int lhs_count and rhs_count
  */
 template<typename DType>
-__device__ __forceinline__ void chan_merge_partition(const DType lhs_mean,
+__device__ void chan_merge_partition(const DType lhs_mean,
                                      const DType lhs_sigma2,
                                      const DType lhs_count,
                                      DType& rhs_mean,
@@ -81,23 +81,6 @@ __device__ __forceinline__ void chan_merge_partition(const DType lhs_mean,
   } else {
     rhs_mean = DType(0);
     rhs_sigma2 = DType(0);
-  }
-}
-
-/* Use the Chan's Parallel Algorithm to merge all (mean, sigma2, counts) within a warp of threads.
- * After calling the function, threadIdx.x == 0 will store the result of the
- * aggregated (mean, sigma2, counts).
- *
- *
- */
-template<typename DType>
-__device__ __forceinline__ void warp_merge_mean_sigma2(DType mean, DType sigma2, DType count) {
-  for (int l = 0; l <= 4; ++l) {
-    int src_lane = (threadIdx.x + (1<<l)) & 31;
-    DType meanB = WARP_SHFL(mean, src_lane);
-    DType sigma2B = WARP_SHFL(sigma2, src_lane);
-    DType countB = WARP_SHFL(count, src_lane);
-    chan_merge_partition(meanB, sigma2B, countB, mean, sigma2, count);
   }
 }
 
@@ -153,7 +136,6 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
     // within a warp of threads.
     // After calling the function, threadIdx.x == 0 will store the result of
     // the aggregated (mean, sigma2, counts).
-    /*
     for (l = 0; l <= 4; ++l) {
       int src_lane = (threadIdx.x + (1<<l)) & 31;
       DType meanB = WARP_SHFL(mean, src_lane);
@@ -164,8 +146,6 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
       }
       chan_merge_partition(meanB, sigma2B, countB, mean, sigma2, count);
     }
-     */
-    warp_merge_mean_sigma2(mean, sigma2, count);
     if(bid == 0 and threadIdx.x == 0) {
       printf("threadIdx.y = %d, mean = %g, sigma2 = %g, count = %d\n", threadIdx.y, mean, sigma2, count);
     }
