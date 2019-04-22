@@ -91,7 +91,7 @@ __device__ void chan_merge_partition(const DType lhs_mean,
  *
  */
 template<typename DType>
-__device__ void warp_merge_mean_sigma2(DType& mean, DType& sigma2, DType& count) {
+__device__ void warp_merge_mean_sigma2(DType mean, DType sigma2, DType count) {
   for (int l = 0; l <= 4; ++l) {
     int src_lane = (threadIdx.x + (1<<l)) & 31;
     DType meanB = WARP_SHFL(mean, src_lane);
@@ -136,7 +136,7 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
   extern __shared__ char buf[];  // Shared memory size
 
   if (bid < nbatch) {
-    if(threadIdx.x == 0 and threadIdx.y == 0) printf('bid=%d\n', bid);
+    if(threadIdx.x == 0 and threadIdx.y == 0) printf("bid=%d\n", bid);
     int tid = threadIdx.x + threadIdx.y * blockDim.x;
     const DType* col_vals = in_data + bid * nchannel;
     // Each thread takes charge of 4 consecutive numbers
