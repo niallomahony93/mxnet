@@ -115,7 +115,6 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
   extern __shared__ char buf[];  // Shared memory size
 
   if (bid < nbatch) {
-    if(threadIdx.x == 0 and threadIdx.y == 0) printf("bid=%d, nbatch=%d\n", bid, nbatch);
     int tid = threadIdx.x + threadIdx.y * blockDim.x;
     const DType* col_vals = in_data + bid * nchannel;
     // Each thread takes charge of 4 consecutive numbers
@@ -141,13 +140,7 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
       DType meanB = WARP_SHFL(mean, src_lane);
       DType sigma2B = WARP_SHFL(sigma2, src_lane);
       DType countB = WARP_SHFL(count, src_lane);
-      if(blockIdx.x == 0 && blockIdx.y == 0 && threadIdx.x == 0 && threadIdx.y == 0) {
-        printf("l=%d, mean=%g, sigma2=%g, count=%g\n", l, mean, sigma2, count);
-      }
       chan_merge_partition(meanB, sigma2B, countB, mean, sigma2, count);
-    }
-    if(bid == 0 and threadIdx.x == 0) {
-      printf("threadIdx.y = %d, mean = %g, sigma2 = %g, count = %d\n", threadIdx.y, mean, sigma2, count);
     }
     if (blockDim.y == 1) {
       mean = WARP_SHFL(mean, 0);
@@ -182,7 +175,6 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
       mean = mean_buf[0];
       sigma2 = sigma2_buf[0] / nchannel;
     }
-    if(bid == 0 && threadIdx.x == 0 && threadIdx.y == 0) printf("mean=%g, var=%g\n", mean, sigma2);
     // Calculate the out_data: gamma * (x - mean) / sqrt(var + eps) + beta
     DType std_eps = sqrt(sigma2 + static_cast<DType>(eps));
     DType invstd_eps = static_cast<DType>(1) / std_eps;
@@ -241,10 +233,8 @@ void LayerNormGPUContig(const LayerNormParam param,
   int nbatch = data_shape[0];
   int nchannel = data_shape[1];
   float eps = param.eps;
-  std::cout << "nbatch = " << nbatch << ", nchannel = " << nchannel << ", eps = " << eps << std::endl;
   int ngrid_x = (nbatch > kMaxGridDim) ? (nbatch + kBaseGridNum - 1) / kBaseGridNum : nbatch;
   int ngrid_y = (nbatch > kMaxGridDim) ? kBaseGridNum : 1;
-  std::cout << "ngrid = " << ngrid_x << " " << ngrid_y << std::endl;
   int nthread_y = 0;
   const dim3 dimGrid(ngrid_x, ngrid_y, 1);
   if(nchannel <= 32) {
