@@ -151,7 +151,7 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
     // threadIdx.x == 0 will store the reduction result.
     warp_merge_mean_sigma2(mean, sigma2, count);
     if(bid == 0 and threadIdx.x == 0) {
-      printf("threadIdx.y = %d, mean = %g, sigma2 = %g, count = %d\n", mean, sigma2, count);
+      printf("threadIdx.y = %d, mean = %g, sigma2 = %g, count = %d\n", threadIdx.y, mean, sigma2, count);
     }
     if (blockDim.y == 1) {
       mean = WARP_SHFL(mean, 0);
