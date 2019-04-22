@@ -187,23 +187,22 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
     // Calculate the out_data: gamma * (x - mean) / sqrt(var + eps) + beta
     DType std_eps = sqrt(sigma2 + eps);
     DType invstd_eps = static_cast<DType>(1) / std_eps;
+    DType* out_col_val = out_data + bid * nchannel;
     if (gamma != NULL && beta != NULL) {
       for (int i = tid; i < nchannel; i += nthread) {
-        out_data[bid * nchannel + i] =
-          gamma[i] * invstd_eps * (in_data[bid * nchannel + i] - mean) + beta[i];
+        out_col_val[i] = gamma[i] * invstd_eps * (col_vals[i] - mean) + beta[i];
       }
     } else if (gamma == NULL && beta != NULL) {
       for (int i = tid; i < nchannel; i += nthread) {
-        out_data[bid * nchannel + i] = invstd_eps * (in_data[bid * nchannel + i] - mean) + beta[i];
+        out_col_val[i] = invstd_eps * (col_vals[i] - mean) + beta[i];
       }
     } else if (gamma != NULL && beta == NULL) {
       for (int i = tid; i < nchannel; i += nthread) {
-        out_data[bid * nchannel + i] =
-          gamma[i] * invstd_eps * (in_data[bid * nchannel + i] - mean);
+        out_col_val[i] = gamma[i] * invstd_eps * (col_vals[i] - mean);
       }
     } else {
       for (int i = tid; i < nchannel; i += nthread) {
-        out_data[bid * nchannel + i] = invstd_eps * (in_data[bid * nchannel + i] - mean);
+        out_col_val[i] = invstd_eps * (col_vals[i] - mean);
       }
     }
     // Write the out_data and var_data
@@ -243,6 +242,7 @@ void LayerNormGPUContig(const LayerNormParam param,
   int nbatch = data_shape[0];
   int nchannel = data_shape[1];
   float eps = param.eps;
+  std::cout << "nbatch = " << nbatch << ", nchannel = " << nchannel << ", eps = " << eps << std::endl;
   int ngrid_x = (nbatch > kMaxGridDim) ? (nbatch + kBaseGridNum - 1) / kBaseGridNum : nbatch;
   int ngrid_y = (nbatch > kMaxGridDim) ? kBaseGridNum : 1;
   int nthread_y = 0;
