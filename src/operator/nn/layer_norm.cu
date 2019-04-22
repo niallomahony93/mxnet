@@ -178,7 +178,6 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
       if (threadIdx.x == 0 && threadIdx.y == 0) {
         mean_buf[0] = mean;
         sigma2_buf[0] = sigma2;
-        count_buf[0] = count;
       }
       __syncthreads();
       mean = mean_buf[0];
@@ -186,7 +185,7 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
     }
     if(bid == 0 && threadIdx.x == 0 && threadIdx.y == 0) printf("mean=%g, var=%g\n", mean, sigma2);
     // Calculate the out_data: gamma * (x - mean) / sqrt(var + eps) + beta
-    DType std_eps = sqrt(sigma2 + eps);
+    DType std_eps = sqrt(sigma2 + static_cast<DType>(eps));
     DType invstd_eps = static_cast<DType>(1) / std_eps;
     DType* out_col_val = out_data + bid * nchannel;
     if (gamma != NULL && beta != NULL) {
