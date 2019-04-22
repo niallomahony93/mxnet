@@ -130,7 +130,6 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
   DType mean = 0;
   DType sigma2 = 0;
   const int N_ACCUM = 4;  // TODO(sxjscience) Profile
-  const int TY = blockDim.y;
   extern __shared__ char buf[];  // Shared memory size
 
   if (bid < nbatch) {
