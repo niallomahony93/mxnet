@@ -41,17 +41,17 @@ __device__ __forceinline__ DType WARP_SHFL(DType value, int src_lane,
 }
 
 template<typename DType>
-DType rsqrt(DType v) {
+__device__ __forceinline__ DType rsqrt(DType v) {
   return DType(1) / sqrt(v);
 }
 
 template<>
-float rsqrt(float v) {
+__device__ __forceinline__ float rsqrt(float v) {
   return rsqrtf(v);
 }
 
 template<>
-double rsqrt(double v) {
+__device__ __forceinline__ double rsqrt(double v) {
   return rsqrt(v);
 }
 
