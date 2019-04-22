@@ -157,6 +157,9 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
     } else {
       // Inter-warp reduction. Copy the upper-half of the warps to shared memory
       // and merge with the lower-half warp
+      DType* mean_buf = reinterpret_cast<DType*>(buf);
+      DType* std_buf = reinterpret_cast<DType*>(buf + sizeof(DType) * blockDim.y / 2);
+      DType* count_buf = reinterpret_cast<DType*>(buf + sizeof(DType) * blockDim.y);
       for (int offset = blockDim.y / 2; offset > 0; offset /= 2) {
         if (threadIdx.x == 0 && threadIdx.y >= offset && threadIdx.y < 2 * offset) {
           const int idx = threadIdx.y - offset;
