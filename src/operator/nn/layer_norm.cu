@@ -115,7 +115,7 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
   extern __shared__ char buf[];  // Shared memory size
 
   if (bid < nbatch) {
-    if(threadIdx.x == 0 and threadIdx.y == 0) printf("bid=%d\n", bid);
+    if(threadIdx.x == 0 and threadIdx.y == 0) printf("bid=%d, nbatch=%d\n", bid, nbatch);
     int tid = threadIdx.x + threadIdx.y * blockDim.x;
     const DType* col_vals = in_data + bid * nchannel;
     // Each thread takes charge of 4 consecutive numbers
@@ -136,7 +136,7 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
     // within a warp of threads.
     // After calling the function, threadIdx.x == 0 will store the result of
     // the aggregated (mean, sigma2, counts).
-    for (int l = 0; l <= 4; ++l) {
+    for (l = 0; l <= 4; ++l) {
       int src_lane = (threadIdx.x + (1<<l)) & 31;
       DType meanB = WARP_SHFL(mean, src_lane);
       DType sigma2B = WARP_SHFL(sigma2, src_lane);
