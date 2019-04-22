@@ -136,6 +136,7 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
   extern __shared__ char buf[];  // Shared memory size
 
   if (bid < nbatch) {
+    if(threadIdx.x == 0 and threadIdx.y == 0) printf('bid=%d\n', bid);
     int tid = threadIdx.x + threadIdx.y * blockDim.x;
     const DType* col_vals = in_data + bid * nchannel;
     // Each thread takes charge of 4 consecutive numbers
