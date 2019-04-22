@@ -91,7 +91,7 @@ __device__ void chan_merge_partition(const DType lhs_mean,
  *
  */
 template<typename DType>
-__device__ void warp_merge_mean_sigma2(DType mean, DType sigma2, DType count) {
+__device__ void warp_merge_mean_sigma2(DType& mean, DType& sigma2, DType& count) {
   for (int l = 0; l <= 4; ++l) {
     int src_lane = (threadIdx.x + (1<<l)) & 31;
     DType meanB = WARP_SHFL(mean, src_lane);
