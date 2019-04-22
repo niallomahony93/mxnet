@@ -207,7 +207,7 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
     }
     // Write the out_data and var_data
     if(threadIdx.x == 0 && threadIdx.y == 0) {
-      out_data[bid] = mean;
+      mean_data[bid] = mean;
       std_data[bid] = std_eps;
     }
   }
