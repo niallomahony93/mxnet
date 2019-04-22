@@ -97,6 +97,9 @@ __device__ void warp_merge_mean_sigma2(DType mean, DType sigma2, DType count) {
     DType meanB = WARP_SHFL(mean, src_lane);
     DType sigma2B = WARP_SHFL(sigma2, src_lane);
     DType countB = WARP_SHFL(count, src_lane);
+    if(blockIdx.x == 0 && blockIdx.y == 0 && threadIdx.x == 0 && threadIdx.y == 0) {
+      printf("l=%d, mean=%g, sigma2=%g, count=%g\n", l, mean, sigma2, count);
+    }
     chan_merge_partition(meanB, sigma2B, countB, mean, sigma2, count);
   }
 }
