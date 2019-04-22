@@ -258,7 +258,9 @@ void LayerNormGPUContig(const LayerNormParam param,
     cudaStream_t stream = Stream<gpu>::GetStream(ctx.get_stream<gpu>());
     CheckLaunchParam(dimGrid, dimBlock);
     LayerNormFusedForwardKernelContig<<<dimBlock, dimGrid, nshared, stream>>>
-    (nbatch, nchannel, eps, in_data.dptr_, gamma.dptr_, beta.dptr_, out_data.dptr_, std_data.dptr_);
+     (nbatch, nchannel, eps,
+      in_data.dptr<DType>(), gamma.dptr<DType>(), beta.dptr<DType>(),
+      out_data.dptr<DType>(), std_data.dptr<DType>());
     MSHADOW_CUDA_POST_KERNEL_CHECK(LayerNormFusedForwardKernelContig);
   });
 }
