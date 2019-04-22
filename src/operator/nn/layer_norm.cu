@@ -45,7 +45,7 @@ __device__ __forceinline__ DType WARP_SHFL(DType value, int src_lane,
  *
  */
 template<typename DType>
-__device__ welford_online_sum_step(const DType curr,
+__device__ void welford_online_sum_step(const DType curr,
                                    DType& mean,
                                    DType& sigma2,
                                    DType& count) {
@@ -91,7 +91,7 @@ __device__ void chan_merge_partition(const DType lhs_mean,
  *
  */
 template<typename DType>
-__device__ warp_merge_mean_sigma2(DType mean, DType sigma2, DType count) {
+__device__ void warp_merge_mean_sigma2(DType mean, DType sigma2, DType count) {
   for (int l = 0; l <= 4; ++l) {
     int src_lane = (threadIdx.x + (1<<l)) & 31;
     DType meanB = WARP_SHFL(mean, src_lane);
@@ -216,6 +216,7 @@ void LayerNormGPUContig(const LayerNormParam param,
                         const OpContext& ctx, const std::vector<TBlob>& inputs,
                         const std::vector<OpReqType>& req,
                         const std::vector<TBlob>& outputs) {
+  using namespace mshadow;
   CHECK_EQ(inputs.size(), 3U);
   mxnet::TShape data_shape(2);
   mxnet::TShape mean_shape(1);
@@ -252,12 +253,14 @@ void LayerNormGPUContig(const LayerNormParam param,
     nthread_y = 4;
   }
   const dim3 dimBlock(32, nthread_y, 1);
-  int nshared = nthread_y > 1 ? nthread_y * sizeof(DType) + (nthread_y / 2) * sizeof(DType) : 0;
-  cudaStream_t stream = Stream<gpu>::GetStream(ctx.get_stream<gpu>());
-  CheckLaunchParam(dimGrid, dimBlock);
-  LayerNormFusedForwardKernelContig<<<dimBlock, dimGrid, nshared, stream>>>
+  MSHADOW_REAL_TYPE_SWITCH(in_data.type_flag_, DType, {
+    int nshared = nthread_y > 1 ? nthread_y * sizeof(DType) + (nthread_y / 2) * sizeof(DType) : 0;
+    cudaStream_t stream = Stream<gpu>::GetStream(ctx.get_stream<gpu>());
+    CheckLaunchParam(dimGrid, dimBlock);
+    LayerNormFusedForwardKernelContig<<<dimBlock, dimGrid, nshared, stream>>>
     (nbatch, nchannel, eps, in_data.dptr_, gamma.dptr_, beta.dptr_, out_data.dptr_, std_data.dptr_);
-  MSHADOW_CUDA_POST_KERNEL_CHECK(LayerNormFusedForwardKernelContig);
+    MSHADOW_CUDA_POST_KERNEL_CHECK(LayerNormFusedForwardKernelContig);
+  });
 }
 
 template<>
