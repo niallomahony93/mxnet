@@ -106,7 +106,7 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
                                                   DType* out_data,
                                                   DType* mean_data,
                                                   DType* std_data) {
-  int bid = blockIdx.x + blockIdx.y * gridDim.x;
+  int bid = blockIdx.y + blockIdx.x * gridDim.y;
   const int nthread = blockDim.x * blockDim.y;
   DType count = 0;
   DType mean = 0;
@@ -179,7 +179,7 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
     DType std_eps = sqrt(sigma2 + static_cast<DType>(eps));
     DType invstd_eps = static_cast<DType>(1) / std_eps;
     DType* out_col_val = out_data + bid * nchannel;
-    /*
+
     if (gamma != NULL && beta != NULL) {
       for (int i = tid; i < nchannel; i += nthread) {
         out_col_val[i] = gamma[i] * invstd_eps * (col_vals[i] - mean) + beta[i];
@@ -196,9 +196,6 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
       for (int i = tid; i < nchannel; i += nthread) {
         out_col_val[i] = invstd_eps * (col_vals[i] - mean);
       }
-    }*/
-    for (int i = tid; i < nchannel; i += nthread) {
-      out_col_val[i] = gamma[i] * invstd_eps * (col_vals[i] - mean) + beta[i];
     }
     // Write the out_data and var_data
     if(threadIdx.x == 0 && threadIdx.y == 0) {
@@ -237,8 +234,10 @@ void LayerNormGPUContig(const LayerNormParam param,
   int nbatch = data_shape[0];
   int nchannel = data_shape[1];
   float eps = param.eps;
-  int ngrid_x = (nbatch > kMaxGridDim) ? (nbatch + kBaseGridNum - 1) / kBaseGridNum : nbatch;
-  int ngrid_y = (nbatch > kMaxGridDim) ? kBaseGridNum : 1;
+//  int ngrid_x = (nbatch > kMaxGridDim) ? (nbatch + kBaseGridNum - 1) / kBaseGridNum : nbatch;
+//  int ngrid_y = (nbatch > kMaxGridDim) ? kBaseGridNum : 1;
+  int ngrid_x = (nbatch > kMaxGridDim) ? kBaseGridNum : 1;
+  int ngrid_y = (nbatch > kMaxGridDim) ? (nbatch + kBaseGridNum - 1) / kBaseGridNum : nbatch;
   int nthread_y = 0;
   const dim3 dimGrid(ngrid_x, ngrid_y, 1);
   if(nchannel <= 32) {
