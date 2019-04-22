@@ -84,27 +84,6 @@ __device__ void chan_merge_partition(const DType lhs_mean,
   }
 }
 
-/* Use the Chan's Parallel Algorithm to merge all (mean, sigma2, counts) within a warp of threads.
- * After calling the function, threadIdx.x == 0 will store the result of the
- * aggregated (mean, sigma2, counts).
- *
- *
- */
-template<typename DType>
-__device__ void warp_merge_mean_sigma2(DType mean, DType sigma2, DType count) {
-  for (int l = 0; l <= 4; ++l) {
-    int src_lane = (threadIdx.x + (1<<l)) & 31;
-    DType meanB = WARP_SHFL(mean, src_lane);
-    DType sigma2B = WARP_SHFL(sigma2, src_lane);
-    DType countB = WARP_SHFL(count, src_lane);
-    if(blockIdx.x == 0 && blockIdx.y == 0 && threadIdx.x == 0 && threadIdx.y == 0) {
-      printf("l=%d, mean=%g, sigma2=%g, count=%g\n", l, mean, sigma2, count);
-    }
-    chan_merge_partition(meanB, sigma2B, countB, mean, sigma2, count);
-  }
-}
-
-
 /* Fused CUDA kernel for layer normalization. It computes the LayerNorm when axis=-1.
  * Shape of the input tensors:
  *      in_data = (nbatch, nchannel)
@@ -151,9 +130,22 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
     for(; l < nchannel; ++l) {
       welford_online_sum_step(col_vals[l], mean, sigma2, count);
     }
+
     // Merge the mean/sigma2 within a warp
-    // threadIdx.x == 0 will store the reduction result.
-    warp_merge_mean_sigma2(mean, sigma2, count);
+    // Use the Chan's Parallel Algorithm to merge all (mean, sigma2, counts)
+    // within a warp of threads.
+    // After calling the function, threadIdx.x == 0 will store the result of
+    // the aggregated (mean, sigma2, counts).
+    for (int l = 0; l <= 4; ++l) {
+      int src_lane = (threadIdx.x + (1<<l)) & 31;
+      DType meanB = WARP_SHFL(mean, src_lane);
+      DType sigma2B = WARP_SHFL(sigma2, src_lane);
+      DType countB = WARP_SHFL(count, src_lane);
+      if(blockIdx.x == 0 && blockIdx.y == 0 && threadIdx.x == 0 && threadIdx.y == 0) {
+        printf("l=%d, mean=%g, sigma2=%g, count=%g\n", l, mean, sigma2, count);
+      }
+      chan_merge_partition(meanB, sigma2B, countB, mean, sigma2, count);
+    }
     if(bid == 0 and threadIdx.x == 0) {
       printf("threadIdx.y = %d, mean = %g, sigma2 = %g, count = %d\n", threadIdx.y, mean, sigma2, count);
     }
