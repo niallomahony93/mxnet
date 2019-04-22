@@ -158,7 +158,7 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
       // Inter-warp reduction. Copy the upper-half of the warps to shared memory
       // and merge with the lower-half warp
       DType* mean_buf = reinterpret_cast<DType*>(buf);
-      DType* std_buf = reinterpret_cast<DType*>(buf + sizeof(DType) * blockDim.y / 2);
+      DType* sigma2_buf = reinterpret_cast<DType*>(buf + sizeof(DType) * blockDim.y / 2);
       DType* count_buf = reinterpret_cast<DType*>(buf + sizeof(DType) * blockDim.y);
       for (int offset = blockDim.y / 2; offset > 0; offset /= 2) {
         if (threadIdx.x == 0 && threadIdx.y >= offset && threadIdx.y < 2 * offset) {
@@ -191,7 +191,7 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
     if (gamma != NULL && beta != NULL) {
       for (int i = tid; i < nchannel; i += nthread) {
         out_data[bid * nchannel + i] =
-          gamma[i] * invstd_eps * (in_data[bid * nchannel + i] - mean)) + beta[i];
+          gamma[i] * invstd_eps * (in_data[bid * nchannel + i] - mean) + beta[i];
       }
     } else if (gamma == NULL && beta != NULL) {
       for (int i = tid; i < nchannel; i += nthread) {
@@ -200,7 +200,7 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
     } else if (gamma != NULL && beta == NULL) {
       for (int i = tid; i < nchannel; i += nthread) {
         out_data[bid * nchannel + i] =
-          gamma[i] * invstd_eps * (in_data[bid * nchannel + i] - mean));
+          gamma[i] * invstd_eps * (in_data[bid * nchannel + i] - mean);
       }
     } else {
       for (int i = tid; i < nchannel; i += nthread) {
