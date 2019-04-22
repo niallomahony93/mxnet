@@ -257,10 +257,10 @@ void LayerNormGPUContig(const LayerNormParam param,
   } else {
     nthread_y = 4;
   }
+  cudaStream_t stream = Stream<gpu>::GetStream(ctx.get_stream<gpu>());
   const dim3 dimBlock(32, nthread_y, 1);
   MSHADOW_REAL_TYPE_SWITCH(in_data.type_flag_, DType, {
     int nshared = nthread_y > 1 ? nthread_y * sizeof(DType) + (nthread_y / 2) * sizeof(DType) : 0;
-    cudaStream_t stream = Stream<gpu>::GetStream(ctx.get_stream<gpu>());
     CheckLaunchParam(dimGrid, dimBlock);
     LayerNormFusedForwardKernelContig<<<dimBlock, dimGrid, nshared, stream>>>
      (nbatch, nchannel, eps,
