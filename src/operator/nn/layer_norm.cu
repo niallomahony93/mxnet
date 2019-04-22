@@ -40,6 +40,22 @@ __device__ __forceinline__ DType WARP_SHFL(DType value, int src_lane,
 #endif
 }
 
+template<typename DType>
+DType rsqrt(DType v) {
+  return DType(1) / sqrt(v);
+}
+
+template<>
+float rsqrt(float v) {
+  return rsqrtf(v);
+}
+
+template<>
+double rsqrt(double v) {
+  return rsqrt(v);
+}
+
+
 /* A single updating step of the Welford's online algorithm to calculate the mean and variance.
  * The value 'curr' will be accumulated to the (mean, sigma2, count) triplet.
  *
@@ -176,8 +192,8 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
       sigma2 = sigma2_buf[0] / nchannel;
     }
     // Calculate the out_data: gamma * (x - mean) / sqrt(var + eps) + beta
-    DType std_eps = sqrt(sigma2 + static_cast<DType>(eps));
-    DType invstd_eps = static_cast<DType>(1) / std_eps;
+    // DType std_eps = sqrt(sigma2 + eps);
+    DType invstd_eps = rsqrt(sigma2 + eps);
     DType* out_col_val = out_data + bid * nchannel;
 
     if (gamma != NULL && beta != NULL) {
@@ -200,7 +216,7 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
     // Write the out_data and var_data
     if(threadIdx.x == 0 && threadIdx.y == 0) {
       mean_data[bid] = mean;
-      std_data[bid] = std_eps;
+      std_data[bid] = invstd_eps;
     }
   }
 }
