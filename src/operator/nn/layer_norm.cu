@@ -85,7 +85,7 @@ __device__ void chan_merge_partition(const DType lhs_mean,
                                      DType& rhs_mean,
                                      DType& rhs_sigma2,
                                      DType& rhs_count) {
-  DType delta = lhs_mean - rhs_mean;
+  DType delta = rhs_mean - lhs_mean;
   DType nA = lhs_count;
   DType nB = rhs_count;
   rhs_count = nA + nB;
