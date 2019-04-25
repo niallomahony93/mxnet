@@ -141,7 +141,6 @@ __device__ __forceinline__ void _block_welford_online_sum(const int tid,
   // 2) Use float4 to load the middle part of the input columns.
   //  alignment (float), middle (divisible by 4, float4), rest elements (float)
   int middle_length = (nchannel - alignment_shift) > 0 ? (nchannel - alignment_shift) >> 2 : 0;
-  int l = 4 * tid + alignment_shift;
   for (int i = tid; i < middle_length; i += nthread) {
     float4 vec_vals = col_vals_float4[i];
     welford_online_sum_step(vec_vals.x, mean, sigma2, count);
