@@ -131,14 +131,19 @@ __device__ __forceinline__ void _block_welford_online_sum(const int tid,
   // Calculate the shift which makes sure that the `col_vals + shift` is aligned to float4
   //  float (4 bytes) --> float4 (16 bytes)
   // The address of the pointer is `addr = static_cast<size_t>(col_vals)`
-  // The shift is (4 - addr >> 2) & 3
-  int alignment_shift = (4 - reinterpret_cast<std::size_t>(col_vals) >> 2) & 3;
+  // The shift is (4 - (addr >> 2) & 3) & 3
+  size_t addr = reinterpret_cast<std::size_t>(col_vals);
+  int alignment_shift = (4 - (addr >> 2) & 3) & 3;
   // 1) process the starting elements to make sure that the pointer is aligned to float4
   if(tid < alignment_shift && tid < nchannel) {
     welford_online_sum_step(col_vals[tid], mean, sigma2, count);
   }
   // 2) Use float4 to load the middle part of the input columns.
   //  alignment (float), middle (divisible by 4, float4), rest elements (float)
+  if(threadIdx.x == 0 && threadIdx.y == 0 && blockIdx.x == 0) {
+    printf("aligned_addr = %p, aligned_addr % 16 = %d, alignment_shift = %d, addr = %p, addr % 16 = %d\n",
+      col_vals, (addr + alignment_shift) % 16, alignment_shift, addr, addr % 16);
+  }
   const float4* col_vals_float4 = reinterpret_cast<const float4*>(col_vals + alignment_shift);
   int mid_length = (nchannel > alignment_shift) ? (nchannel - alignment_shift) >> 2 : 0;
   for (int i = tid; i < mid_length; i += nthread) {
