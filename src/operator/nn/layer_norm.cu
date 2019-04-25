@@ -61,10 +61,10 @@ __device__ __forceinline__ double rsqrt(double v) {
  *
  */
 template<typename DType>
-__device__ void welford_online_sum_step(const DType curr,
-                                   DType& mean,
-                                   DType& sigma2,
-                                   DType& count) {
+__device__ __forceinline__ void welford_online_sum_step(const DType curr,
+                                                        DType& mean,
+                                                        DType& sigma2,
+                                                        DType& count) {
   count += DType(1);
   DType delta = curr - mean;
   mean += delta / count;
@@ -79,12 +79,12 @@ __device__ void welford_online_sum_step(const DType curr,
  *  TODO(sxjscience) Explore the possibility of int lhs_count and rhs_count
  */
 template<typename DType>
-__device__ void chan_merge_partition(const DType lhs_mean,
-                                     const DType lhs_sigma2,
-                                     const DType lhs_count,
-                                     DType& rhs_mean,
-                                     DType& rhs_sigma2,
-                                     DType& rhs_count) {
+__device__ __inline__ void chan_merge_partition(const DType lhs_mean,
+                                                const DType lhs_sigma2,
+                                                const DType lhs_count,
+                                                DType& rhs_mean,
+                                                DType& rhs_sigma2,
+                                                DType& rhs_count) {
   DType delta = rhs_mean - lhs_mean;
   DType nA = lhs_count;
   DType nB = rhs_count;
@@ -115,7 +115,7 @@ __device__ void chan_merge_partition(const DType lhs_mean,
 template<typename DType>
 __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
                                                   const int nchannel,
-                                                  const float eps,
+                                                  const DType eps,
                                                   const DType* __restrict__ in_data,
                                                   const DType* __restrict__ gamma,
                                                   const DType* __restrict__ beta,
@@ -192,8 +192,8 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
       sigma2 = sigma2_buf[0] / nchannel;
     }
     // Calculate the out_data: gamma * (x - mean) / sqrt(var + eps) + beta
-    // DType std_eps = sqrt(sigma2 + eps);
-    DType invstd_eps = rsqrt(sigma2 + eps);
+    DType std_eps = sqrt(sigma2 + eps);
+    DType invstd_eps = DType(1.0) / std_eps;
     DType* out_col_val = out_data + bid * nchannel;
 
     if (gamma != NULL && beta != NULL) {
@@ -216,7 +216,7 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
     // Write the out_data and var_data
     if(threadIdx.x == 0 && threadIdx.y == 0) {
       mean_data[bid] = mean;
-      std_data[bid] = invstd_eps;
+      std_data[bid] = std_eps;
     }
   }
 }
@@ -267,7 +267,7 @@ void LayerNormGPUContig(const LayerNormParam param,
     int nshared = nthread_y > 1 ? nthread_y * sizeof(DType) + (nthread_y / 2) * sizeof(DType) : 0;
     CheckLaunchParam(dimGrid, dimBlock);
     LayerNormFusedForwardKernelContig<<<dimGrid, dimBlock, nshared, stream>>>
-     (nbatch, nchannel, eps,
+     (nbatch, nchannel, static_cast<DType>(eps),
       in_data.dptr<DType>(), gamma.dptr<DType>(), beta.dptr<DType>(),
       out_data.dptr<DType>(), mean_data.dptr<DType>(), std_data.dptr<DType>());
     MSHADOW_CUDA_POST_KERNEL_CHECK(LayerNormFusedForwardKernelContig);
