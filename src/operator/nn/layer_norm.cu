@@ -105,6 +105,7 @@ template<typename DType>
 __device__ __forceinline__ void _block_welford_online_sum(const int tid,
                                                           const int nthread,
                                                           const DType* __restrict__ col_vals,
+                                                          const int nchannel,
                                                           DType& mean,
                                                           DType& sigma2,
                                                           DType& count) {
@@ -123,6 +124,7 @@ template<>
 __device__ __forceinline__ void _block_welford_online_sum(const int tid,
                                                           const int nthread,
                                                           const float* __restrict__ col_vals,
+                                                          const int nchannel,
                                                           float& mean,
                                                           float& sigma2,
                                                           float& count) {
@@ -176,7 +178,7 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
     const DType* col_vals = in_data + bid * nchannel;
     // Each thread takes charge of 4 consecutive numbers
     // To minimize branch divergence, we split the for-loop into two parts.
-    _block_welford_online_sum(tid, nthread, col_vals, mean, sigma2, count);
+    _block_welford_online_sum(tid, nthread, col_vals, nchannel, mean, sigma2, count);
 
     // Merge the mean/sigma2 within a warp
     // Use the Chan's Parallel Algorithm to merge all (mean, sigma2, counts)
