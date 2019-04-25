@@ -141,7 +141,7 @@ __device__ __forceinline__ void _block_welford_online_sum(const int tid,
   // 2) Use float4 to load the middle part of the input columns.
   //  alignment (float), middle (divisible by 4, float4), rest elements (float)
   if(threadIdx.x == 0 && threadIdx.y == 0 && blockIdx.x == 0) {
-    printf("sizeof(float4)=%d, aligned_addr = %p, aligned_addr mod 16 = %d, alignment_shift = %d, addr = %p, addr mod 16 = %d\n",
+    printf("sizeof(float4)=%d, aligned_addr = %p, aligned_addr mod 16 = %z, alignment_shift = %d, addr = %p, addr mod 16 = %z\n",
       sizeof(float4), col_vals + alignment_shift, (addr + alignment_shift) % 16, alignment_shift, col_vals, addr % 16);
   }
   const float4* col_vals_float4 = reinterpret_cast<const float4*>(col_vals + alignment_shift);
