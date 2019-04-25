@@ -185,7 +185,7 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
     // within a warp of threads.
     // After calling the function, threadIdx.x == 0 will store the result of
     // the aggregated (mean, sigma2, counts).
-    for (l = 0; l <= 4; ++l) {
+    for (int l = 0; l <= 4; ++l) {
       int src_lane = (threadIdx.x + (1<<l)) & 31;
       DType meanB = WARP_SHFL(mean, src_lane);
       DType sigma2B = WARP_SHFL(sigma2, src_lane);
