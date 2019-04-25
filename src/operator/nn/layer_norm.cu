@@ -120,6 +120,7 @@ __device__ __forceinline__ void _block_welford_online_sum(const int tid,
   }
 }
 
+/*
 template<>
 __device__ __forceinline__ void _block_welford_online_sum(const int tid,
                                                           const int nthread,
@@ -140,10 +141,6 @@ __device__ __forceinline__ void _block_welford_online_sum(const int tid,
   }
   // 2) Use float4 to load the middle part of the input columns.
   //  alignment (float), middle (divisible by 4, float4), rest elements (float)
-  /*if(threadIdx.x == 0 && threadIdx.y == 0 && blockIdx.x == 0) {
-    printf("sizeof(float4)=%d, aligned_addr = %p, aligned_addr mod 16 = %zd, alignment_shift = %d, addr = %p, addr mod 16 = %zd\n",
-      sizeof(float4), col_vals + alignment_shift, (addr + alignment_shift) % 16, alignment_shift, col_vals, addr % 16);
-  }*/
   const float4* col_vals_float4 = reinterpret_cast<const float4*>(col_vals + alignment_shift);
   int mid_length = (nchannel > alignment_shift) ? (nchannel - alignment_shift) >> 2 : 0;
   for (int i = tid; i < mid_length; i += nthread) {
@@ -158,7 +155,7 @@ __device__ __forceinline__ void _block_welford_online_sum(const int tid,
     welford_online_sum_step(col_vals[i], mean, sigma2, count);
   }
 }
-
+*/
 
 /* Fused CUDA kernel for layer normalization. It computes the LayerNorm when axis=-1.
  * Shape of the input tensors:
