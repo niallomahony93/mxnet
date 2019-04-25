@@ -133,15 +133,15 @@ __device__ __forceinline__ void _block_welford_online_sum(const int tid,
   // The address of the pointer is `addr = static_cast<size_t>(col_vals)`
   // The shift is (4 - addr >> 2) & 3
   int alignment_shift = (4 - static_cast<size_t>(col_vals) >> 2) & 3;
-  const float4* col_vals_float4 = reinterpret_cast<const float4*>(col_vals + alignment_shift);
   // 1) process the starting elements to make sure that the pointer is aligned to float4
   if(tid < alignment_shift && tid < nchannel) {
     welford_online_sum_step(col_vals[tid], mean, sigma2, count);
   }
   // 2) Use float4 to load the middle part of the input columns.
   //  alignment (float), middle (divisible by 4, float4), rest elements (float)
-  int middle_length = (nchannel - alignment_shift) > 0 ? (nchannel - alignment_shift) >> 2 : 0;
-  for (int i = tid; i < middle_length; i += nthread) {
+  const float4* col_vals_float4 = reinterpret_cast<const float4*>(col_vals + alignment_shift);
+  int mid_length = (nchannel > alignment_shift) ? (nchannel - alignment_shift) >> 2 : 0;
+  for (int i = tid; i < mid_length; i += nthread) {
     float4 vec_vals = col_vals_float4[i];
     welford_online_sum_step(vec_vals.x, mean, sigma2, count);
     welford_online_sum_step(vec_vals.y, mean, sigma2, count);
@@ -149,7 +149,7 @@ __device__ __forceinline__ void _block_welford_online_sum(const int tid,
     welford_online_sum_step(vec_vals.w, mean, sigma2, count);
   }
   // 3) Handling the rest values
-  for(int i = 4 * middle_length + tid; i < nchannel; i += nthread) {
+  for(int i = alignment_shit + 4 * mid_length + tid; i < nchannel; i += nthread) {
     welford_online_sum_step(col_vals[i], mean, sigma2, count);
   }
 }
