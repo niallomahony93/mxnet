@@ -102,12 +102,12 @@ __device__ __inline__ void chan_merge_partition(const DType lhs_mean,
 
 
 template<typename DType>
-__device__ __forceinline__ _block_welford_online_sum(const int tid,
-                                                     const int nthread,
-                                                     const DType* __restrict__ col_vals,
-                                                     DType& mean,
-                                                     DType& sigma2,
-                                                     DType& count) {
+__device__ __forceinline__ void _block_welford_online_sum(const int tid,
+                                                          const int nthread,
+                                                          const DType* __restrict__ col_vals,
+                                                          DType& mean,
+                                                          DType& sigma2,
+                                                          DType& count) {
   int l = 4 * tid;
   for (; l + 3 < nchannel; l += 4 * nthread) {
     for (int i = 0; i < 4; ++i) {
@@ -120,12 +120,12 @@ __device__ __forceinline__ _block_welford_online_sum(const int tid,
 }
 
 template<>
-__device__ __forceinline__ _block_welford_online_sum(const int tid,
-                                                     const int nthread,
-                                                     const float* __restrict__ col_vals,
-                                                     float& mean,
-                                                     float& sigma2,
-                                                     float& count) {
+__device__ __forceinline__ void _block_welford_online_sum(const int tid,
+                                                          const int nthread,
+                                                          const float* __restrict__ col_vals,
+                                                          float& mean,
+                                                          float& sigma2,
+                                                          float& count) {
   int l = 4 * tid;
   float4* col_vals_float4 = reinterpret_cast<float4*>(col_vals);
   for (; l + 3 < nchannel; l += 4 * nthread) {
