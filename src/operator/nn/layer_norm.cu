@@ -127,7 +127,7 @@ __device__ __forceinline__ void _block_welford_online_sum(const int tid,
                                                           float& sigma2,
                                                           float& count) {
   int l = 4 * tid;
-  float4* col_vals_float4 = reinterpret_cast<float4*>(col_vals);
+  const float4* col_vals_float4 = reinterpret_cast<const float4*>(col_vals);
   for (; l + 3 < nchannel; l += 4 * nthread) {
     float4 vec_vals = col_vals_float4[l];
     welford_online_sum_step(vec_vals.x, mean, sigma2, count);
