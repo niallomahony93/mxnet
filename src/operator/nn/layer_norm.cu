@@ -134,14 +134,14 @@ __device__ __forceinline__ void _block_welford_online_sum(const int tid,
   // The shift is (4 - (addr >> 2) & 3) & 3
   size_t addr = reinterpret_cast<std::size_t>(col_vals);
   int alignment_shift = (4 - (addr >> 2) & 3) & 3;
-  // 1) process the starting elements to make sure that the pointer is aligned to float4
-  if(tid < alignment_shift && tid < nchannel) {
+  // 1) Shift the elements to make sure that the pointer is aligned to float4
+  for(int i = tid; i < alignment_shift && i < nchannel; i += nthread) {
     welford_online_sum_step(col_vals[tid], mean, sigma2, count);
   }
   // 2) Use float4 to load the middle part of the input columns.
   //  alignment (float), middle (divisible by 4, float4), rest elements (float)
   if(threadIdx.x == 0 && threadIdx.y == 0 && blockIdx.x == 0) {
-    printf("sizeof(float4)=%d, aligned_addr = %p, aligned_addr % 16 = %d, alignment_shift = %d, addr = %p, addr % 16 = %d\n",
+    printf("sizeof(float4)=%d, aligned_addr = %p, aligned_addr mod 16 = %d, alignment_shift = %d, addr = %p, addr mod 16 = %d\n",
       sizeof(float4), col_vals + alignment_shift, (addr + alignment_shift) % 16, alignment_shift, col_vals, addr % 16);
   }
   const float4* col_vals_float4 = reinterpret_cast<const float4*>(col_vals + alignment_shift);
