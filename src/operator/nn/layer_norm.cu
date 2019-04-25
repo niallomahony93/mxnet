@@ -100,6 +100,47 @@ __device__ __inline__ void chan_merge_partition(const DType lhs_mean,
   }
 }
 
+
+template<typename DType>
+__device__ __forceinline__ _block_welford_online_sum(const int tid,
+                                                     const int nthread,
+                                                     const DType* __restrict__ col_vals,
+                                                     DType& mean,
+                                                     DType& sigma2,
+                                                     DType& count) {
+  int l = 4 * tid;
+  for (; l + 3 < nchannel; l += 4 * nthread) {
+    for (int i = 0; i < 4; ++i) {
+      welford_online_sum_step(col_vals[l + i], mean, sigma2, count);
+    }
+  }
+  for(; l < nchannel; ++l) {
+    welford_online_sum_step(col_vals[l], mean, sigma2, count);
+  }
+}
+
+template<>
+__device__ __forceinline__ _block_welford_online_sum(const int tid,
+                                                     const int nthread,
+                                                     const float* __restrict__ col_vals,
+                                                     float& mean,
+                                                     float& sigma2,
+                                                     float& count) {
+  int l = 4 * tid;
+  float4* col_vals_float4 = reinterpret_cast<float4*>(col_vals);
+  for (; l + 3 < nchannel; l += 4 * nthread) {
+    float4 vec_vals = col_vals_float4[l];
+    welford_online_sum_step(vec_vals.x, mean, sigma2, count);
+    welford_online_sum_step(vec_vals.y, mean, sigma2, count);
+    welford_online_sum_step(vec_vals.z, mean, sigma2, count);
+    welford_online_sum_step(vec_vals.w, mean, sigma2, count);
+  }
+  for(; l < nchannel; ++l) {
+    welford_online_sum_step(col_vals[l], mean, sigma2, count);
+  }
+}
+
+
 /* Fused CUDA kernel for layer normalization. It computes the LayerNorm when axis=-1.
  * Shape of the input tensors:
  *      in_data = (nbatch, nchannel)
@@ -135,16 +176,7 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
     const DType* col_vals = in_data + bid * nchannel;
     // Each thread takes charge of 4 consecutive numbers
     // To minimize branch divergence, we split the for-loop into two parts.
-    int l = N_ACCUM * tid;
-    for (; l + N_ACCUM - 1 < nchannel; l += N_ACCUM * nthread) {
-#pragma unroll
-      for (int i = 0; i < N_ACCUM; ++i) {
-        welford_online_sum_step(col_vals[l + i], mean, sigma2, count);
-      }
-    }
-    for(; l < nchannel; ++l) {
-      welford_online_sum_step(col_vals[l], mean, sigma2, count);
-    }
+    _block_welford_online_sum(tid, nthread, col_vals, mean, sigma2, count);
 
     // Merge the mean/sigma2 within a warp
     // Use the Chan's Parallel Algorithm to merge all (mean, sigma2, counts)
