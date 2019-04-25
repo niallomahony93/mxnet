@@ -321,8 +321,8 @@ void LayerNormGPUContig(const LayerNormParam param,
      (nbatch, nchannel, static_cast<DType>(eps),
       in_data.dptr<DType>(), gamma.dptr<DType>(), beta.dptr<DType>(),
       out_data.dptr<DType>(), mean_data.dptr<DType>(), std_data.dptr<DType>());
-    MSHADOW_CUDA_POST_KERNEL_CHECK(LayerNormFusedForwardKernelContig);
   });
+  MSHADOW_CUDA_POST_KERNEL_CHECK(LayerNormFusedForwardKernelContig);
 }
 
 template<>
