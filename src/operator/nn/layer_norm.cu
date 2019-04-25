@@ -109,6 +109,7 @@ __device__ __forceinline__ void _block_welford_online_sum(const int tid,
                                                           DType& mean,
                                                           DType& sigma2,
                                                           DType& count) {
+  /*
   int l = 4 * tid;
   for (; l + 3 < nchannel; l += 4 * nthread) {
     for (int i = 0; i < 4; ++i) {
@@ -116,6 +117,10 @@ __device__ __forceinline__ void _block_welford_online_sum(const int tid,
     }
   }
   for(; l < nchannel; ++l) {
+    welford_online_sum_step(col_vals[l], mean, sigma2, count);
+  }
+   */
+  for (int l = tid; l < nchannel; l += nthread) {
     welford_online_sum_step(col_vals[l], mean, sigma2, count);
   }
 }
