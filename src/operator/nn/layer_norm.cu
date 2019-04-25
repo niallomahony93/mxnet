@@ -132,7 +132,7 @@ __device__ __forceinline__ void _block_welford_online_sum(const int tid,
   //  float (4 bytes) --> float4 (16 bytes)
   // The address of the pointer is `addr = static_cast<size_t>(col_vals)`
   // The shift is (4 - addr >> 2) & 3
-  int alignment_shift = (4 - static_cast<const std::size_t>(col_vals) >> 2) & 3;
+  int alignment_shift = (4 - reinterpret_cast<std::size_t>(col_vals) >> 2) & 3;
   // 1) process the starting elements to make sure that the pointer is aligned to float4
   if(tid < alignment_shift && tid < nchannel) {
     welford_online_sum_step(col_vals[tid], mean, sigma2, count);
