@@ -125,7 +125,7 @@ __device__ __forceinline__ void _block_welford_online_sum(const int tid,
   }
 }
 
-/*
+
 template<>
 __device__ __forceinline__ void _block_welford_online_sum(const int tid,
                                                           const int nthread,
@@ -160,7 +160,7 @@ __device__ __forceinline__ void _block_welford_online_sum(const int tid,
     welford_online_sum_step(col_vals[i], mean, sigma2, count);
   }
 }
-*/
+
 
 /* Fused CUDA kernel for layer normalization. It computes the LayerNorm when axis=-1.
  * Shape of the input tensors:
