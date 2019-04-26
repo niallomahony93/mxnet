@@ -61,10 +61,10 @@ __device__ __forceinline__ double rsqrt(double v) {
  *
  */
 template<typename DType>
-__device__ __forceinline__ void welford_online_sum_step(const DType curr,
-                                                        DType& mean,
-                                                        DType& sigma2,
-                                                        DType& count) {
+__device__ __forceinline__ void StepWelfordOnlineSum(const DType curr,
+                                                     DType& mean,
+                                                     DType& sigma2,
+                                                     DType& count) {
   count += DType(1);
   DType delta = curr - mean;
   mean += delta / count;
@@ -79,7 +79,7 @@ __device__ __forceinline__ void welford_online_sum_step(const DType curr,
  *  TODO(sxjscience) Explore the possibility of int lhs_count and rhs_count
  */
 template<typename DType>
-__device__ __inline__ void chan_merge_partition(const DType lhs_mean,
+__device__ __inline__ void ChanMergePartition(const DType lhs_mean,
                                                 const DType lhs_sigma2,
                                                 const DType lhs_count,
                                                 DType& rhs_mean,
@@ -102,13 +102,13 @@ __device__ __inline__ void chan_merge_partition(const DType lhs_mean,
 
 
 template<typename AType, typename DType, typename IType>
-__device__ __forceinline__ void _block_welford_online_sum(const int tid,
-                                                          const int nthread,
-                                                          const DType* __restrict__ col_vals,
-                                                          const int nchannel,
-                                                          AType& mean,
-                                                          AType& sigma2,
-                                                          IType& count) {
+__device__ __forceinline__ void BlockWelfordOnlineSum(const int tid,
+                                                      const int nthread,
+                                                      const DType* __restrict__ col_vals,
+                                                      const int nchannel,
+                                                      AType& mean,
+                                                      AType& sigma2,
+                                                      IType& count) {
   // Each thread takes charge of 4 consecutive numbers. This should optimize the loading speed using
   // vectorized types like float4.
   // Also, to minimize branch divergence, we split the for-loop into two parts.
@@ -116,11 +116,11 @@ __device__ __forceinline__ void _block_welford_online_sum(const int tid,
   for (; l + 3 < nchannel; l += 4 * nthread) {
 #pragma unroll
     for (int i = 0; i < 4; ++i) {
-      welford_online_sum_step(col_vals[l + i], mean, sigma2, count);
+      StepWelfordOnlineSum(col_vals[l + i], mean, sigma2, count);
     }
   }
   for(; l < nchannel; ++l) {
-    welford_online_sum_step(col_vals[l], mean, sigma2, count);
+    StepWelfordOnlineSum(col_vals[l], mean, sigma2, count);
   }
 }
 
@@ -151,12 +151,12 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
   DType count = 0;
   DType mean = 0;
   DType sigma2 = 0;
-  extern __shared__ char buf[];  // Shared memory
 
   if (bid < nbatch) {
+    extern __shared__ char buf[];  // Shared memory
     int tid = threadIdx.x + threadIdx.y * blockDim.x;
     const DType* col_vals = in_data + bid * nchannel;
-    _block_welford_online_sum(tid, nthread, col_vals, nchannel, mean, sigma2, count);
+    BlockWelfordOnlineSum(tid, nthread, col_vals, nchannel, mean, sigma2, count);
 
     // Merge the mean/sigma2 within a warp
     // Use the Chan's Parallel Algorithm to merge all (mean, sigma2, counts)
@@ -168,7 +168,7 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
       DType meanB = WARP_SHFL(mean, src_lane);
       DType sigma2B = WARP_SHFL(sigma2, src_lane);
       DType countB = WARP_SHFL(count, src_lane);
-      chan_merge_partition(meanB, sigma2B, countB, mean, sigma2, count);
+      ChanMergePartition(meanB, sigma2B, countB, mean, sigma2, count);
     }
     if (blockDim.y == 1) {
       mean = WARP_SHFL(mean, 0);
@@ -188,9 +188,9 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
         }
         __syncthreads();
         if (threadIdx.x == 0 && threadIdx.y < offset) {
-          chan_merge_partition(mean_buf[threadIdx.y],
-                               sigma2_buf[threadIdx.y],
-                               count_buf[threadIdx.y], mean, sigma2, count);
+          ChanMergePartition(mean_buf[threadIdx.y],
+                             sigma2_buf[threadIdx.y],
+                             count_buf[threadIdx.y], mean, sigma2, count);
         }
         __syncthreads();
       }
