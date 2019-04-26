@@ -101,14 +101,14 @@ __device__ __inline__ void chan_merge_partition(const DType lhs_mean,
 }
 
 
-template<typename DType>
+template<typename AType, typename DType, typename IType>
 __device__ __forceinline__ void _block_welford_online_sum(const int tid,
                                                           const int nthread,
                                                           const DType* __restrict__ col_vals,
                                                           const int nchannel,
-                                                          DType& mean,
-                                                          DType& sigma2,
-                                                          DType& count) {
+                                                          AType& mean,
+                                                          AType& sigma2,
+                                                          IType& count) {
   // Each thread takes charge of 4 consecutive numbers. This should optimize the loading speed using
   // vectorized types like float4.
   // Also, to minimize branch divergence, we split the for-loop into two parts.
@@ -209,14 +209,8 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
     DType* out_col_val = out_data + bid * nchannel;
 
     if (gamma != NULL && beta != NULL) {
-      int l = 4 * tid;
-      for (; l + 3 < nchannel; l += 4 * nthread) {
-        for (int i = 0; i < 4; ++i) {
-          out_col_val[l + i] = gamma[l + i] * invstd_eps * (col_vals[l + i] - mean) + beta[l + i];
-        }
-      }
-      for(; l < nchannel; l++) {
-        out_col_val[l] = gamma[l] * invstd_eps * (col_vals[l] - mean) + beta[l];
+      for (int i = tid; i < nchannel; i += nthread) {
+        out_col_val[i] = gamma[i] * invstd_eps * (col_vals[i] - mean) + beta[i];
       }
     } else if (gamma == NULL && beta != NULL) {
       for (int i = tid; i < nchannel; i += nthread) {
