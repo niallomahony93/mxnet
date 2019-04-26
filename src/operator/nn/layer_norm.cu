@@ -109,7 +109,6 @@ __device__ __forceinline__ void _block_welford_online_sum(const int tid,
                                                           DType& mean,
                                                           DType& sigma2,
                                                           DType& count) {
-  /*
   int l = 4 * tid;
   for (; l + 3 < nchannel; l += 4 * nthread) {
     for (int i = 0; i < 4; ++i) {
@@ -119,13 +118,14 @@ __device__ __forceinline__ void _block_welford_online_sum(const int tid,
   for(; l < nchannel; ++l) {
     welford_online_sum_step(col_vals[l], mean, sigma2, count);
   }
-   */
+  /*
   for (int l = tid; l < nchannel; l += nthread) {
     welford_online_sum_step(col_vals[l], mean, sigma2, count);
   }
+  */
 }
 
-
+/*
 template<>
 __device__ __forceinline__ void _block_welford_online_sum(const int tid,
                                                           const int nthread,
@@ -155,12 +155,12 @@ __device__ __forceinline__ void _block_welford_online_sum(const int tid,
     welford_online_sum_step(vec_vals.z, mean, sigma2, count);
     welford_online_sum_step(vec_vals.w, mean, sigma2, count);
   }
-  // 3) Handling the rest values
+  // 3) Handling the remanining values
   for(int i = alignment_shift + 4 * mid_length + tid; i < nchannel; i += nthread) {
     welford_online_sum_step(col_vals[i], mean, sigma2, count);
   }
 }
-
+*/
 
 /* Fused CUDA kernel for layer normalization. It computes the LayerNorm when axis=-1.
  * Shape of the input tensors:
@@ -190,7 +190,7 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
   DType mean = 0;
   DType sigma2 = 0;
   // const int N_ACCUM = 4;  // TODO(sxjscience) Profile
-  extern __shared__ char buf[];  // Shared memory size
+  extern __shared__ char buf[];  // Shared memory
 
   if (bid < nbatch) {
     int tid = threadIdx.x + threadIdx.y * blockDim.x;
@@ -346,6 +346,15 @@ void LayerNormCompute<gpu>(const nnvm::NodeAttrs& attrs,
   }
   return LayerNormComputeGeneral<gpu>(attrs, ctx, inputs, req, outputs);
 }
+
+template<>
+void LayerNormGradCompute<gpu>(const nnvm::NodeAttrs& attrs,
+                               const OpContext& ctx, const std::vector<TBlob>& inputs,
+                               const std::vector<OpReqType>& req,
+                               const std::vector<TBlob>& outputs) {
+  return LayerNormGradComputeGeneral<gpu>(attrs, ctx, inputs, req, outputs);
+}
+
 
 NNVM_REGISTER_OP(LayerNorm)
 .set_attr<FCompute>("FCompute<gpu>", LayerNormCompute<gpu>);

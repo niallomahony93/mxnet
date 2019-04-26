@@ -151,6 +151,12 @@ void LayerNormComputeGeneral(const nnvm::NodeAttrs& attrs,
                                                 {kWriteTo}, {outputs[0]});
 }
 
+template<typename xpu>
+void LayerNormGradCompute(const nnvm::NodeAttrs& attrs,
+                          const OpContext& ctx, const std::vector<TBlob>& inputs,
+                          const std::vector<OpReqType>& req,
+                          const std::vector<TBlob>& outputs);
+
 /*
 Calculate the gradient of layer normalization.
 We have the following gradient for gamma, beta and x:
@@ -162,10 +168,10 @@ grad_beta = sum(og, exclude_axis)
 grad_x = w - mean(w, axis) - \bar{x} * mean(w * \bar{x}, axis)
 */
 template<typename xpu>
-void LayerNormGradCompute(const nnvm::NodeAttrs& attrs,
-                          const OpContext& ctx, const std::vector<TBlob>& inputs,
-                          const std::vector<OpReqType>& req,
-                          const std::vector<TBlob>& outputs) {
+void LayerNormGradComputeGeneral(const nnvm::NodeAttrs& attrs,
+                                 const OpContext& ctx, const std::vector<TBlob>& inputs,
+                                 const std::vector<OpReqType>& req,
+                                 const std::vector<TBlob>& outputs) {
   using namespace mshadow;
   using namespace mshadow::expr;
   CHECK_EQ(inputs.size(), 5U);
