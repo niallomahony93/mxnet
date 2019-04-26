@@ -109,8 +109,12 @@ __device__ __forceinline__ void _block_welford_online_sum(const int tid,
                                                           DType& mean,
                                                           DType& sigma2,
                                                           DType& count) {
+  // Each thread takes charge of 4 consecutive numbers. This should optimize the loading speed using
+  // vectorized types like float4.
+  // Also, to minimize branch divergence, we split the for-loop into two parts.
   int l = 4 * tid;
   for (; l + 3 < nchannel; l += 4 * nthread) {
+#pragma unroll
     for (int i = 0; i < 4; ++i) {
       welford_online_sum_step(col_vals[l + i], mean, sigma2, count);
     }
@@ -118,49 +122,7 @@ __device__ __forceinline__ void _block_welford_online_sum(const int tid,
   for(; l < nchannel; ++l) {
     welford_online_sum_step(col_vals[l], mean, sigma2, count);
   }
-  /*
-  for (int l = tid; l < nchannel; l += nthread) {
-    welford_online_sum_step(col_vals[l], mean, sigma2, count);
-  }
-  */
 }
-
-/*
-template<>
-__device__ __forceinline__ void _block_welford_online_sum(const int tid,
-                                                          const int nthread,
-                                                          const float* __restrict__ col_vals,
-                                                          const int nchannel,
-                                                          float& mean,
-                                                          float& sigma2,
-                                                          float& count) {
-  // Calculate the shift which makes sure that the `col_vals + shift` is aligned to float4
-  //  float (4 bytes) --> float4 (16 bytes)
-  // The address of the pointer is `addr = static_cast<size_t>(col_vals)`
-  // The shift is (4 - (addr >> 2) & 3) & 3
-  size_t addr = reinterpret_cast<std::size_t>(col_vals);
-  int alignment_shift = (4 - (addr >> 2) & 3) & 3;
-  // 1) Shift the elements to make sure that the pointer is aligned to float4
-  for(int i = tid; i < alignment_shift && i < nchannel; i += nthread) {
-    welford_online_sum_step(col_vals[tid], mean, sigma2, count);
-  }
-  // 2) Use float4 to load the middle part of the input columns.
-  //  alignment (float), middle (divisible by 4, float4), rest elements (float)
-  const float4* col_vals_float4 = reinterpret_cast<const float4*>(col_vals + alignment_shift);
-  int mid_length = (nchannel > alignment_shift) ? (nchannel - alignment_shift) >> 2 : 0;
-  for (int i = tid; i < mid_length; i += nthread) {
-    float4 vec_vals = col_vals_float4[i];
-    welford_online_sum_step(vec_vals.x, mean, sigma2, count);
-    welford_online_sum_step(vec_vals.y, mean, sigma2, count);
-    welford_online_sum_step(vec_vals.z, mean, sigma2, count);
-    welford_online_sum_step(vec_vals.w, mean, sigma2, count);
-  }
-  // 3) Handling the remanining values
-  for(int i = alignment_shift + 4 * mid_length + tid; i < nchannel; i += nthread) {
-    welford_online_sum_step(col_vals[i], mean, sigma2, count);
-  }
-}
-*/
 
 /* Fused CUDA kernel for layer normalization. It computes the LayerNorm when axis=-1.
  * Shape of the input tensors:
@@ -189,14 +151,11 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
   DType count = 0;
   DType mean = 0;
   DType sigma2 = 0;
-  // const int N_ACCUM = 4;  // TODO(sxjscience) Profile
   extern __shared__ char buf[];  // Shared memory
 
   if (bid < nbatch) {
     int tid = threadIdx.x + threadIdx.y * blockDim.x;
     const DType* col_vals = in_data + bid * nchannel;
-    // Each thread takes charge of 4 consecutive numbers
-    // To minimize branch divergence, we split the for-loop into two parts.
     _block_welford_online_sum(tid, nthread, col_vals, nchannel, mean, sigma2, count);
 
     // Merge the mean/sigma2 within a warp
@@ -250,8 +209,14 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
     DType* out_col_val = out_data + bid * nchannel;
 
     if (gamma != NULL && beta != NULL) {
-      for (int i = tid; i < nchannel; i += nthread) {
-        out_col_val[i] = gamma[i] * invstd_eps * (col_vals[i] - mean) + beta[i];
+      int l = 4 * tid;
+      for (; l + 3 < nchannel; l += 4 * nthread) {
+        for (int i = 0; i < 4; ++i) {
+          out_col_val[l + i] = gamma[l + i] * invstd_eps * (col_vals[l + i] - mean) + beta[l + i];
+        }
+      }
+      for(; l < nchannel; l++) {
+        out_col_val[l] = gamma[l] * invstd_eps * (col_vals[l] - mean) + beta[l];
       }
     } else if (gamma == NULL && beta != NULL) {
       for (int i = tid; i < nchannel; i += nthread) {
