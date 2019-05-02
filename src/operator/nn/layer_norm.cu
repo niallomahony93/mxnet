@@ -31,12 +31,21 @@ namespace op {
 
 template <typename DType>
 __device__ __forceinline__ DType WARP_SHFL(DType value, int src_lane,
-                                           int width = 32, unsigned int mask = 0xffffffff)
-{
+                                           int width = 32, unsigned int mask = 0xffffffff) {
 #if CUDA_VERSION >= 9000
   return __shfl_sync(mask, value, src_lane, width);
 #else
   return __shfl(value, src_lane, width);
+#endif
+}
+
+template <typename DType>
+__device__ __forceinline__ DType WARP_SHFL_XOR(DType value, int laneMask,
+                                               int width = 32, unsigned int mask = 0xffffffff) {
+#if CUDA_VERSION >= 9000
+  return __shfl_xor_sync(mask, value, laneMask, width);
+#else
+  return __shfl_xor(value, laneMask, width);
 #endif
 }
 
@@ -268,10 +277,8 @@ void LayerNormGPUContig(const LayerNormParam param,
   const dim3 dimGrid(ngrid_x, ngrid_y, 1);
   if(nchannel <= 32) {
     nthread_y = 1;
-  } else if(nchannel <= 64) {
-    nthread_y = 2;
   } else {
-    nthread_y = 4;
+    nthread_y = 2;
   }
   cudaStream_t stream = Stream<gpu>::GetStream(ctx.get_stream<gpu>());
   const dim3 dimBlock(32, nthread_y, 1);
@@ -306,11 +313,208 @@ void LayerNormCompute<gpu>(const nnvm::NodeAttrs& attrs,
   return LayerNormComputeGeneral<gpu>(attrs, ctx, inputs, req, outputs);
 }
 
+/*
+ *
+ */
+template<int LOAD_UNROLL, bool no_beta, bool no_gamma, typename DType>
+__global__ void LayerNormFusedBackwardKernel_BetaGammaGradAddTo(const int nbatch,
+                                                                const int nchannel,
+                                                                const DType eps,
+                                                                const DType* __restrict__ in_data,
+                                                                const DType* __restrict__ out_grad,
+                                                                const DType* __restrict__ mean_data,
+                                                                const DType* __restrict__ std_data,
+                                                                DType* gamma_grad,
+                                                                DType* beta_grad) {
+  const int nthread = blockDim.x * blockDim.y;
+  const int tid = threadIdx.x + threadIdx.y * blockDim.x;
+  DType local_mean[LOAD_UNROLL];
+  DType local_std[LOAD_UNROLL];
+  DType local_gamma_grad[LOAD_UNROLL];
+  DType local_beta_grad[LOAD_UNROLL];
+
+  int l = LOAD_UNROLL * tid;
+  for(; l + LOAD_UNROLL - 1 < nchannel; l += LOAD_UNROLL * nthread) {
+    // Initialize the shared memory
+#pragma unroll
+    for(int i = 0; i < LOAD_UNROLL; i++) {
+      local_mean[i] = mean_data[l + i];
+      local_std[i] = std_data[l + i];
+      local_gamma_grad[i] = 0;
+      local_beta_grad[i] = 0;
+    }
+    // Summation
+    for(int b = 0; b < nbatch; ++b) {
+#pragma unroll
+      for(int i = 0; i < LOAD_UNROLL; ++i) {
+        DType ele_og = out_grad[b * nchannel + l + i];
+        DType ele_x = in_data[b * nchannel + l + i];
+        if(!no_gamma){
+          local_gamma_grad[i] += (ele_x - local_mean[i]) / local_std[i] * ele_og;
+        }
+        if(!no_beta) {
+          local_beta_grad[i] += ele_og;
+        }
+      }
+    }
+    // Write to destination
+    for(int i = 0; i < LOAD_UNROLL; ++i) {
+      if(!no_gamma) {
+        gamma_grad[b * nchannel + l + i] += local_gamma_grad[i];
+      }
+      if(!no_beta) {
+        beta_grad[b * nchannel + l + i] += local_beta_grad[i];
+      }
+    }
+  }
+  for(; l < nchannel; ++l) {
+    local_mean[0] = mean_data[l];
+    local_std[0] = std_data[l];
+    local_gamma_grad[0] = 0;
+    local_beta_grad[0] = 0;
+    for(int b = 0; b < nbatch; ++b) {
+      DType ele_og = out_grad[b * nchannel + l];
+      DType ele_x = in_data[b * nchannel + l];
+      if(!no_gamma) {
+        local_gamma_grad[0] += (ele_x - local_mean[0]) / local_std[0] * ele_og;
+      }
+      if(!no_beta) {
+        local_beta_grad[0] += ele_og;
+      }
+    }
+    if(!no_gamma) {
+      gamma_grad[b * nchannel + l] += local_gamma_grad[0];
+    }
+    if(!no_beta) {
+      beta_grad[b * nchannel + l] += local_beta_grad[0];
+    }
+  }
+}
+
+template<int LOAD_UNROLL, bool no_gamma, typename DType>
+__global__ void LayerNormFusedBackwardKernel_DataGradAddTo(const int nbatch,
+                                                           const int nchannel,
+                                                           const DType* __restrict__ in_data,
+                                                           const DType* __restrict__ out_grad,
+                                                           const DType* __restrict__ mean_data,
+                                                           const DType* __restrict__ std_data,
+                                                           const DType* __restrict__ gamma,
+                                                           DType* data_grad) {
+  int bid = blockIdx.x + blockIdx.y * gridDim.x;
+  const int nthread = blockDim.x * blockDim.y;
+  if(bid < nbatch) {
+    extern __shared__ DType buf[];  // Shared memory
+    int tid = threadIdx.x;
+    // 1. Calculate: mean(out_grad * gamma / std, axis=-1)
+    //               mean(out_grad * gamma / std * (x - mean) / std, axis=-1)
+    DType sum_val0 = 0;  // Stores mean(out_grad * gamma / std, axis=-1)
+    DType sum_val1 = 0;  // Stores mean(out_grad * gamma / std * (x - mean) / std, axis=-1)
+    DType mean = mean_data[bid];
+    DType invstd_eps = DType(1) / std_data[bid];
+    int l = LOAD_UNROLL * tid;
+    for(; l + LOAD_UNROLL - 1 < nchannel; l += nthread * LOAD_UNROLL) {
+#pragma unroll
+      for(int i = 0; i < LOAD_UNROLL; ++i) {
+        DType ele_og = out_grad[bid * nchannel + l + i];
+        DType ele_x = in_data[bid * nchannel + l + i];
+        if(!no_gamma) {
+          DType ele_gamma = gamma[l + i];
+          sum_val0 += ele_og * ele_gamma * invstd_eps;
+          sum_val1 += ele_og * ele_gamma * (ele_x - mean) * invstd_eps * invstd_eps;
+        } else {
+          sum_val0 += ele_og * invstd_eps;
+          sum_val1 += ele_og * (ele_x - mean) * invstd_eps * invstd_eps;
+        }
+      }
+    }
+    for(; l < nchannel; ++l) {
+      DType ele_og = out_grad[bid * nchannel + l];
+      DType ele_x = in_data[bid * nchannel + l];
+      if(!no_gamma) {
+        DType ele_gamma = gamma[l];
+        sum_val0 += ele_og * ele_gamma * invstd_eps;
+        sum_val1 += ele_og * ele_gamma * (ele_x - mean) * invstd_eps * invstd_eps;
+      } else {
+        sum_val0 += ele_og * invstd_eps;
+        sum_val1 += ele_og * (ele_x - mean) * invstd_eps * invstd_eps;
+      }
+    }
+    // Intra-warp reduction (all-reduce)
+    for(int mask = blockDim.x / 2; mask > 0; mask /= 2) {
+      sum_val0 += WARP_SHFL_XOR(sum_val0, mask);
+      sum_val1 += WARP_SHFL_XOR(sum_val1, mask);
+    }
+    // Inter-warp reduction (all-reduce)
+    if(blockDim.y > 1) {
+      DType* sum_val0_buf = buf;
+      DType* sum_val1_buf = buf + blockDim.y / 2 * blockDim.x;
+      for (int offset = blockDim.y / 2; offset > 0; offset /= 2) {
+        if (threadIdx.y >= offset && threadIdx.y < 2 * offset) {
+          const int idx = (threadIdx.y - offset) * blockDim.x + threadIdx.x;
+          sum_val0_buf[idx] = sum_val0;
+          sum_val1_buf[idx] = sum_val1;
+        }
+        __syncthreads();
+        if (threadIdx.y < offset) {
+          const int idx = threadIdx.y * blockDim.x + threadIdx.x;
+          sum_val0 += sum_val0_buf[idx];
+          sum_val1 += sum_val1_buf[idx];
+        }
+        __syncthreads();
+      }
+      if(threadIdx.y == 0) {
+        sum_val0_buf[threadIdx.x] = sum_val0;
+        sum_val1_buf[threadIdx.x] = sum_val1;
+      }
+      __syncthreads();
+      if(threadIdx.y != 0) {
+        sum_val0 = sum_val0_buf[threadIdx.x];
+        sum_val1 = sum_val1_buf[threadIdx.x];
+      }
+    }
+    sum_val0 /= nchannel;
+    sum_val1 /= nchannel;
+    // 2. Calculate the gradient as
+    //      out_grad * gamma / std - sum_val0 - (x - mean) / std * sum_val1
+    for(int l = tid; l < nchannel; l += nthread) {
+      DType ele_out_grad = out_grad[bid * nchannel + l];
+      DType ele_x = in_data[bid * nchannel + l];
+      if(!no_gamma) {
+        DType ele_gamma = gamma[l];
+        data_grad[bid * nchannel + l] +=
+          ele_out_grad * ele_gamma * invstd_eps - sum_val0 - (ele_x - mean) * invstd_eps * sum_val1
+      } else {
+        data_grad[bid * nchannel + l] +=
+          ele_out_grad * invstd_eps - sum_val0 - (ele_x - mean) * invstd_eps * sum_val1
+      }
+    }
+  }
+}
+
+void LayerNormGradGPUContig(const LayerNormParam param,
+                            const OpContext& ctx, const std::vector<TBlob>& inputs,
+                            const std::vector<OpReqType>& req,
+                            const std::vector<TBlob>& outputs) {
+
+}
+
 template<>
 void LayerNormGradCompute<gpu>(const nnvm::NodeAttrs& attrs,
                                const OpContext& ctx, const std::vector<TBlob>& inputs,
                                const std::vector<OpReqType>& req,
                                const std::vector<TBlob>& outputs) {
+  const LayerNormParam& param = nnvm::get<LayerNormParam>(attrs.parsed);
+  if (req[0] == kNullOp) return;
+  CHECK_NE(req[0], kAddTo);
+  int axis = param.axis;
+  if (axis < 0) {
+    axis += static_cast<int>(inputs[0].ndim());
+  }
+  CHECK(axis >= 0 && axis < inputs[0].ndim()) << "Channel axis out of range: " << param.axis;
+  if(axis == inputs[0].ndim() - 1) {
+    // Try to use the accelerated CUDA kernels
+    return LayerNormGradGPUContig(param, ctx, inputs, req, outputs);
+  }
   return LayerNormGradComputeGeneral<gpu>(attrs, ctx, inputs, req, outputs);
 }
 
