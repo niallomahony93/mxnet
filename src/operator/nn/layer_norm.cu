@@ -334,6 +334,7 @@ __global__ void LayerNormFusedBackwardKernel_BetaGammaGradAddTo(const int nbatch
   DType local_beta_grad[LOAD_UNROLL];
 
   int l = LOAD_UNROLL * tid;
+  // We try to load the data using vectorized types like float4
   for(; l + LOAD_UNROLL - 1 < nchannel; l += LOAD_UNROLL * nthread) {
     // Initialize the shared memory
 #pragma unroll
@@ -360,13 +361,14 @@ __global__ void LayerNormFusedBackwardKernel_BetaGammaGradAddTo(const int nbatch
     // Write to destination
     for(int i = 0; i < LOAD_UNROLL; ++i) {
       if(!no_gamma) {
-        gamma_grad[b * nchannel + l + i] += local_gamma_grad[i];
+        gamma_grad[l + i] += local_gamma_grad[i];
       }
       if(!no_beta) {
-        beta_grad[b * nchannel + l + i] += local_beta_grad[i];
+        beta_grad[l + i] += local_beta_grad[i];
       }
     }
   }
+  // Handle the rest elements that cannot be divided by LOAD_UNROLL
   for(; l < nchannel; ++l) {
     local_mean[0] = mean_data[l];
     local_std[0] = std_data[l];
@@ -383,10 +385,10 @@ __global__ void LayerNormFusedBackwardKernel_BetaGammaGradAddTo(const int nbatch
       }
     }
     if(!no_gamma) {
-      gamma_grad[b * nchannel + l] += local_gamma_grad[0];
+      gamma_grad[l] += local_gamma_grad[0];
     }
     if(!no_beta) {
-      beta_grad[b * nchannel + l] += local_beta_grad[0];
+      beta_grad[l] += local_beta_grad[0];
     }
   }
 }
@@ -482,10 +484,10 @@ __global__ void LayerNormFusedBackwardKernel_DataGradAddTo(const int nbatch,
       if(!no_gamma) {
         DType ele_gamma = gamma[l];
         data_grad[bid * nchannel + l] +=
-          ele_out_grad * ele_gamma * invstd_eps - sum_val0 - (ele_x - mean) * invstd_eps * sum_val1
+          ele_out_grad * ele_gamma * invstd_eps - sum_val0 - (ele_x - mean) * invstd_eps * sum_val1;
       } else {
         data_grad[bid * nchannel + l] +=
-          ele_out_grad * invstd_eps - sum_val0 - (ele_x - mean) * invstd_eps * sum_val1
+          ele_out_grad * invstd_eps - sum_val0 - (ele_x - mean) * invstd_eps * sum_val1;
       }
     }
   }
@@ -504,6 +506,7 @@ void LayerNormGradCompute<gpu>(const nnvm::NodeAttrs& attrs,
                                const std::vector<OpReqType>& req,
                                const std::vector<TBlob>& outputs) {
   const LayerNormParam& param = nnvm::get<LayerNormParam>(attrs.parsed);
+  /*
   if (req[0] == kNullOp) return;
   CHECK_NE(req[0], kAddTo);
   int axis = param.axis;
@@ -515,6 +518,7 @@ void LayerNormGradCompute<gpu>(const nnvm::NodeAttrs& attrs,
     // Try to use the accelerated CUDA kernels
     return LayerNormGradGPUContig(param, ctx, inputs, req, outputs);
   }
+   */
   return LayerNormGradComputeGeneral<gpu>(attrs, ctx, inputs, req, outputs);
 }
 
