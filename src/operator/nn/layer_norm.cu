@@ -328,8 +328,6 @@ __global__ void LayerNormFusedBackwardKernel_GammaBeta(const int nbatch,
                                                        DType* beta_grad) {
   const int nthread = blockDim.x * blockDim.y;
   const int tid = threadIdx.x + threadIdx.y * blockDim.x;
-  DType local_mean[LOAD_UNROLL];
-  DType local_std[LOAD_UNROLL];
   DType local_gamma_grad[LOAD_UNROLL];
   DType local_beta_grad[LOAD_UNROLL];
   const bool need_gamma_grad = (gamma_grad != nullptr);
@@ -340,8 +338,6 @@ __global__ void LayerNormFusedBackwardKernel_GammaBeta(const int nbatch,
     // Initialize the shared memory
 #pragma unroll
     for(int i = 0; i < LOAD_UNROLL; i++) {
-      local_mean[i] = mean_data[l + i];
-      local_std[i] = std_data[l + i];
       if(need_gamma_grad) {
         local_gamma_grad[i] = 0;
       }
@@ -351,12 +347,18 @@ __global__ void LayerNormFusedBackwardKernel_GammaBeta(const int nbatch,
     }
     // Summation
     for(int b = 0; b < nbatch; ++b) {
+      DType local_mean = 0;
+      DType local_std = 0;
+      if(need_gamma_grad) {
+        local_mean = mean_data[b];
+        local_std = std_data[b];
+      }
 #pragma unroll
       for(int i = 0; i < LOAD_UNROLL; ++i) {
         DType ele_og = out_grad[b * nchannel + l + i];
         DType ele_x = in_data[b * nchannel + l + i];
         if(need_gamma_grad) {
-          local_gamma_grad[i] += (ele_x - local_mean[i]) / local_std[i] * ele_og;
+          local_gamma_grad[i] += (ele_x - local_mean) / local_std * ele_og;
         }
         if(need_beta_grad) {
           local_beta_grad[i] += ele_og;
@@ -383,15 +385,19 @@ __global__ void LayerNormFusedBackwardKernel_GammaBeta(const int nbatch,
   }
   // Handle the rest elements that cannot be divided by LOAD_UNROLL
   for(; l < nchannel; ++l) {
-    local_mean[0] = mean_data[l];
-    local_std[0] = std_data[l];
     local_gamma_grad[0] = 0;
     local_beta_grad[0] = 0;
     for(int b = 0; b < nbatch; ++b) {
       DType ele_og = out_grad[b * nchannel + l];
       DType ele_x = in_data[b * nchannel + l];
+      DType local_mean = 0;
+      DType local_std = 0;
       if(need_gamma_grad) {
-        local_gamma_grad[0] += (ele_x - local_mean[0]) / local_std[0] * ele_og;
+        local_mean = mean_data[b];
+        local_std = std_data[b];
+      }
+      if(need_gamma_grad) {
+        local_gamma_grad[0] += (ele_x - local_mean) / local_std * ele_og;
       }
       if(need_beta_grad) {
         local_beta_grad[0] += ele_og;
