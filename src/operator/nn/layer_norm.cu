@@ -393,22 +393,18 @@ __global__ void LayerNormFusedBackwardKernel_GammaBeta(const int nbatch,
         local_beta_grad[0] += ele_og;
       }
     }
-    if(!no_gamma) {
-      if(need_gamma_grad) {
-        if(gamma_addto) {
-          gamma_grad[l] += local_gamma_grad[0];
-        } else {
-          gamma_grad[l] = local_gamma_grad[0];
-        }
+    if(need_gamma_grad) {
+      if(gamma_addto) {
+        gamma_grad[l] += local_gamma_grad[0];
+      } else {
+        gamma_grad[l] = local_gamma_grad[0];
       }
     }
-    if(!no_beta) {
-      if(need_beta_grad) {
-        if(beta_addto) {
-          beta_grad[l] += local_beta_grad[0];
-        } else {
-          beta_grad[l] = local_beta_grad[0];
-        }
+    if(need_beta_grad) {
+      if(beta_addto) {
+        beta_grad[l] += local_beta_grad[0];
+      } else {
+        beta_grad[l] = local_beta_grad[0];
       }
     }
   }
