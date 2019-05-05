@@ -410,6 +410,10 @@ __global__ void LayerNormFusedBackwardKernel_GammaBeta(const int nbatch,
   }
 }
 
+/*
+ *
+ *
+ */
 template<int LOAD_UNROLL, bool data_addto, typename DType>
 __global__ void LayerNormFusedBackwardKernel_Data(const int nbatch,
                                                   const int nchannel,
@@ -422,7 +426,7 @@ __global__ void LayerNormFusedBackwardKernel_Data(const int nbatch,
   int bid = blockIdx.x + blockIdx.y * gridDim.x;
   const int nthread = blockDim.x * blockDim.y;
   if(bid < nbatch) {
-    extern __shared__ DType buf[];  // Shared memory
+    extern __shared__ DType buf[];  // Shared memory with size blockDim.y * blockDim.x * sizeof(DType)
     int tid = threadIdx.x;
     // 1. Calculate: mean(out_grad * gamma / std, axis=-1)
     //               mean(out_grad * gamma / std * (x - mean) / std, axis=-1)
@@ -542,19 +546,23 @@ void LayerNormGradGPUContig(const LayerNormParam param,
       DType* gamma_grad_ptr = (gamma_grad_req != kNullOp) ? gamma_grad.dptr<DType>() : nullptr;
       DType* beta_grad_ptr = (beta_grad_req != kNullOp) ? beta_grad.dptr<DType>() : nullptr;
       if(gamma_grad_req == kAddTo && beta_grad_req != kAddTo) {
-        LayerNormFusedBackwardKernel_GammaBeta<LOAD_UNROLL, true, false> <<<1, dimBlock, stream>>>
+        LayerNormFusedBackwardKernel_GammaBeta<LOAD_UNROLL, true, false>
+          <<<1, dimBlock, 0, stream>>>
           (nbatch, nchannel, in_data.dptr<DType>(), out_grad.dptr<DType>(), mean_data.dptr<DType>(),
            std_data.dptr<DType>(), gamma_grad_ptr, beta_grad_ptr);
       } else if(gamma_grad_req != kAddTo && beta_grad_req == kAddTo) {
-        LayerNormFusedBackwardKernel_GammaBeta<LOAD_UNROLL, false, true> <<<1, dimBlock, stream>>>
+        LayerNormFusedBackwardKernel_GammaBeta<LOAD_UNROLL, false, true>
+          <<<1, dimBlock, 0, stream>>>
           (nbatch, nchannel, in_data.dptr<DType>(), out_grad.dptr<DType>(), mean_data.dptr<DType>(),
            std_data.dptr<DType>(), gamma_grad_ptr, beta_grad_ptr);
       } else if(gamma_grad_req == kAddTo && beta_grad_req == kAddTo) {
-        LayerNormFusedBackwardKernel_GammaBeta<LOAD_UNROLL, true, true> <<<1, dimBlock, stream>>>
+        LayerNormFusedBackwardKernel_GammaBeta<LOAD_UNROLL, true, true>
+          <<<1, dimBlock, 0, stream>>>
           (nbatch, nchannel, in_data.dptr<DType>(), out_grad.dptr<DType>(), mean_data.dptr<DType>(),
            std_data.dptr<DType>(), gamma_grad_ptr, beta_grad_ptr);
       } else {
-        LayerNormFusedBackwardKernel_GammaBeta<LOAD_UNROLL, false, false> <<<1, dimBlock, stream>>>
+        LayerNormFusedBackwardKernel_GammaBeta<LOAD_UNROLL, false, false>
+          <<<1, dimBlock, 0, stream>>>
           (nbatch, nchannel, in_data.dptr<DType>(), out_grad.dptr<DType>(), mean_data.dptr<DType>(),
             std_data.dptr<DType>(), gamma_grad_ptr, beta_grad_ptr);
       }
@@ -573,12 +581,16 @@ void LayerNormGradGPUContig(const LayerNormParam param,
   }
   if(data_req != kNullOp) {
     MSHADOW_REAL_TYPE_SWITCH(in_data.type_flag_, DType, {
+      int nshared = dimBlock.y > 1 ? dimBlock.y * dimBlock.x * sizeof(DType) : 0;
+      CheckLaunchParam(dimGrid, dimBlock);
       if(data_grad_req == kAddTo) {
-        LayerNormFusedBackwardKernel_Data<LOAD_UNROLL, true> <<<dimGrid, dimBlock, stream>>>
+        LayerNormFusedBackwardKernel_Data<LOAD_UNROLL, true>
+          <<<dimGrid, dimBlock, nshared, stream>>>
           (nbatch, nchannel, in_data.dptr<DType>(), out_grad.dptr<DType>(), mean_data.dptr<DType>(),
            std_data.dptr<DType>(), gamma.dptr<DType>(), data_grad.dptr<DType>());
       } else {
-        LayerNormFusedBackwardKernel_Data<LOAD_UNROLL, false> <<<dimGrid, dimBlock, stream>>>
+        LayerNormFusedBackwardKernel_Data<LOAD_UNROLL, false>
+          <<<dimGrid, dimBlock, nshared, stream>>>
           (nbatch, nchannel, in_data.dptr<DType>(), out_grad.dptr<DType>(), mean_data.dptr<DType>(),
            std_data.dptr<DType>(), gamma.dptr<DType>(), data_grad.dptr<DType>());
       }
