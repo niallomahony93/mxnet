@@ -511,7 +511,7 @@ void LayerNormGradGPUContig(const LayerNormParam param,
                             const std::vector<TBlob>& outputs) {
   using namespace mshadow;
   CHECK_EQ(inputs.size(), 5U);
-  const TBlob ograd = inputs[0];
+  const TBlob out_grad = inputs[0];
   const TBlob in_data = inputs[1];
   const TBlob gamma = inputs[2];
   const TBlob mean_data = inputs[3];
@@ -521,7 +521,7 @@ void LayerNormGradGPUContig(const LayerNormParam param,
   const TBlob beta_grad = outputs[2];
 
   // Make sure the inputs are contiguous
-  CHECK_EQ(ograd.CheckContiguous(), true);
+  CHECK_EQ(out_grad.CheckContiguous(), true);
   CHECK_EQ(in_data.CheckContiguous(), true);
   CHECK_EQ(gamma.CheckContiguous(), true);
   CHECK_EQ(mean_data.CheckContiguous(), true);
