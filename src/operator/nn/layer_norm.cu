@@ -332,8 +332,8 @@ __global__ void LayerNormFusedBackwardKernel_GammaBeta(const int nbatch,
   DType local_std[LOAD_UNROLL];
   DType local_gamma_grad[LOAD_UNROLL];
   DType local_beta_grad[LOAD_UNROLL];
-  bool need_gamma_grad = (gamma_grad != nullptr);
-  bool need_beta_grad = (beta_grad != nullptr);
+  const bool need_gamma_grad = (gamma_grad != nullptr);
+  const bool need_beta_grad = (beta_grad != nullptr);
   int l = LOAD_UNROLL * tid;
   // We try to load the data using vectorized types like float4
   for(; l + LOAD_UNROLL - 1 < nchannel; l += LOAD_UNROLL * nthread) {
