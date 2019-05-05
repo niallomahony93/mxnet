@@ -426,7 +426,7 @@ __global__ void LayerNormFusedBackwardKernel_Data(const int nbatch,
   int bid = blockIdx.x + blockIdx.y * gridDim.x;
   const int nthread = blockDim.x * blockDim.y;
   if(bid < nbatch) {
-    extern __shared__ DType buf[];  // Shared memory with size blockDim.y * blockDim.x * sizeof(DType)
+    extern __shared__ char buf[];  // Shared memory with size blockDim.y * blockDim.x * sizeof(DType)
     int tid = threadIdx.x;
     // 1. Calculate: mean(out_grad * gamma / std, axis=-1)
     //               mean(out_grad * gamma / std * (x - mean) / std, axis=-1)
@@ -459,8 +459,9 @@ __global__ void LayerNormFusedBackwardKernel_Data(const int nbatch,
     }
     // Inter-warp reduction (all-reduce)
     if(blockDim.y > 1) {
-      DType* sum_val0_buf = buf;
-      DType* sum_val1_buf = buf + blockDim.y / 2 * blockDim.x;
+      DType* sum_val0_buf = reinterpret_cast<DType*>(buf);
+      DType* sum_val1_buf =
+        reinterpret_cast<DType*>(buf + blockDim.y / 2 * blockDim.x * sizeof(DType));
       for (int offset = blockDim.y / 2; offset > 0; offset /= 2) {
         if (threadIdx.y >= offset && threadIdx.y < 2 * offset) {
           const int idx = (threadIdx.y - offset) * blockDim.x + threadIdx.x;
