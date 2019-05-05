@@ -581,7 +581,7 @@ void LayerNormGradGPUContig(const LayerNormParam param,
     nthread_y = 2;
   }
   const dim3 dimBlockData(32, nthread_y);
-  if(data_req != kNullOp) {
+  if(data_grad_req != kNullOp) {
     MSHADOW_REAL_TYPE_SWITCH(in_data.type_flag_, DType, {
       int nshared = dimBlock.y > 1 ? dimBlock.y * dimBlock.x * sizeof(DType) : 0;
       CheckLaunchParam(dimGrid, dimBlockData);
