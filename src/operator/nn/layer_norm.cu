@@ -528,12 +528,12 @@ void LayerNormGradGPUContig(const LayerNormParam param,
   CHECK_EQ(std_data.CheckContiguous(), true);
   int nbatch = in_data.shape_.ProdShape(0, in_data.ndim() - 1);
   int nchannel = in_data.shape_[in_data.ndim() - 1];
-  int data_req = req[0];
-  int gamma_req = req[1];
-  int beta_req = req[2];
-  CHECK_NE(data_req, kWriteInplace);
-  CHECK_NE(gamma_req, kWriteInplace);
-  CHECK_NE(beta_req, kWriteInplace);
+  int data_grad_req = req[0];
+  int gamma_grad_req = req[1];
+  int beta_grad_req = req[2];
+  CHECK_NE(data_grad_req, kWriteInplace);
+  CHECK_NE(gamma_grad_req, kWriteInplace);
+  CHECK_NE(beta_grad_req, kWriteInplace);
   cudaStream_t stream = Stream<gpu>::GetStream(ctx.get_stream<gpu>());
 
   // Calculate the gradient for gamma/beta
@@ -541,19 +541,19 @@ void LayerNormGradGPUContig(const LayerNormParam param,
   CHECK_EQ(beta_grad.CheckContiguous(), true);
   const dim3 dimBlock(32, 4);
   const int LOAD_UNROLL = 4;
-  if(gamma_req != kNullOp || beta_req != kNullOp) {
+  if(gamma_grad_req != kNullOp || beta_grad_req != kNullOp) {
     MSHADOW_REAL_TYPE_SWITCH(in_data.type_flag_, DType, {
-      DType* gamma_grad_ptr = (gamma_req != kNullOp) ? gamma.dptr<DType>() : nullptr;
-      DType* beta_grad_ptr = (beta_req != kNullOp) ? beta.dptr<DType>() : nullptr;
-      if(gamma_req == kAddTo && beta_req != kAddTo) {
+      DType* gamma_grad_ptr = (gamma_grad_req != kNullOp) ? gamma_grad.dptr<DType>() : nullptr;
+      DType* beta_grad_ptr = (beta_grad_req != kNullOp) ? beta_grad.dptr<DType>() : nullptr;
+      if(gamma_grad_req == kAddTo && beta_grad_req != kAddTo) {
         LayerNormFusedBackwardKernel_GammaBeta<LOAD_UNROLL, true, false> <<<1, dimBlock, stream>>>
           (nbatch, nchannel, in_data.dptr<DType>(), out_grad.dptr<DType>(), mean_data.dptr<DType>(),
            std_data.dptr<DType>(), gamma_grad_ptr, beta_grad_ptr);
-      } else if(gamma_req != kAddTo && beta_req == kAddTo) {
+      } else if(gamma_grad_req != kAddTo && beta_grad_req == kAddTo) {
         LayerNormFusedBackwardKernel_GammaBeta<LOAD_UNROLL, false, true> <<<1, dimBlock, stream>>>
           (nbatch, nchannel, in_data.dptr<DType>(), out_grad.dptr<DType>(), mean_data.dptr<DType>(),
            std_data.dptr<DType>(), gamma_grad_ptr, beta_grad_ptr);
-      } else if(gamma_req == kAddTo && beta_req == kAddTo) {
+      } else if(gamma_grad_req == kAddTo && beta_grad_req == kAddTo) {
         LayerNormFusedBackwardKernel_GammaBeta<LOAD_UNROLL, true, true> <<<1, dimBlock, stream>>>
           (nbatch, nchannel, in_data.dptr<DType>(), out_grad.dptr<DType>(), mean_data.dptr<DType>(),
            std_data.dptr<DType>(), gamma_grad_ptr, beta_grad_ptr);
@@ -577,7 +577,7 @@ void LayerNormGradGPUContig(const LayerNormParam param,
   }
   if(data_req != kNullOp) {
     MSHADOW_REAL_TYPE_SWITCH(in_data.type_flag_, DType, {
-      if(data_req == kAddTo) {
+      if(data_grad_req == kAddTo) {
         LayerNormFusedBackwardKernel_Data<LOAD_UNROLL, true> <<<dimGrid, dimBlock, stream>>>
           (nbatch, nchannel, in_data.dptr<DType>(), out_grad.dptr<DType>(), mean_data.dptr<DType>(),
            std_data.dptr<DType>(), gamma.dptr<DType>(), data_grad.dptr<DType>());
