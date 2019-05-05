@@ -574,23 +574,25 @@ void LayerNormGradGPUContig(const LayerNormParam param,
   int ngrid_x = (nbatch > kMaxGridDim) ? (nbatch + kBaseGridNum - 1) / kBaseGridNum : nbatch;
   int ngrid_y = (nbatch > kMaxGridDim) ? kBaseGridNum : 1;
   const dim3 dimGrid(ngrid_x, ngrid_y);
+  int nthread_y = 0;
   if(nchannel <= 32) {
-    dimBlock.y = 1;
+    nthread_y = 1;
   } else {
-    dimBlock.y = 2;
+    nthread_y = 2;
   }
+  const dim3 dimBlockData(32, nthread_y);
   if(data_req != kNullOp) {
     MSHADOW_REAL_TYPE_SWITCH(in_data.type_flag_, DType, {
       int nshared = dimBlock.y > 1 ? dimBlock.y * dimBlock.x * sizeof(DType) : 0;
-      CheckLaunchParam(dimGrid, dimBlock);
+      CheckLaunchParam(dimGrid, dimBlockData);
       if(data_grad_req == kAddTo) {
         LayerNormFusedBackwardKernel_Data<LOAD_UNROLL, true>
-          <<<dimGrid, dimBlock, nshared, stream>>>
+          <<<dimGrid, dimBlockData, nshared, stream>>>
           (nbatch, nchannel, in_data.dptr<DType>(), out_grad.dptr<DType>(), mean_data.dptr<DType>(),
            std_data.dptr<DType>(), gamma.dptr<DType>(), data_grad.dptr<DType>());
       } else {
         LayerNormFusedBackwardKernel_Data<LOAD_UNROLL, false>
-          <<<dimGrid, dimBlock, nshared, stream>>>
+          <<<dimGrid, dimBlockData, nshared, stream>>>
           (nbatch, nchannel, in_data.dptr<DType>(), out_grad.dptr<DType>(), mean_data.dptr<DType>(),
            std_data.dptr<DType>(), gamma.dptr<DType>(), data_grad.dptr<DType>());
       }
