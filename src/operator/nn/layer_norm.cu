@@ -368,11 +368,15 @@ __global__ void LayerNormFusedBackwardKernel_GammaBeta(const int nbatch,
       if(need_gamma_grad) {
         if(gamma_addto) {
           gamma_grad[l + i] += local_gamma_grad[i];
+        } else {
+          gamma_grad[l + i] = local_gamma_grad[i];
         }
       }
       if(need_beta_grad) {
         if(beta_addto) {
           beta_grad[l + i] += local_beta_grad[i];
+        } else {
+          beta_grad[l + i] = local_beta_grad[i];
         }
       }
     }
@@ -427,7 +431,7 @@ __global__ void LayerNormFusedBackwardKernel_Data(const int nbatch,
   const int nthread = blockDim.x * blockDim.y;
   if(bid < nbatch) {
     extern __shared__ char buf[];  // Shared memory with size blockDim.y * blockDim.x * sizeof(DType)
-    int tid = threadIdx.x;
+    int tid = threadIdx.x + threadIdx.y * blockDim.x;
     // 1. Calculate: mean(out_grad * gamma / std, axis=-1)
     //               mean(out_grad * gamma / std * (x - mean) / std, axis=-1)
     DType sum_val0 = 0;  // Stores mean(out_grad * gamma / std, axis=-1)
