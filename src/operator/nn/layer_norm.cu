@@ -420,7 +420,7 @@ __global__ void LayerNormFusedBackwardKernel_GammaBeta(const int nbatch,
         __syncthreads();
       }
     }
-    if(threadIdx.y == 0 && c < nchannel) {
+    if(threadIdx.y == 0) {
       if(gamma_grad) {
         if(gamma_addto) {
           gamma_grad[c] += buf_gamma_grad[threadIdx.x];
@@ -703,7 +703,7 @@ void LayerNormGradGPUContig(const LayerNormParam param,
       DType* part_beta_grad_ptr = workspace.dptr_ + npart * nchannel;
       const int nshared_K1 = (2 * part_grad_block_dim.y * row_repeat
                               + 2 * part_grad_block_dim.x * part_grad_block_dim.y) * sizeof(DType);
-      const int nshared_K2 = 2 * part_grad_block_dim.x * part_grad_block_dim.y * sizeof(DType);
+      const int nshared_K2 = 2 * gb_block_dim.x * gb_block_dim.y * sizeof(DType);
       DType* gamma_grad_ptr = (gamma_grad_req != kNullOp) ? gamma_grad.dptr<DType>() : nullptr;
       DType* beta_grad_ptr = (beta_grad_req != kNullOp) ? beta_grad.dptr<DType>() : nullptr;
       LayerNormFusedBackwardKernel_PartGammaBeta
