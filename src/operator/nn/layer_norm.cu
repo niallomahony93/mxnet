@@ -361,7 +361,7 @@ __global__ void LayerNormFusedBackwardKernel_PartGammaBeta(const int nbatch,
         int r = r_b + r_offset;
         if(r < r_end) {
           int read_idx = r * nchannel + c;
-          int write_idx = r_shift * blockDim.x + threadIdx.x;
+          int write_idx = r_offset * blockDim.x + threadIdx.x;
           buf_gamma_grad[write_idx] +=
             (in_data[read_idx] - buf_mean_data[r_offset]) / buf_std_data[r_offset]
             * out_grad[read_idx];
@@ -706,7 +706,7 @@ void LayerNormGradGPUContig(const LayerNormParam param,
       DType* gamma_grad_ptr = (gamma_grad_req != kNullOp) ? gamma_grad.dptr<DType>() : nullptr;
       DType* beta_grad_ptr = (beta_grad_req != kNullOp) ? beta_grad.dptr<DType>() : nullptr;
       LayerNormFusedBackwardKernel_PartGammaBeta
-        <<<part_grad_grid_dim, part_grid_block_dim, nshared_K1, stream>>>
+        <<<part_grad_grid_dim, part_grad_block_dim, nshared_K1, stream>>>
         (nbatch, nchannel, row_repeat, in_data.dptr<DType>(), out_grad.dptr<DType>(),
          mean_data.dptr<DType>(), std_data.dptr<DType>(), part_gamma_grad_ptr, part_beta_grad_ptr);
       MSHADOW_CUDA_POST_KERNEL_CHECK(LayerNormFusedBackwardKernel_PartGammaBeta);
