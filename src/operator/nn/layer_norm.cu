@@ -339,7 +339,7 @@ __global__ void LayerNormFusedBackwardKernel_PartGammaBeta(const int nbatch,
   const int tid = threadIdx.y * blockDim.x + threadIdx.x;
   // The rows are divided into `npart` parts. Each threadblock calculates the reduction result
   // within the corresponding row ranges.
-  int c = blockIdx.x * blockDim.x + threadIdx.x;
+  const int c = blockIdx.x * blockDim.x + threadIdx.x;
   int r_begin = blockIdx.y * block_row_num;
   int r_end = min((blockIdx.y + 1) * block_row_num, nbatch);
   DType* buf_mean_data = d_buf;
@@ -348,7 +348,7 @@ __global__ void LayerNormFusedBackwardKernel_PartGammaBeta(const int nbatch,
   DType* buf_beta_grad = d_buf + 2 * blockDim.y * row_repeat + blockDim.y * blockDim.x;
   // Initialize the buf_gamma_grad/buf_beta_grad to be all zero
   buf_gamma_grad[tid] = 0;
-  buf_beta_grad[tid] = 0
+  buf_beta_grad[tid] = 0;
   for(int r_b = r_begin; r_b < r_end; r_b += blockDim.y * row_repeat) {
     for(int i=tid; i < blockDim.y * row_repeat; i += nthread) {
       buf_mean_data[i] = mean_data[r_b + i];
