@@ -362,11 +362,10 @@ __global__ void LayerNormFusedBackwardKernel_PartGammaBeta(const int nbatch,
         int r = r_b + r_offset;
         if(r < r_end) {
           int read_idx = r * nchannel + c;
-          int write_idx = r_offset * blockDim.x + threadIdx.x;
-          buf_gamma_grad[write_idx] +=
+          buf_gamma_grad[tid] +=
             (in_data[read_idx] - buf_mean_data[r_offset]) / buf_std_data[r_offset]
             * out_grad[read_idx];
-          buf_beta_grad[write_idx] += out_grad[read_idx];
+          buf_beta_grad[tid] += out_grad[read_idx];
         }
       }
     }
