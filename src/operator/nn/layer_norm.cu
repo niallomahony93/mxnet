@@ -358,7 +358,7 @@ __global__ void LayerNormFusedBackwardKernel_PartGammaBeta(const int nbatch,
     __syncthreads();
     if(c < nchannel) {
       for(int i = 0; i < row_repeat; ++i) {
-        int r_offset = i * blockDim.y + blockIdx.y;
+        int r_offset = i * blockDim.y + threadIdx.y;
         int r = r_b + r_offset;
         if(r < r_end) {
           int read_idx = r * nchannel + c;
