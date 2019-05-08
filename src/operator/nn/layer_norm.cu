@@ -643,8 +643,9 @@ __global__ void LayerNormFusedBackwardKernel_Data(const int nbatch,
 
 void GetGammaBetaGradKernelParams(const int nbatch, const int nchannel,
                                   dim3* part_grad_block_dim, dim3* part_grad_grid_dim,
-                                  dim3* gb_block_dim, dim3* gb_grid_dim, int* row_repeat) {
-  const int npart = 16;
+                                  dim3* gb_block_dim, dim3* gb_grid_dim,
+                                  int* row_repeat, int* npart) {
+  *npart = 16;
   *part_grad_block_dim = dim3(32, 16);
   *part_grad_grid_dim = dim3((nchannel + 32 - 1) / 32, npart);
   *row_repeat = 16;
@@ -690,9 +691,9 @@ void LayerNormGradGPUContig(const LayerNormParam param,
   CHECK_EQ(gamma_grad.CheckContiguous(), true);
   CHECK_EQ(beta_grad.CheckContiguous(), true);
   dim3 part_grad_block_dim, part_grad_grid_dim, gb_block_dim, gb_grid_dim;
-  int row_repeat;
+  int row_repeat, npart;
   GetGammaBetaGradKernelParams(nbatch, nchannel, &part_grad_block_dim, &part_grad_grid_dim,
-                               &gb_block_dim, &gb_grid_dim);
+                               &gb_block_dim, &gb_grid_dim, &row_repeat, &npart);
   if(gamma_grad_req != kNullOp || beta_grad_req != kNullOp) {
     MSHADOW_REAL_TYPE_SWITCH(in_data.type_flag_, DType, {
       Tensor<gpu, 1, DType> workspace =
