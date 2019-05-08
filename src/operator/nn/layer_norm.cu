@@ -350,7 +350,8 @@ __global__ void LayerNormFusedBackwardKernel_PartGammaBeta(const int nbatch,
   buf_gamma_grad[tid] = 0;
   buf_beta_grad[tid] = 0;
   for(int r_b = r_begin; r_b < r_end; r_b += blockDim.y * row_repeat) {
-    for(int i=tid; i < blockDim.y * row_repeat; i += nthread) {
+    int inner_r_end = min(blockDim.y * row_repeat, r_end - r_b);
+    for(int i=tid; i < inner_r_end; i += nthread) {
       buf_mean_data[i] = mean_data[r_b + i];
       buf_std_data[i] = std_data[r_b + i];
     }
