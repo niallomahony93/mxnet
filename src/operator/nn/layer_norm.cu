@@ -371,7 +371,7 @@ __global__ void LayerNormFusedBackwardKernel_PartGammaBeta(const int nbatch,
     }
     __syncthreads();
   }
-  for(int offset = blockDim.y/2;  offset > 1;  offset /= 2) {
+  for(int offset = blockDim.y/2;  offset > 0;  offset /= 2) {
     if(threadIdx.y < offset) {
       int idx1 = threadIdx.y * blockDim.x + threadIdx.x;
       int idx2 = (threadIdx.y + offset) * blockDim.x + threadIdx.x;
@@ -409,7 +409,7 @@ __global__ void LayerNormFusedBackwardKernel_GammaBeta(const int nbatch,
     __syncthreads();
     // Begin for inter-warp reduce
     if(npart > 1) {
-      for(int offset = blockDim.y/2; offset > 1; offset /= 2) {
+      for(int offset = blockDim.y/2; offset > 0; offset /= 2) {
         if(threadIdx.y < offset) {
           int idx1 = tid;
           int idx2 = tid + offset * blockDim.x;
