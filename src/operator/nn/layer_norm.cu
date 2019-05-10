@@ -157,6 +157,7 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
                                                   DType* __restrict__ mean_data,
                                                   DType* __restrict__ std_data) {
   int bid = blockIdx.x + blockIdx.y * gridDim.x;
+  const int tid = threadIdx.y * blockDim.x + threadIdx.x;
   const int nthread = blockDim.x * blockDim.y;
   DType count = 0;
   DType mean = 0;
