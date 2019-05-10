@@ -280,14 +280,12 @@ void LayerNormGPUContig(const LayerNormParam param,
   int ngrid_y = (nbatch > kMaxGridDim) ? kBaseGridNum : 1;
   int nthread_y;
   const dim3 dimGrid(ngrid_x, ngrid_y);
-  if(nchannel <= 32) {
+  if(nchannel <= 128) {
     nthread_y = 1;
-  } else if (nchannel <= 128) {
-    nthread_y = 2;
   } else if (nchannel <= 512) {
-    nthread_y = 4;
+    nthread_y = 2;
   } else {
-    nthread_y = 8;
+    nthread_y = 4;
   }
   cudaStream_t stream = Stream<gpu>::GetStream(ctx.get_stream<gpu>());
   const dim3 dimBlock(32, nthread_y);
