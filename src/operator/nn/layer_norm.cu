@@ -373,9 +373,9 @@ __global__ void LayerNormFusedBackwardKernel_PartGammaBeta(const int nbatch,
   DType* buf_std_data = d_buf + blockDim.y * row_repeat;
   DType* buf_gamma_grad = d_buf + 2 * blockDim.y * row_repeat;
   DType* buf_beta_grad = d_buf + 2 * blockDim.y * row_repeat + blockDim.y * blockDim.x;
-  // Initialize the buf_gamma_grad/buf_beta_grad to be all zero
-  buf_gamma_grad[tid] = 0;
-  buf_beta_grad[tid] = 0;
+  DType local_gamma_grad = 0;
+  DType local_beta_grad = 0;
+
   for(int r_b = r_begin; r_b < r_end; r_b += blockDim.y * row_repeat) {
     int inner_r_end = min(blockDim.y * row_repeat, r_end - r_b);
     for(int i=tid; i < inner_r_end; i += nthread) {
@@ -383,8 +383,6 @@ __global__ void LayerNormFusedBackwardKernel_PartGammaBeta(const int nbatch,
       buf_std_data[i] = std_data[r_b + i];
     }
     __syncthreads();
-    DType local_gamma_grad = 0;
-    DType local_beta_grad = 0;
     if(c < nchannel) {
       for(int i = 0; i < row_repeat; ++i) {
         int r_offset = i * blockDim.y + threadIdx.y;
@@ -397,10 +395,10 @@ __global__ void LayerNormFusedBackwardKernel_PartGammaBeta(const int nbatch,
         }
       }
     }
-    buf_gamma_grad[tid] += local_gamma_grad;
-    buf_beta_grad[tid] += local_beta_grad;
     __syncthreads();
   }
+  buf_gamma_grad[tid] = local_gamma_grad;
+  buf_beta_grad[tid] = local_beta_grad;
   for(int offset = blockDim.y/2;  offset > 0;  offset >>= 1) {
     if(threadIdx.y < offset) {
       int idx1 = threadIdx.y * blockDim.x + threadIdx.x;
