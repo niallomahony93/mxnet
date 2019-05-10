@@ -181,7 +181,7 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
 //      DType countB = WARP_SHFL(count, src_lane);
 //      ChanMergePartition(meanB, sigma2B, countB, mean, sigma2, count);
 //    }
-    for(int mask = blockDim.x / 2; mask > 0; mask >>= 1) {
+    for(int mask = 16; mask > 0; mask >>= 1) {
       DType meanB = WARP_SHFL_XOR(mean, mask);
       DType sigma2B = WARP_SHFL_XOR(sigma2, mask);
       DType countB = WARP_SHFL_XOR(count, mask);
@@ -191,31 +191,30 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
       // Inter-warp reduction. Copy the upper-half of the warps to shared memory
       // and merge with the lower-half warp
       DType* mean_buf = reinterpret_cast<DType*>(buf);
-      DType* sigma2_buf = reinterpret_cast<DType*>(buf + sizeof(DType) * blockDim.y / 2);
-      DType* count_buf = reinterpret_cast<DType*>(buf + sizeof(DType) * blockDim.y);
+      DType* sigma2_buf = reinterpret_cast<DType*>(buf + sizeof(DType) * blockDim.y / 2 * 32);
+      DType* count_buf = reinterpret_cast<DType*>(buf + sizeof(DType) * blockDim.y * 32);
       for (int offset = blockDim.y / 2; offset > 0; offset >>= 2) {
-        if (threadIdx.x == 0 && threadIdx.y >= offset && threadIdx.y < 2 * offset) {
-          const int idx = threadIdx.y - offset;
+        if (threadIdx.y >= offset && threadIdx.y < 2 * offset) {
+          const int idx = (threadIdx.y - offset) * blockDim.x + threadIdx.x;
           mean_buf[idx] = mean;
           sigma2_buf[idx] = sigma2;
           count_buf[idx] = count;
         }
         __syncthreads();
-        if (threadIdx.x == 0 && threadIdx.y < offset) {
-          ChanMergePartition(mean_buf[threadIdx.y],
-                             sigma2_buf[threadIdx.y],
-                             count_buf[threadIdx.y], mean, sigma2, count);
+        if (threadIdx.y < offset) {
+          const int idx = threadIdx.y * blockDim.x + threadIdx.x;
+          ChanMergePartition(mean_buf[idx], sigma2_buf[idx], count_buf[idx], mean, sigma2, count);
         }
         __syncthreads();
       }
       // Broadcast the result to all threads
-      if (threadIdx.x == 0 && threadIdx.y == 0) {
-        mean_buf[0] = mean;
-        sigma2_buf[0] = sigma2;
+      if (threadIdx.y == 0) {
+        mean_buf[threadIdx.x] = mean;
+        sigma2_buf[threadIdx.x] = sigma2;
       }
       __syncthreads();
-      mean = mean_buf[0];
-      sigma2 = sigma2_buf[0] / nchannel;
+      mean = mean_buf[threadIdx.x];
+      sigma2 = sigma2_buf[threadIdx.x] / nchannel;
     }
     // Calculate the out_data: gamma * (x - mean) / sqrt(var + eps) + beta
     DType std_eps = sqrt(sigma2 + eps);
@@ -289,7 +288,8 @@ void LayerNormGPUContig(const LayerNormParam param,
   cudaStream_t stream = Stream<gpu>::GetStream(ctx.get_stream<gpu>());
   const dim3 dimBlock(32, nthread_y);
   MSHADOW_REAL_TYPE_SWITCH(in_data.type_flag_, DType, {
-    int nshared = nthread_y > 1 ? nthread_y * sizeof(DType) + (nthread_y / 2) * sizeof(DType) : 0;
+    int nshared = nthread_y > 1 ? nthread_y * 32 * sizeof(DType)
+                                  + (nthread_y / 2) * 32 * sizeof(DType) : 0;
     CheckLaunchParam(dimGrid, dimBlock);
     LayerNormFusedForwardKernelContig<<<dimGrid, dimBlock, nshared, stream>>>
      (nbatch, nchannel, static_cast<DType>(eps),
@@ -535,10 +535,8 @@ __global__ void LayerNormFusedBackwardKernel_Data(const int nbatch,
         sum_val1_buf[threadIdx.x] = sum_val1;
       }
       __syncthreads();
-      if(threadIdx.y != 0) {
-        sum_val0 = sum_val0_buf[threadIdx.x];
-        sum_val1 = sum_val1_buf[threadIdx.x];
-      }
+      sum_val0 = sum_val0_buf[threadIdx.x];
+      sum_val1 = sum_val1_buf[threadIdx.x];
     }
     sum_val0 /= nchannel;
     sum_val1 /= nchannel;
