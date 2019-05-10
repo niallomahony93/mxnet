@@ -281,7 +281,7 @@ void LayerNormGPUContig(const LayerNormParam param,
   if(nchannel <= 32) {
     nthread_y = 1;
   } else {
-    nthread_y =  1 << min(static_cast<int>(ceil(log2(nchannel / 32))), 2);
+    nthread_y =  1 << min(static_cast<int>(floor(log2(nchannel / 32))), 2);
   }
   cudaStream_t stream = Stream<gpu>::GetStream(ctx.get_stream<gpu>());
   const dim3 dimBlock(32, nthread_y);
@@ -660,7 +660,7 @@ void LayerNormGradGPUContig(const LayerNormParam param,
   if(nchannel <= 32) {
     nthread_y = 1;
   } else {
-    nthread_y =  1 << min(static_cast<int>(ceil(log2(nchannel / 32))), 3);
+    nthread_y =  1 << min(static_cast<int>(floor(log2(nchannel / 32))), 3);
   }
   const dim3 data_block_dim(32, nthread_y);
   const int LOAD_UNROLL = 4;
