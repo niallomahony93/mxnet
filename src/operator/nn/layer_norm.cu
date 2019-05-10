@@ -173,24 +173,27 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
     // within a warp of threads.
     // After calling the function, threadIdx.x == 0 will store the result of
     // the aggregated (mean, sigma2, counts).
-#pragma unroll
-    for (int l = 0; l <= 4; ++l) {
-      int src_lane = (threadIdx.x + (1<<l)) & 31;
-      DType meanB = WARP_SHFL(mean, src_lane);
-      DType sigma2B = WARP_SHFL(sigma2, src_lane);
-      DType countB = WARP_SHFL(count, src_lane);
+//#pragma unroll
+//    for (int l = 0; l <= 4; ++l) {
+//      int src_lane = (threadIdx.x + (1<<l)) & 31;
+//      DType meanB = WARP_SHFL(mean, src_lane);
+//      DType sigma2B = WARP_SHFL(sigma2, src_lane);
+//      DType countB = WARP_SHFL(count, src_lane);
+//      ChanMergePartition(meanB, sigma2B, countB, mean, sigma2, count);
+//    }
+    for(int mask = blockDim.x / 2; mask > 0; mask >>= 1) {
+      DType meanB = WARP_SHFL_XOR(mean, mask);
+      DType sigma2B = WARP_SHFL_XOR(sigma2, mask);
+      DType countB = WARP_SHFL_XOR(count, mask);
       ChanMergePartition(meanB, sigma2B, countB, mean, sigma2, count);
     }
-    if (blockDim.y == 1) {
-      mean = WARP_SHFL(mean, 0);
-      sigma2 = WARP_SHFL(sigma2 / nchannel, 0); // Calculate the variance
-    } else {
+    if (blockDim.y > 1) {
       // Inter-warp reduction. Copy the upper-half of the warps to shared memory
       // and merge with the lower-half warp
       DType* mean_buf = reinterpret_cast<DType*>(buf);
       DType* sigma2_buf = reinterpret_cast<DType*>(buf + sizeof(DType) * blockDim.y / 2);
       DType* count_buf = reinterpret_cast<DType*>(buf + sizeof(DType) * blockDim.y);
-      for (int offset = blockDim.y / 2; offset > 0; offset /= 2) {
+      for (int offset = blockDim.y / 2; offset > 0; offset >>= 2) {
         if (threadIdx.x == 0 && threadIdx.y >= offset && threadIdx.y < 2 * offset) {
           const int idx = threadIdx.y - offset;
           mean_buf[idx] = mean;
