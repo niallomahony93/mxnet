@@ -89,11 +89,11 @@ __device__ __forceinline__ void StepWelfordOnlineSum(const DType curr,
  */
 template<typename DType>
 __device__ __inline__ void ChanMergePartition(const DType lhs_mean,
-                                                const DType lhs_sigma2,
-                                                const DType lhs_count,
-                                                DType& rhs_mean,
-                                                DType& rhs_sigma2,
-                                                DType& rhs_count) {
+                                              const DType lhs_sigma2,
+                                              const DType lhs_count,
+                                              DType& rhs_mean,
+                                              DType& rhs_sigma2,
+                                              DType& rhs_count) {
   DType delta = rhs_mean - lhs_mean;
   DType nA = lhs_count;
   DType nB = rhs_count;
@@ -317,9 +317,31 @@ void LayerNormCompute<gpu>(const nnvm::NodeAttrs& attrs,
 }
 
 
-/* Fused CUDA kernel for calculating the gradient w.r.t gamma/beta in LayerNorm
- * It calculates the result for
+/* Fused CUDA kernel for calculating the gradient w.r.t gamma/beta in LayerNorm when axis=-1
+ * (Contiguous case).
+ * The gradient of gamma and beta are:
+ *   d_gamma = sum(out_grad * (x - mean) / std, axis=0)
+ *   d_beta = sum(out_grad, axis=0)
  *
+ * We compute the gradient (mainly reduction over a non-contiguous axis) using two steps to
+ * improve the parallelism.
+ *
+ * In the first step, we divide the rows uniformly into K parts. K independent threadblocks are used
+ * to calculate the partial reduction result of each part. Illustrated below:
+ *
+ *      1st Block          2nd Block          3rd Block              k-th Block
+ * | --------------- | ---------------- | --------------- | ... | ---------------- |
+ * | --------------- | ---------------- | --------------- | ... | ---------------- |
+ * | --------------- | ---------------- | --------------- | ... | ---------------- |
+ * | --------------- | ---------------- | --------------- | ... | ---------------- |
+ *     part_gamma[0]     part_gamma[1]      part_gamma[2]           part_gamma[k-1]
+ *     part_beta[0]      part_beta[1]       part_beta[2]            part_beta[k-1]
+ *
+ *
+ * In the second step, we sum up the row-values in part_gamma and part_beta.
+ *
+ * This `LayerNormFusedBackwardKernel_PartGammaBeta` function implements the first step and
+ * `LayerNormFusedBackwardKernel_GammaBeta` implements the second step.
  */
 template<typename DType>
 __global__ void LayerNormFusedBackwardKernel_PartGammaBeta(const int nbatch,
