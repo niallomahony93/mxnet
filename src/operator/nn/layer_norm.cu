@@ -508,7 +508,7 @@ __global__ void LayerNormFusedBackwardKernel_Data(const int nbatch,
       sum_val1 += ele_og * ele_gamma * (ele_x - mean) * invstd_eps * invstd_eps;
     }
     // Intra-warp reduction (all-reduce)
-    for(int mask = blockDim.x / 2; mask > 0; mask /= 2) {
+    for(int mask = blockDim.x / 2; mask > 0; mask >>= 1) {
       sum_val0 += WARP_SHFL_XOR(sum_val0, mask);
       sum_val1 += WARP_SHFL_XOR(sum_val1, mask);
     }
@@ -517,7 +517,7 @@ __global__ void LayerNormFusedBackwardKernel_Data(const int nbatch,
       DType* sum_val0_buf = reinterpret_cast<DType*>(buf);
       DType* sum_val1_buf =
         reinterpret_cast<DType*>(buf + blockDim.y / 2 * blockDim.x * sizeof(DType));
-      for (int offset = blockDim.y / 2; offset > 0; offset /= 2) {
+      for (int offset = blockDim.y / 2; offset > 0; offset >>= 1) {
         if (threadIdx.y >= offset && threadIdx.y < 2 * offset) {
           const int idx = (threadIdx.y - offset) * blockDim.x + threadIdx.x;
           sum_val0_buf[idx] = sum_val0;
