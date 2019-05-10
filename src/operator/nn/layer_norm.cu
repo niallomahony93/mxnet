@@ -276,12 +276,12 @@ void LayerNormGPUContig(const LayerNormParam param,
   float eps = param.eps;
   int ngrid_x = (nbatch > kMaxGridDim) ? (nbatch + kBaseGridNum - 1) / kBaseGridNum : nbatch;
   int ngrid_y = (nbatch > kMaxGridDim) ? kBaseGridNum : 1;
-  int nthread_y = 0;
+  int nthread_y;
   const dim3 dimGrid(ngrid_x, ngrid_y);
   if(nchannel <= 32) {
     nthread_y = 1;
   } else {
-    nthread_y = 2;
+    nthread_y =  1 << min(static_cast<int>(ceil(log2(nchannel / 32))), 2);
   }
   cudaStream_t stream = Stream<gpu>::GetStream(ctx.get_stream<gpu>());
   const dim3 dimBlock(32, nthread_y);
@@ -656,11 +656,11 @@ void LayerNormGradGPUContig(const LayerNormParam param,
   int ngrid_x = (nbatch > kMaxGridDim) ? (nbatch + kBaseGridNum - 1) / kBaseGridNum : nbatch;
   int ngrid_y = (nbatch > kMaxGridDim) ? kBaseGridNum : 1;
   const dim3 data_grid_dim(ngrid_x, ngrid_y);
-  int nthread_y = 0;
+  int nthread_y;
   if(nchannel <= 32) {
     nthread_y = 1;
   } else {
-    nthread_y = 2;
+    nthread_y =  1 << min(static_cast<int>(ceil(log2(nchannel / 32))), 3);
   }
   const dim3 data_block_dim(32, nthread_y);
   const int LOAD_UNROLL = 4;
