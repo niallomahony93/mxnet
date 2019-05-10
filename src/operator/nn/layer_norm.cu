@@ -193,7 +193,7 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
       DType* mean_buf = reinterpret_cast<DType*>(buf);
       DType* sigma2_buf = reinterpret_cast<DType*>(buf + sizeof(DType) * blockDim.y / 2 * 32);
       DType* count_buf = reinterpret_cast<DType*>(buf + sizeof(DType) * blockDim.y * 32);
-      for (int offset = blockDim.y / 2; offset > 0; offset >>= 2) {
+      for (int offset = blockDim.y / 2; offset > 0; offset >>= 1) {
         if (threadIdx.y >= offset && threadIdx.y < 2 * offset) {
           const int idx = (threadIdx.y - offset) * blockDim.x + threadIdx.x;
           mean_buf[idx] = mean;
