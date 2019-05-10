@@ -111,13 +111,13 @@ __device__ __inline__ void ChanMergePartition(const DType lhs_mean,
 
 
 template<typename AType, typename DType, typename IType>
-__device__ __forceinline__ void BlockWelfordOnlineSum(const int tid,
-                                                      const int nthread,
-                                                      const DType* __restrict__ col_vals,
+__device__ __forceinline__ void BlockWelfordOnlineSum(const DType* __restrict__ col_vals,
                                                       const int nchannel,
                                                       AType& mean,
                                                       AType& sigma2,
                                                       IType& count) {
+  int tid = threadIdx.x + threadIdx.y * blockDim.x;
+  const int nthread = blockDim.x * blockDim.y;
   // Each thread takes charge of 4 consecutive numbers. This should optimize the loading speed using
   // vectorized types like float4.
   // Also, to minimize branch divergence, we split the for-loop into two parts.
@@ -164,9 +164,8 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
 
   if (bid < nbatch) {
     extern __shared__ char buf[];  // Shared memory
-    int tid = threadIdx.x + threadIdx.y * blockDim.x;
     const DType* col_vals = in_data + bid * nchannel;
-    BlockWelfordOnlineSum(tid, nthread, col_vals, nchannel, mean, sigma2, count);
+    BlockWelfordOnlineSum(col_vals, nchannel, mean, sigma2, count);
 
     // Merge the mean/sigma2 within a warp
     // Use the Chan's Parallel Algorithm to merge all (mean, sigma2, counts)
@@ -371,7 +370,7 @@ __global__ void LayerNormFusedBackwardKernel_PartGammaBeta(const int nbatch,
     }
     __syncthreads();
   }
-  for(int offset = blockDim.y/2;  offset > 0;  offset /= 2) {
+  for(int offset = blockDim.y/2;  offset > 0;  offset >>= 1) {
     if(threadIdx.y < offset) {
       int idx1 = threadIdx.y * blockDim.x + threadIdx.x;
       int idx2 = (threadIdx.y + offset) * blockDim.x + threadIdx.x;
@@ -409,7 +408,7 @@ __global__ void LayerNormFusedBackwardKernel_GammaBeta(const int nbatch,
     __syncthreads();
     // Begin for inter-warp reduce
     if(npart > 1) {
-      for(int offset = blockDim.y/2; offset > 0; offset /= 2) {
+      for(int offset = blockDim.y/2; offset > 0; offset >>= 1) {
         if(threadIdx.y < offset) {
           int idx1 = tid;
           int idx2 = tid + offset * blockDim.x;
