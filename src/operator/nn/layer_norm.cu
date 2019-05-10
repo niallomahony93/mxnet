@@ -395,7 +395,6 @@ __global__ void LayerNormFusedBackwardKernel_PartGammaBeta(const int nbatch,
         }
       }
     }
-    __syncthreads();
   }
   buf_gamma_grad[tid] = local_gamma_grad;
   buf_beta_grad[tid] = local_beta_grad;
