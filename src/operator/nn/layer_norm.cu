@@ -362,15 +362,14 @@ __global__ void LayerNormFusedBackwardKernel_PartGammaBeta(const int nbatch,
   DType* d_buf = reinterpret_cast<DType*>(buf);
   const int npart = gridDim.y;
   const int block_row_num = (nbatch + npart - 1) / npart;
-  const int nthread = blockDim.x * blockDim.y;
-  const int tid = threadIdx.y * blockDim.x + threadIdx.x;
   // The rows are divided into `npart` parts. Each threadblock calculates the reduction result
   // within the corresponding row ranges.
+  int row_stride = blockDim.x + 1;
   const int c = blockIdx.x * blockDim.x + threadIdx.x;
   int r_begin = blockIdx.y * block_row_num;
   int r_end = min((blockIdx.y + 1) * block_row_num, nbatch);
   DType* buf_gamma_grad = d_buf;
-  DType* buf_beta_grad = d_buf + blockDim.y * blockDim.x;
+  DType* buf_beta_grad = d_buf + blockDim.y * row_stride;
   DType local_gamma_grad = 0;
   DType local_beta_grad = 0;
 
@@ -390,21 +389,23 @@ __global__ void LayerNormFusedBackwardKernel_PartGammaBeta(const int nbatch,
       }
     }
   }
-  buf_gamma_grad[tid] = local_gamma_grad;
-  buf_beta_grad[tid] = local_beta_grad;
+  buf_gamma_grad[threadIdx.y * row_stride + threadIdx.x] = local_gamma_grad;
+  buf_beta_grad[threadIdx.y * row_stride + threadIdx.x] = local_beta_grad;
   __syncthreads();
-  for(int offset = blockDim.y/2;  offset > 0;  offset >>= 1) {
+  for(int offset = blockDim.y/2;  offset > 1;  offset >>= 1) {
     if(threadIdx.y < offset) {
-      int idx1 = threadIdx.y * blockDim.x + threadIdx.x;
-      int idx2 = (threadIdx.y + offset) * blockDim.x + threadIdx.x;
+      int idx1 = threadIdx.y * row_stride + threadIdx.x;
+      int idx2 = (threadIdx.y + offset) * row_stride + threadIdx.x;
       buf_gamma_grad[idx1] += buf_gamma_grad[idx2];
       buf_beta_grad[idx1] += buf_beta_grad[idx2];
     }
     __syncthreads();
   }
   if(threadIdx.y == 0 && c < nchannel) {
-    part_gamma_grad[blockIdx.y * nchannel + c] = buf_gamma_grad[threadIdx.x];
-    part_beta_grad[blockIdx.y * nchannel + c] = buf_beta_grad[threadIdx.x];
+    part_gamma_grad[blockIdx.y * nchannel + c] = buf_gamma_grad[threadIdx.x]
+                                                   + buf_gamma_grad[threadIdx.x + row_stride];
+    part_beta_grad[blockIdx.y * nchannel + c] = buf_beta_grad[threadIdx.x]
+                                                   + buf_beta_grad[threadIdx.x + row_stride];
   }
 }
 
@@ -614,7 +615,8 @@ void LayerNormGradGPUContig(const LayerNormParam param,
         ctx.requested[0].get_space_typed<gpu, 1, DType>(Shape1(2 * npart * nchannel), s);
       DType* part_gamma_grad_ptr = workspace.dptr_;
       DType* part_beta_grad_ptr = workspace.dptr_ + npart * nchannel;
-      const int nshared_K1 = 2 * part_grad_block_dim.x * part_grad_block_dim.y * sizeof(DType);
+      const int nshared_K1 = 2 * (part_grad_block_dim.x + 1)
+                               * part_grad_block_dim.y * sizeof(DType);
       const int nshared_K2 = 2 * gb_block_dim.x * gb_block_dim.y * sizeof(DType);
       DType* gamma_grad_ptr = (gamma_grad_req != kNullOp) ? gamma_grad.dptr<DType>() : nullptr;
       DType* beta_grad_ptr = (beta_grad_req != kNullOp) ? beta_grad.dptr<DType>() : nullptr;
