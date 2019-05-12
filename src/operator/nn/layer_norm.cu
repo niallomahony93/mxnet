@@ -362,7 +362,6 @@ __global__ void LayerNormFusedBackwardKernel_PartGammaBeta(const int nbatch,
   DType* d_buf = reinterpret_cast<DType*>(buf);
   const int npart = gridDim.y;
   const int block_row_num = (nbatch + npart - 1) / npart;
-  const int nthread = blockDim.x * blockDim.y;
   const int tid = threadIdx.y * blockDim.x + threadIdx.x;
   // The rows are divided into `npart` parts. Each threadblock calculates the reduction result
   // within the corresponding row ranges.
@@ -409,8 +408,8 @@ __global__ void LayerNormFusedBackwardKernel_PartGammaBeta(const int nbatch,
   __syncthreads();
   for(int offset = blockDim.y/2;  offset > 0;  offset >>= 1) {
     if(threadIdx.y < offset) {
-      int idx1 = threadIdx.y * blockDim.x + threadIdx.x;
-      int idx2 = (threadIdx.y + offset) * blockDim.x + threadIdx.x;
+      int idx1 = threadIdx.y * row_stride + threadIdx.x;
+      int idx2 = (threadIdx.y + offset) * row_stride + threadIdx.x;
       buf_gamma_grad[idx1] += buf_gamma_grad[idx2];
       buf_beta_grad[idx1] += buf_beta_grad[idx2];
     }
