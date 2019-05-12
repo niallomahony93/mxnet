@@ -369,7 +369,7 @@ __global__ void LayerNormFusedBackwardKernel_PartGammaBeta(const int nbatch,
   const int c = blockIdx.x * blockDim.x + threadIdx.x;
   int r_begin = blockIdx.y * block_row_num;
   int r_end = min((blockIdx.y + 1) * block_row_num, nbatch);
-  const row_stride = blockDim.x + 1;
+  const int row_stride = blockDim.x + 1;
   DType* buf_gamma_grad = d_buf;
   DType* buf_beta_grad = d_buf + blockDim.y * row_stride * row_repeat;
   DType local_gamma_grad = 0;
