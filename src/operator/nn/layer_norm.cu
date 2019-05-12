@@ -49,21 +49,6 @@ __device__ __forceinline__ DType WARP_SHFL_XOR(DType value, int laneMask,
 #endif
 }
 
-template<typename DType>
-__device__ __forceinline__ DType rsqrt(DType v) {
-  return DType(1) / sqrt(v);
-}
-
-template<>
-__device__ __forceinline__ float rsqrt(float v) {
-  return rsqrtf(v);
-}
-
-template<>
-__device__ __forceinline__ double rsqrt(double v) {
-  return rsqrt(v);
-}
-
 
 /* A single updating step of the Welford's online algorithm to calculate the mean and variance.
  * The value 'curr' will be accumulated to the (mean, sigma2, count) triplet.
