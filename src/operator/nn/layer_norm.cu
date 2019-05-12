@@ -571,9 +571,9 @@ void GetGammaBetaGradKernelParams(const int nbatch, const int nchannel,
                                   dim3* gb_block_dim, dim3* gb_grid_dim,
                                   int* row_repeat, int* npart) {
   *npart = 16;
-  *part_grad_block_dim = dim3(32, 16);
+  *part_grad_block_dim = dim3(32, 4);
   *part_grad_grid_dim = dim3((nchannel + 32 - 1) / 32, *npart);
-  *row_repeat = 16;
+  *row_repeat = 4;
   *gb_block_dim = dim3(32, *npart);
   *gb_grid_dim = dim3((nchannel + 32 - 1) / 32);
   CheckLaunchParam(*part_grad_grid_dim, *part_grad_block_dim);
