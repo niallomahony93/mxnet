@@ -370,8 +370,6 @@ __global__ void LayerNormFusedBackwardKernel_PartGammaBeta(const int nbatch,
   const int row_stride = blockDim.x + 1;
   DType* buf_gamma_grad = d_buf;
   DType* buf_beta_grad = d_buf + blockDim.y * row_stride * row_repeat;
-  DType local_gamma_grad = 0;
-  DType local_beta_grad = 0;
   for(int i = 0; i < row_repeat; i++) {
     int idx = (i * blockDim.y + threadIdx.y) * row_stride + threadIdx.x;
     buf_gamma_grad[idx] = 0;
@@ -396,7 +394,8 @@ __global__ void LayerNormFusedBackwardKernel_PartGammaBeta(const int nbatch,
     }
   }
   __syncthreads();
-
+  DType local_gamma_grad = 0;
+  DType local_beta_grad = 0;
   for(int i = 0; i < row_repeat; ++i) {
     int idx = (i * blockDim.y + threadIdx.y) * row_stride + threadIdx.x;
     local_gamma_grad += buf_gamma_grad[idx];
@@ -626,7 +625,7 @@ void LayerNormGradGPUContig(const LayerNormParam param,
         ctx.requested[0].get_space_typed<gpu, 1, DType>(Shape1(2 * npart * nchannel), s);
       DType* part_gamma_grad_ptr = workspace.dptr_;
       DType* part_beta_grad_ptr = workspace.dptr_ + npart * nchannel;
-      const int nshared_K1 = 2 * part_grad_block_dim.x * (part_grad_block_dim.y + 1)
+      const int nshared_K1 = 2 * (part_grad_block_dim.x + 1) * part_grad_block_dim.y
                                * row_repeat * sizeof(DType);
       const int nshared_K2 = 2 * gb_block_dim.x * gb_block_dim.y * sizeof(DType);
       DType* gamma_grad_ptr = (gamma_grad_req != kNullOp) ? gamma_grad.dptr<DType>() : nullptr;
