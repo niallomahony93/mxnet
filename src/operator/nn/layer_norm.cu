@@ -195,7 +195,7 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
     // within a warp of threads.
     // After calling the function, threadIdx.x == 0 will store the result of
     // the aggregated (mean, sigma2, counts).
-    for (int mask = 16; mask > 0; mask >>= 1) {
+    for (int mask = blockDim.x / 2; mask > 0; mask >>= 1) {
       AType meanB = warp_shfl_xor(mean, mask);
       AType sigma2B = warp_shfl_xor(sigma2, mask);
       IType countB = warp_shfl_xor(count, mask);
@@ -205,8 +205,9 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
       // Inter-warp reduction. Copy the upper-half of the warps to shared memory
       // and merge with the lower-half warp
       AType* mean_buf = reinterpret_cast<AType*>(buf);
-      AType* sigma2_buf = reinterpret_cast<AType*>(buf + sizeof(AType) * blockDim.y / 2 * 32);
-      IType* count_buf = reinterpret_cast<IType*>(buf + sizeof(AType) * blockDim.y * 32);
+      AType* sigma2_buf =
+        reinterpret_cast<AType*>(buf + sizeof(AType) * blockDim.y / 2 * blockDim.x);
+      IType* count_buf = reinterpret_cast<IType*>(buf + sizeof(AType) * blockDim.y * blockDim.x);
       for (int offset = blockDim.y / 2; offset > 0; offset >>= 1) {
         if (threadIdx.y >= offset && threadIdx.y < 2 * offset) {
           const int idx = (threadIdx.y - offset) * blockDim.x + threadIdx.x;
@@ -266,6 +267,7 @@ __global__ void LayerNormFusedForwardKernelContig(const int nbatch,
   }
 }
 
+template<bool safe_acc = false>
 void LayerNormGPUContig(const LayerNormParam param,
                         const OpContext& ctx, const std::vector<TBlob>& inputs,
                         const std::vector<OpReqType>& req,
@@ -309,9 +311,8 @@ void LayerNormGPUContig(const LayerNormParam param,
   }
   cudaStream_t stream = Stream<gpu>::GetStream(ctx.get_stream<gpu>());
   const dim3 dimBlock(32, nthread_y);
-  MSHADOW_REAL_TYPE_SWITCH(in_data.type_flag_, DType, {
-    typedef std::conditional<std::is_same<DType, mshadow::half::half_t>::value,
-                             float, DType>::type AType;
+  MXNET_REAL_ACC_TYPE_SWITCH(in_data.type_flag_, DType, AccType, {
+    typedef typename std::conditional<safe_acc, AccType, DType>::type AType;
     int nshared = nthread_y > 1 ? nthread_y * 32 * sizeof(AType)
                                   + (nthread_y / 2) * 32 * sizeof(int) : 0;
     CheckLaunchParam(dimGrid, dimBlock);
@@ -338,7 +339,17 @@ void LayerNormCompute<gpu>(const nnvm::NodeAttrs& attrs,
   CHECK(axis >= 0 && axis < inputs[0].ndim()) << "Channel axis out of range: " << param.axis;
   if (axis == inputs[0].ndim() - 1) {
     // Try to use the accelerated CUDA kernels
-    return LayerNormGPUContig(param, ctx, inputs, req, outputs);
+    bool safe_acc = dmlc::GetEnv("MXNET_SAFE_ACCUMULATION", false);
+    if (!safe_acc && inputs[0].type_flag_ == mshadow::kFloat16) {
+      common::LogOnce("MXNET_SAFE_ACCUMULATION=1 is recommended for LayerNorm with float16 inputs. "
+                      "See https://mxnet.incubator.apache.org/versions/master/faq/env_var.html "
+                      "for more details.");
+    }
+    if (safe_acc) {
+      return LayerNormGPUContig<true>(param, ctx, inputs, req, outputs);
+    } else {
+      return LayerNormGPUContig<false>(param, ctx, inputs, req, outputs);
+    }
   }
   return LayerNormComputeGeneral<gpu>(attrs, ctx, inputs, req, outputs);
 }
@@ -589,6 +600,7 @@ void GetGammaBetaGradKernelParams(const int nbatch, const int nchannel,
   CheckLaunchParam(*gb_grid_dim, *gb_block_dim);
 }
 
+template<bool safe_acc = false>
 void LayerNormGradGPUContig(const LayerNormParam param,
                             const OpContext& ctx, const std::vector<TBlob>& inputs,
                             const std::vector<OpReqType>& req,
@@ -629,9 +641,8 @@ void LayerNormGradGPUContig(const LayerNormParam param,
   GetGammaBetaGradKernelParams(nbatch, nchannel, &part_grad_block_dim, &part_grad_grid_dim,
                                &gb_block_dim, &gb_grid_dim, &npart);
   if (gamma_grad_req != kNullOp || beta_grad_req != kNullOp) {
-    MSHADOW_REAL_TYPE_SWITCH(in_data.type_flag_, DType, {
-      typedef std::conditional<std::is_same<DType, mshadow::half::half_t>::value,
-                               float, DType>::type AType;
+    MXNET_REAL_ACC_TYPE_SWITCH(in_data.type_flag_, DType, AccType, {
+      typedef typename std::conditional<safe_acc, AccType, DType>::type AType;
       Tensor<gpu, 1, AType> workspace =
         ctx.requested[0].get_space_typed<gpu, 1, AType>(Shape1(2 * npart * nchannel), s);
       AType* part_gamma_grad_ptr = workspace.dptr_;
@@ -689,9 +700,8 @@ void LayerNormGradGPUContig(const LayerNormParam param,
   const dim3 data_block_dim(32, nthread_y);
   const int LOAD_UNROLL = 4;
   if (data_grad_req != kNullOp) {
-    MSHADOW_REAL_TYPE_SWITCH(in_data.type_flag_, DType, {
-      typedef std::conditional<std::is_same<DType, mshadow::half::half_t>::value,
-                               float, DType>::type AType;
+    MXNET_REAL_ACC_TYPE_SWITCH(in_data.type_flag_, DType, AccType, {
+      typedef typename std::conditional<safe_acc, AccType, DType>::type AType;
       int nshared = data_block_dim.y > 1 ? data_block_dim.y * data_block_dim.x * sizeof(AType) : 0;
       CheckLaunchParam(data_grid_dim, data_block_dim);
       if (data_grad_req == kAddTo) {
@@ -723,7 +733,12 @@ void LayerNormGradCompute<gpu>(const nnvm::NodeAttrs& attrs,
   CHECK(axis >= 0 && axis < inputs[0].ndim()) << "Channel axis out of range: " << param.axis;
   if (axis == inputs[0].ndim() - 1) {
     // Use the accelerated CUDA kernels
-    return LayerNormGradGPUContig(param, ctx, inputs, req, outputs);
+    bool safe_acc = dmlc::GetEnv("MXNET_SAFE_ACCUMULATION", false);
+    if (safe_acc) {
+      return LayerNormGradGPUContig<true>(param, ctx, inputs, req, outputs);
+    } else {
+      return LayerNormGradGPUContig<false>(param, ctx, inputs, req, outputs);
+    }
   }
   return LayerNormGradComputeGeneral<gpu>(attrs, ctx, inputs, req, outputs);
 }

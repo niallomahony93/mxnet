@@ -47,17 +47,18 @@ inline NDArray::NDArray(const NDArrayHandle &handle) {
   blob_ptr_ = std::make_shared<NDBlob>(handle);
 }
 inline NDArray::NDArray(const std::vector<mx_uint> &shape, const Context &context,
-                        bool delay_alloc) {
+                        bool delay_alloc, int dtype) {
   NDArrayHandle handle;
-  CHECK_EQ(MXNDArrayCreate(shape.data(), shape.size(), context.GetDeviceType(),
-                           context.GetDeviceId(), delay_alloc, &handle),
+  CHECK_EQ(MXNDArrayCreateEx(shape.data(), shape.size(), context.GetDeviceType(),
+                             context.GetDeviceId(), delay_alloc, dtype, &handle),
            0);
   blob_ptr_ = std::make_shared<NDBlob>(handle);
 }
-inline NDArray::NDArray(const Shape &shape, const Context &context, bool delay_alloc) {
+inline NDArray::NDArray(const Shape &shape, const Context &context,
+                        bool delay_alloc, int dtype) {
   NDArrayHandle handle;
-  CHECK_EQ(MXNDArrayCreate(shape.data(), shape.ndim(), context.GetDeviceType(),
-                           context.GetDeviceId(), delay_alloc, &handle),
+  CHECK_EQ(MXNDArrayCreateEx(shape.data(), shape.ndim(), context.GetDeviceType(),
+                             context.GetDeviceId(), delay_alloc, dtype, &handle),
            0);
   blob_ptr_ = std::make_shared<NDBlob>(handle);
 }
@@ -208,7 +209,7 @@ inline void NDArray::SyncCopyToCPU(std::vector<mx_float> *data, size_t size) {
   MXNDArraySyncCopyToCPU(blob_ptr_->handle_, data->data(), size);
 }
 inline NDArray NDArray::Copy(const Context &ctx) const {
-  NDArray ret(GetShape(), ctx);
+  NDArray ret(GetShape(), ctx, true, this->GetDType());
   Operator("_copyto")(*this).Invoke(ret);
   return ret;
 }
@@ -397,11 +398,11 @@ inline size_t NDArray::Size() const {
 }
 
 inline std::vector<mx_uint> NDArray::GetShape() const {
-  const mx_uint *out_pdata;
-  mx_uint out_dim;
-  MXNDArrayGetShape(blob_ptr_->handle_, &out_dim, &out_pdata);
+  const int *out_pdata;
+  int out_dim;
+  MXNDArrayGetShapeEx(blob_ptr_->handle_, &out_dim, &out_pdata);
   std::vector<mx_uint> ret;
-  for (mx_uint i = 0; i < out_dim; ++i) {
+  for (int i = 0; i < out_dim; ++i) {
     ret.push_back(out_pdata[i]);
   }
   return ret;

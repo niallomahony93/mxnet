@@ -1180,7 +1180,7 @@ def test_activations():
     elu = mx.gluon.nn.ELU()
     def elu_test(x):
         def elu(x):
-            return 1.0 * (mx.nd.exp(x) - 1) if x < 0 else x
+            return mx.nd.expm1(x) if x <= 0.0 else x
         return [elu(x_i) for x_i in x]
 
     for test_point, ref_point in zip(elu_test(point_to_validate), elu(point_to_validate)):
@@ -2725,6 +2725,22 @@ def test_slice_activation_reshape_activation():
             shape = (4, 32, 32, -1)
             net = Net(act0, act1, shape, slice)
             check_layer_forward_withinput(net, x)
+
+@with_seed()
+def test_np_shape_parameters():
+    class Foo(gluon.Block):
+        def __init__(self, **kwargs):
+            super(Foo, self).__init__(**kwargs)
+            self.dense = gluon.nn.Dense(16)
+        def forward(self, x):
+            return self.dense(x)
+
+    with mx.np_shape(True):
+        z = mx.nd.zeros((2,2016))
+        print(z.shape)
+        foo = Foo()
+        foo.initialize()
+        print(foo(z).shape)
 
 if __name__ == '__main__':
     import nose

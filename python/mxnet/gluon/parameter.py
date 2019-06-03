@@ -16,7 +16,7 @@
 # under the License.
 
 # coding: utf-8
-# pylint: disable=
+# pylint: disable=unnecessary-pass
 """Neural network parameter."""
 __all__ = ['DeferredInitializationError', 'Parameter', 'Constant',
            'ParameterDict', 'tensor_types']
@@ -30,7 +30,8 @@ from ..base import mx_real_t, MXNetError
 from .. import symbol, ndarray, initializer, context
 from ..context import Context, cpu
 from .. import autograd
-from .utils import _indent, _brief_print_list
+from .utils import _indent, _brief_print_list, shape_is_known
+from .. import is_np_shape
 
 # pylint: disable= invalid-name
 tensor_types = (symbol.Symbol, ndarray.NDArray)
@@ -156,7 +157,20 @@ class Parameter(object):
 
     @property
     def shape(self):
-        return self._shape
+        """The shape of the parameter.
+
+        By default, an unknown dimension size is 0. However, when the NumPy semantic
+        is turned on, unknown dimension size is -1.
+        """
+        if self._shape is None:
+            return None
+        elif is_np_shape():
+            # Parameters shouldn't be zero-size. If one of its dimension is 0,
+            # it means the parameter isn't initialized. In the NumPy semantics,
+            # the unknown dimension should be marked with -1.
+            return tuple(i if i != 0 else -1 for i in self._shape)
+        else:
+            return self._shape
 
     @shape.setter
     def shape(self, new_shape):
@@ -269,7 +283,7 @@ class Parameter(object):
             return
         init, ctx, default_init, data = self._deferred_init
         self._deferred_init = ()
-        assert self.shape is not None and np.prod(self.shape) > 0, \
+        assert shape_is_known(self.shape), \
             "Cannot initialize Parameter '%s' because it has " \
             "invalid shape: %s. Please specify in_units, " \
             "in_channels, etc for `Block`s."%(
@@ -380,7 +394,7 @@ class Parameter(object):
             ctx = [ctx]
         if init is None:
             init = default_init if self.init is None else self.init
-        if not self.shape or np.prod(self.shape) <= 0:
+        if not shape_is_known(self.shape):
             if self._allow_deferred_init:
                 self._deferred_init = (init, ctx, default_init, None)
                 return
@@ -900,8 +914,9 @@ class ParameterDict(object):
                     "restore_prefix is '%s' but Parameters name '%s' does not start " \
                     "with '%s'"%(restore_prefix, name, restore_prefix)
         lprefix = len(restore_prefix)
+        ndarray_load = ndarray.load(filename)
         loaded = [(k[4:] if k.startswith('arg:') or k.startswith('aux:') else k, v) \
-                  for k, v in ndarray.load(filename).items()]
+                  for k, v in ndarray_load.items()] if isinstance(ndarray_load, dict) else ndarray_load
         arg_dict = {restore_prefix+k: v for k, v in loaded}
         if not allow_missing:
             for name in self.keys():
